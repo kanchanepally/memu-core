@@ -143,4 +143,3 @@ AGPLv3 — Run it for your family freely. Modify and host for others? Share your
 
 *Built by a parent who was tired of being the family's middleware.*
 
-*"The question isn't whether families need AI coordination — Nori proved they do. The question is whether the architecture that delivers that coordination should require uploading your family's complete life to a startup's server."*
