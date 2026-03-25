@@ -1,0 +1,29 @@
+# For deployment alongside existing memu-suite stack
+# Uses existing PostgreSQL, Ollama, and Docker network
+# IMPORTANT: Run schema.sql against existing PostgreSQL first (see SETUP.md)
+services:
+  gateway:
+    build: .
+    container_name: memu_core
+    ports:
+      - "3100:3100"
+    environment:
+      - DATABASE_URL=postgresql://memu_user:${DB_PASSWORD}@memu_postgres:5432/memu_core
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OLLAMA_HOST=http://memu_brain:11434
+      - IMMICH_API_URL=http://memu_photos:2283
+      - IMMICH_API_KEY=${IMMICH_API_KEY}
+      - BAIKAL_URL=http://memu_calendar:80
+      - BAIKAL_USERNAME=${CALDAV_USERNAME}
+      - BAIKAL_PASSWORD=${CALDAV_PASSWORD}
+      - ENABLE_CALENDAR_OBSERVER=true
+      - ENABLE_EMAIL_OBSERVER=${ENABLE_EMAIL:-false}
+      - ENABLE_PHOTO_OBSERVER=true
+      - TZ=Europe/London
+    networks:
+      - memu-suite_memu_net
+    restart: unless-stopped
+
+networks:
+  memu-suite_memu_net:
+    external: true

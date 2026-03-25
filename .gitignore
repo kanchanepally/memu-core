@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+build/
+
+# Environment Variables
+.env
+.env.local
+
+# Database / Auth Volumes
+auth_info_baileys/
+postgres-data/
+
+# OS Files
+.DS_Store
+Thumbs.db
