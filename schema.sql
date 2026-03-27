@@ -256,3 +256,32 @@ INSERT INTO settings (key, value) VALUES
   ('timezone', 'Europe/London'),
   ('weather_city', 'Ivybridge'),
   ('weather_country', 'UK');
+
+-- ============================================================
+-- INTELLIGENCE STREAM (Slice 2c/2d/3)
+-- ============================================================
+CREATE TABLE stream_cards (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  family_id TEXT NOT NULL,
+  card_type TEXT NOT NULL CHECK (card_type IN (
+    'collision', 'extraction', 'unfinished_business', 
+    'reminder', 'document_extracted', 'calendar_added',
+    'proactive_nudge', 'weekly_digest'
+  )),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN (
+    'whatsapp_group', 'calendar', 'email', 'document', 'manual', 'proactive'
+  )),
+  source_message_id TEXT,          -- links to the original context_entry
+  actions JSONB DEFAULT '[]',      -- [{"label": "Reschedule", "type": "action_id"}, ...]
+  status TEXT DEFAULT 'active' CHECK (status IN (
+    'active', 'resolved', 'dismissed', 'expired'
+  )),
+  resolved_by TEXT REFERENCES profiles(id),
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ           -- auto-dismiss past events
+);
+
+CREATE INDEX idx_stream_family ON stream_cards(family_id, status, created_at DESC);

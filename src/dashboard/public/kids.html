@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memu | Kids Portal</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        body { font-size: 1.25rem; background: var(--color-bg); display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        .chat-bubble { padding: 1.5rem; border-radius: var(--radius-lg); max-width: 85%; line-height: 1.5; font-size: 1.5rem; font-weight: 500;}
+        .chat-user { align-self: flex-end; background: var(--color-accent); color: white; border-bottom-right-radius: 8px; }
+        .chat-memu { align-self: flex-start; background: var(--color-surface); color: var(--text-primary); border: 2px solid var(--border-subtle); border-bottom-left-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="card" style="width: 90%; max-width: 800px; height: 85vh; display: flex; flex-direction: column; padding: 0; box-shadow: var(--shadow-lg);">
+        
+        <div style="padding: 2rem; border-bottom: 2px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <img src="/assets/logo.svg" onerror="this.src='/assets/logo.png'" width="56" height="56">
+                <h1 style="margin: 0; font-size: 2.75rem; color: var(--color-accent);">Ask Memu</h1>
+            </div>
+            <!-- Exit button permanently removed for safety -->
+        </div>
+
+        <div id="chat-history" style="flex: 1; padding: 2rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.5rem; background: var(--color-bg);">
+            <div class="chat-bubble chat-memu">
+                Hi! I'm Memu. What do you want to talk about today? 🦖
+            </div>
+        </div>
+
+        <div style="padding: 2rem; border-top: 2px solid var(--border-subtle); background: var(--color-surface); border-radius: 0 0 var(--radius-md) var(--radius-md);">
+            <form id="chat-form" style="display: flex; gap: 1rem;">
+                <input type="text" id="chat-input" placeholder="Type your message..." style="flex: 1; background: var(--color-bg); border: 2px solid var(--border-subtle); border-radius: var(--radius-pill); padding: 1.5rem 2rem; color: var(--text-primary); font-size: 1.25rem; outline: none;" autocomplete="off" required>
+                <button type="submit" class="btn btn-primary" id="chat-submit" style="padding: 0 3rem; font-size: 1.25rem; border-radius: var(--radius-pill);">
+                    Send
+                </button>
+            </form>
+        </div>
+
+    </div>
+
+    <script>
+        const form = document.getElementById('chat-form');
+        const input = document.getElementById('chat-input');
+        const history = document.getElementById('chat-history');
+        const submitBtn = document.getElementById('chat-submit');
+
+        function addMessage(text, isUser) {
+            const div = document.createElement('div');
+            div.className = isUser ? 'chat-bubble chat-user' : 'chat-bubble chat-memu';
+            div.textContent = text;
+            history.appendChild(div);
+            history.scrollTop = history.scrollHeight;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMessage(text, true);
+            input.value = '';
+            submitBtn.disabled = true;
+
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = loadingId;
+            loadingDiv.className = 'chat-bubble chat-memu';
+            loadingDiv.style.opacity = '0.5';
+            loadingDiv.textContent = 'Memu is thinking...';
+            history.appendChild(loadingDiv);
+            history.scrollTop = history.scrollHeight;
+
+            try {
+                const res = await fetch('/api/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text, profileId: 'child-profile-1' })
+                });
+                const data = await res.json();
+                
+                document.getElementById(loadingId).remove();
+                addMessage(data.response || 'Sorry, I couldn\'t understand that.');
+            } catch (err) {
+                document.getElementById(loadingId).remove();
+                addMessage('Network error. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                input.focus();
+            }
+        });
+    </script>
+</body>
+</html>

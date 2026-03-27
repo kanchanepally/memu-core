@@ -4,7 +4,8 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || 'sk-dummy', 
 });
 
-const SYSTEM_PROMPT = `You are Memu, a private family AI Chief of Staff. You have access to an anonymous 
+export function buildSystemPrompt(context: string[] = []): string {
+  const base = `You are Memu, a private family AI Chief of Staff. You have access to an anonymous 
 model of this family — personas, relationships, schedules, and context. All real 
 names, locations, schools, and identifying details have been replaced with anonymous 
 labels (Adult-1, Child-1, School-1, Location-3, etc.).
@@ -14,7 +15,11 @@ CRITICAL RULES:
 2. If the context mentions "Child-1", respond using "Child-1". The system will translate them to real names before the user sees your response.
 3. Be warm, direct, and useful. You are a trusted Chief of Staff, not a chatbot.`;
 
-export async function getClaudeResponse(prompt: string): Promise<string> {
+  if (context.length === 0) return base;
+  return `${base}\n\n=== RELEVANT FAMILY CONTEXT ===\n${context.map((c, i) => `[${i+1}] ${c}`).join('\n')}\n==============================`;
+}
+
+export async function getClaudeResponse(prompt: string, context: string[] = []): Promise<string> {
   if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
     return `[Dummy Mode: No API Key] I am the Chief of Staff. I hear you saying: "${prompt}". My anonymity is guaranteed.`;
   }
@@ -23,7 +28,7 @@ export async function getClaudeResponse(prompt: string): Promise<string> {
     const msg = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(context),
       messages: [
         { role: "user", content: prompt }
       ]

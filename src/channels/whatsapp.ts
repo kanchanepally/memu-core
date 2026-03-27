@@ -1,4 +1,4 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, WASocket, proto, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, WASocket, proto, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { handleIncomingMessage } from '../intelligence/orchestrator';
@@ -18,7 +18,7 @@ export async function connectToWhatsApp() {
     version,
     auth: state,
     logger,
-    browser: ['Memu', 'Chrome', '1.0.0'], // Prevents the rapid disconnect loop on new versions
+    browser: Browsers.macOS('Desktop'), // Robust anti-disconnect configuration
     printQRInTerminal: false
   });
 

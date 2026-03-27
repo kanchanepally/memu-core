@@ -1,7 +1,39 @@
 import { WASocket, proto } from '@whiskeysockets/baileys';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { getClaudeResponse } from './claude';
+import { retrieveRelevantContext } from './context';
+import { processGroupMessageExtraction } from './extraction';
 import { pool } from '../db/connection';
+
+// Shared pipeline for both WhatsApp and PWA Web Frontend to guarantee absolute parity
+export async function processIntelligencePipeline(profileId: string, content: string, channel: string, messageId: string = 'unknown'): Promise<string> {
+  // 1. Twin Translation (Real -> Anonymous)
+  const anonymousMsg = await translateToAnonymous(content);
+  console.log(`[IN -> Translated]: ${anonymousMsg}`);
+
+  // 2. Context Retrieval (Slice 2a RAG)
+  const rawContexts = await retrieveRelevantContext(content, 3);
+  
+  const anonymousContexts = [];
+  for (const ctx of rawContexts) {
+    anonymousContexts.push(await translateToAnonymous(ctx));
+  }
+  if (anonymousContexts.length > 0) {
+    console.log(`[CONTEXT -> Injected]: ${anonymousContexts.length} relevant facts found.`);
+  }
+
+  // 3. Claude API
+  const claudeResponse = await getClaudeResponse(anonymousMsg, anonymousContexts);
+  console.log(`[CLAUDE -> Raw]: ${claudeResponse}`);
+
+  // 4. Reverse Translation (Anonymous -> Real)
+  const realResponse = await translateToReal(claudeResponse);
+
+  // 5. Immutable Message Storage (Audit Trail required for Tier 1 Trust)
+  await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
+
+  return realResponse;
+}
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
   const senderJid = msg.key?.remoteJid;
@@ -9,39 +41,23 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
   
   if (!content || !senderJid) return;
   
-  // Slice 1: We only handle Direct Messages
+  // Slice 2d: WhatsApp Group Observer Pipeline
   if (senderJid.endsWith('@g.us')) {
-    console.log(`[Group Message ignored for Slice 1]: ${content}`);
-    return;
+      const participantJid = msg.key?.participant || senderJid;
+      const profileId = await lookupOrCreateProfile(participantJid);
+      
+      // Silently extract context and yield stream cards
+      await processGroupMessageExtraction(profileId, content, senderJid, msg.key?.id || 'unknown');
+      return;
   }
-
-  // SAFETY LOCK: For personal number testing, ONLY respond to "Message Yourself" chats.
-  // This completely prevents the bot from auto-replying to your friends or coworkers.
-  if (!msg.key?.fromMe) {
-    console.log(`[Safety Lock]: Ignored incoming message to protect your personal chats.`);
-    return;
-  }
+  
+  // SAFETY LOCK: For personal number testing (Direct Messages only)
+  if (!msg.key?.fromMe) return;
 
   try {
-    // 1. Profile Lookup
     const profileId = await lookupOrCreateProfile(senderJid);
-
-    // 2. Twin Translation (Real -> Anonymous)
-    const anonymousMsg = await translateToAnonymous(content);
-    console.log(`[IN -> Translated]: ${anonymousMsg}`);
-
-    // 3. Claude API
-    const claudeResponse = await getClaudeResponse(anonymousMsg);
-    console.log(`[CLAUDE -> Raw]: ${claudeResponse}`);
-
-    // 4. Reverse Translation (Anonymous -> Real)
-    const realResponse = await translateToReal(claudeResponse);
-
-    // 5. WhatsApp Reply
+    const realResponse = await processIntelligencePipeline(profileId, content, 'whatsapp', msg.key?.id || 'unknown');
     await sock.sendMessage(senderJid, { text: realResponse });
-
-    // 6. Message Storage (Audit Trail)
-    await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, 'whatsapp', msg.key?.id || 'unknown');
   } catch (err) {
     console.error('Error handling incoming message:', err);
     await sock.sendMessage(senderJid, { text: "Sorry, I encountered an internal error processing that." });

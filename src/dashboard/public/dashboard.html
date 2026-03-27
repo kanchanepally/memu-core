@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memu | Chief of Staff</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 1000px;">
+            <a href="/" class="brand">
+                <img src="/assets/logo.svg" alt="Memu Logo" onerror="this.src='/assets/logo.png'" style="height: 34px;">
+            </a>
+            <div class="nav-links" style="display: flex; align-items: center; gap: 1.5rem;">
+                <a href="/dashboard.html" style="text-decoration: none; color: var(--text-primary); font-weight: 500;">Home</a>
+                <a href="#" style="text-decoration: none; color: var(--text-secondary);">Documents</a>
+                <a href="#" style="text-decoration: none; color: var(--text-secondary);">Settings</a>
+                <span style="width: 1px; height: 20px; background: var(--border-subtle); margin: 0 0.5rem;"></span>
+                <img src="https://ui-avatars.com/api/?name=H+K&background=0F766E&color=fff&rounded=true" width="36" height="36" style="border-radius: 50%;">
+            </div>
+        </div>
+    </nav>
+
+    <main class="container" style="padding-top: 3rem; padding-bottom: 120px; max-width: 1000px; display: grid; grid-template-columns: 280px 1fr; gap: 3rem; align-items: start;">
+        
+        <!-- Sidebar Utilities (Shopping List) -->
+        <aside style="position: sticky; top: 100px; display: flex; flex-direction: column; gap: 2rem;">
+            <div style="background: var(--color-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); overflow: hidden;">
+                <div style="background: #F8FAF9; border-bottom: 1px solid var(--border-subtle); padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin: 0;">🛒 Shopping List</h3>
+                    <button style="background: none; border: none; font-size: 1.25rem; color: var(--color-accent); cursor: pointer; line-height: 1;">+</button>
+                </div>
+                <div style="padding: 1.25rem;">
+                    <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.85rem;">
+                        <li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);"><input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);"> Sourdough Bread</label></li>
+                        <li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);"><input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);"> Oat Milk x4</label></li>
+                        <li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);"><input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);"> Bananas</label></li>
+                    </ul>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area: Brief & Stream -->
+        <section style="display: flex; flex-direction: column; gap: 3rem;">
+            
+            <!-- Today's Brief -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem;">
+                    <div>
+                        <p style="text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; font-weight: 600; color: var(--color-accent); margin-bottom: 0.25rem;">Morning Briefing</p>
+                        <h2 style="margin: 0; font-size: 1.5rem; color: var(--text-primary);" id="date-header">Loading...</h2>
+                    </div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    
+                    <!-- Clean Context Blocks -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        
+                        <!-- CALENDAR MODULE -->
+                        <div id="calendar-container" style="background: var(--color-surface); border: 1px solid var(--border-subtle); padding: 1.25rem; border-radius: var(--radius-md);">
+                            <div style="display: flex; gap: 1rem; align-items: center; height: 100%;">
+                                <div style="flex: 1; align-items: center; justify-content: center; display: flex; flex-direction: column; text-align: center;">
+                                    <p style="font-weight: 500; font-size: 0.95rem; margin-bottom: 0.75rem;">Connect Google Calendar to sync Family Events.</p>
+                                    <a href="/api/auth/google" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">Connect Calendar</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- OTHERS MODULE (Placeholder) -->
+                        <div style="background: var(--color-surface); border: 1px solid var(--border-subtle); padding: 1.25rem; border-radius: var(--radius-md);">
+                            <div style="width: 32px; height: 32px; border-radius: 8px; background: #FEF3C7; color: #D97706; display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; font-size: 1.2rem;">📧</div>
+                            <p style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.25rem;">School Newsletter</p>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Non-uniform day Friday.<br>Bring £1.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Intelligence Stream -->
+            <div>
+                <h3 style="color: var(--text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    Intelligence Stream
+                    <span style="height: 1px; flex: 1; background: var(--border-subtle);"></span>
+                </h3>
+                
+                <div id="stream-container" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <!-- Placeholder Stream Cards -->
+                    <div class="card stream-card source-whatsapp" style="padding: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <span style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+                                <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--border-whatsapp);"></div>
+                                Family WhatsApp · 2h ago
+                            </span>
+                        </div>
+                        <p style="font-size: 1.05rem; font-weight: 500; color: var(--text-primary); margin-bottom: 0.5rem;">Rach: "we really need to book Robin's dentist"</p>
+                        <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.25rem;">Extracted Task · Not yet resolved</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Persistent Chat Drawer -->
+    <div class="chat-drawer" id="chatDrawer">
+        <!-- Exact same code as prior drawer -->
+        <div class="chat-drawer-header" id="chatHeader">
+            <h3 style="display: flex; align-items: center; gap: 0.75rem; font-size: 1.1rem; color: var(--text-primary);">
+                <img src="/assets/logo.svg" width="24" onerror="this.src='/assets/logo.png'"> Ask Memu...
+            </h3>
+            <span style="color: var(--text-muted); font-size: 0.85rem;" id="drawerToggleText">Click to expand</span>
+        </div>
+        <div class="chat-history" id="chat-history"></div>
+        <div class="chat-input-area">
+            <form id="chat-form" style="display: flex; gap: 1rem; max-width: 900px; margin: 0 auto;">
+                <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." autocomplete="off" required>
+                <button type="submit" class="btn btn-primary" id="chat-submit" style="padding: 0 2rem; border-radius: var(--radius-pill);">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Frontend Engine -->
+    <script>
+        // Set Header Date
+        document.getElementById('date-header').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+        // Load REST Dashboard Brief
+        async function loadBrief() {
+            try {
+                const res = await fetch('/api/dashboard/brief');
+                const data = await res.json();
+                
+                // Render Calendar Widget Dynamically
+                const calContainer = document.getElementById('calendar-container');
+                if (data.events && data.events.length > 0) {
+                    let eventsHtml = data.events.map(e => {
+                        const time = new Date(e.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        return `${e.title} (${time})`;
+                    }).join('<br>');
+
+                    calContainer.innerHTML = `
+                        <div style="width: 32px; height: 32px; border-radius: 8px; background: #E0F2FE; color: #0284C7; display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; font-size: 1.2rem;">📅</div>
+                        <p style="font-weight: 600; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.25rem;">${data.events.length} events today</p>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">${eventsHtml}</p>
+                    `;
+                } else if (data.events && data.events.length === 0) {
+                    // Authenticated, just empty
+                    calContainer.innerHTML = `
+                        <div style="width: 32px; height: 32px; border-radius: 8px; background: #E0F2FE; color: #0284C7; display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; font-size: 1.2rem;">📅</div>
+                        <p style="font-weight: 500; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 0.25rem;">Your calendar is clear today.</p>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">Family event sync is active.</p>
+                    `;
+                }
+                
+                // Render Stream Cards
+                const streamContainer = document.getElementById('stream-container');
+                if (data.streamCards && data.streamCards.length > 0) {
+                    streamContainer.innerHTML = data.streamCards.map(card => {
+                        let color, label;
+                        if (card.source === 'whatsapp_group') {
+                            color = 'var(--border-whatsapp)'; label = 'Family WhatsApp';
+                        } else if (card.source === 'document') {
+                            color = 'var(--border-document)'; label = 'Document Extraction';
+                        } else {
+                            color = 'var(--border-manual)'; label = 'Memu Intelligence';
+                        }
+                        
+                        const timeStr = new Date(card.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        
+                        let buttonsHtml = '';
+                        let acts = card.actions;
+                        if (typeof acts === 'string') acts = JSON.parse(acts);
+                        if (Array.isArray(acts)) {
+                             buttonsHtml = acts.map(act => `<button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">${act.label}</button>`).join('');
+                        }
+
+                        buttonsHtml += `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="resolveCard('${card.id}')">Mark done</button>`;
+
+                        return `
+                        <div class="card stream-card" style="padding: 1.5rem; border-left-color: ${color};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <span style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem;">
+                                    <div style="width: 8px; height: 8px; border-radius: 50%; background: ${color};"></div>
+                                    ${label} · ${timeStr}
+                                </span>
+                            </div>
+                            <p style="font-size: 1.05rem; font-weight: 500; color: var(--text-primary); margin-bottom: 0.5rem;">${card.title}</p>
+                            <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.25rem;">${card.body}</p>
+                            <div style="display: flex; gap: 0.75rem;">
+                                ${buttonsHtml}
+                            </div>
+                        </div>
+                        `;
+                    }).join('');
+                } else {
+                    streamContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 0.95rem; text-align: center; padding: 2rem 0;">All caught up for now.</p>';
+                }
+                
+            } catch (err) {
+                console.error("Failed to load brief", err);
+            }
+        }
+        
+        loadBrief();
+
+        async function resolveCard(id) {
+            try {
+                await fetch('/api/stream/resolve', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ cardId: id })
+                });
+                loadBrief(); // Refresh list immediately
+            } catch(e) {
+                console.error('Failed to resolve');
+            }
+        }
+
+        // ---------------- Chat Drawer Logic ----------------
+        const drawer = document.getElementById('chatDrawer');
+        const header = document.getElementById('chatHeader');
+        const toggleText = document.getElementById('drawerToggleText');
+        const form = document.getElementById('chat-form');
+        const input = document.getElementById('chat-input');
+        const history = document.getElementById('chat-history');
+        const submitBtn = document.getElementById('chat-submit');
+
+        header.addEventListener('click', () => {
+            drawer.classList.toggle('open');
+            if (drawer.classList.contains('open')) {
+                input.focus();
+                toggleText.textContent = 'Click to collapse';
+            } else {
+                toggleText.textContent = 'Click to expand';
+                input.blur();
+            }
+        });
+
+        input.addEventListener('focus', () => {
+            if (!drawer.classList.contains('open')) {
+                drawer.classList.add('open');
+                toggleText.textContent = 'Click to collapse';
+            }
+        });
+
+        function addMessage(text, isUser) {
+            const div = document.createElement('div');
+            div.className = isUser ? 'chat-bubble chat-user' : 'chat-bubble chat-memu';
+            div.textContent = text;
+            history.appendChild(div);
+            history.scrollTop = history.scrollHeight;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMessage(text, true);
+            input.value = '';
+            submitBtn.disabled = true;
+
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = loadingId;
+            loadingDiv.className = 'chat-bubble chat-memu';
+            loadingDiv.style.opacity = '0.5';
+            loadingDiv.textContent = 'Memu is thinking...';
+            history.appendChild(loadingDiv);
+            history.scrollTop = history.scrollHeight;
+
+            try {
+                const res = await fetch('/api/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: text })
+                });
+                const data = await res.json();
+                
+                document.getElementById(loadingId).remove();
+                addMessage(data.response || 'Sorry, I encountered an error.');
+            } catch (err) {
+                document.getElementById(loadingId).remove();
+                addMessage('Network error. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                input.focus();
+            }
+        });
+    </script>
+</body>
+</html>
