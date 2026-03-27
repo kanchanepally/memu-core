@@ -129,16 +129,6 @@ Both modes use the same codebase. Same features. Same privacy guarantees.
 **Tier 2+ (home hardware):** Mathematical zero-knowledge. Nothing identifiable ever leaves your house.
 **Tier 1 (Memu Cloud):** Ephemeral processing for WhatsApp, zero-knowledge for web. [Full privacy architecture explained.](docs/PRIVACY.md)
 
-## Comparison
-
-| | Nori | OpenClaw | ChatGPT | Memu |
-|---|---|---|---|---|
-| Family coordination | ✅ | ❌ (individual) | ❌ | ✅ |
-| Privacy architecture | Policy ("we won't look") | Application-level | Policy | Structural (anonymous twin) |
-| Agentic actions | Within its app | Full system access (risky) | Limited | Sandboxed (capability envelope) |
-| Child safety | None | None | 13+ only | Educational framework + parental visibility |
-| Self-hostable | No | Yes | No | Yes (cloud → home gradient) |
-| Zero migration | New app required | Technical setup | New app | WhatsApp contact |
 
 ## Community
 
@@ -153,4 +143,3 @@ AGPLv3 — Run it for your family freely. Modify and host for others? Share your
 
 *Built by a parent who was tired of being the family's middleware.*
 
-*"The question isn't whether families need AI coordination — Nori proved they do. The question is whether the architecture that delivers that coordination should require uploading your family's complete life to a startup's server."*
