@@ -28,6 +28,7 @@ CREATE TABLE profile_channels (
   profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   channel TEXT NOT NULL,  -- 'whatsapp', 'telegram', 'web', 'matrix'
   channel_identifier TEXT NOT NULL,  -- phone number, username, session ID
+  credentials JSONB, -- Stores Google OAuth refresh tokens
   is_primary BOOLEAN DEFAULT FALSE,
   linked_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (profile_id, channel)

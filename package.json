@@ -20,7 +20,7 @@
     "fastify": "^4",
     "googleapis": "^171.4.0",
     "imapflow": "^1",
-    "node-cron": "^3",
+    "node-cron": "^3.0.3",
     "pg": "^8",
     "pgvector": "^0.2",
     "pino": "^9.0.0",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/node-cron": "^3.0.11",
     "@types/pg": "^8",
     "tsx": "^4",
     "typescript": "^5",

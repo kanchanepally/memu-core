@@ -33,10 +33,8 @@
                     <button style="background: none; border: none; font-size: 1.25rem; color: var(--color-accent); cursor: pointer; line-height: 1;">+</button>
                 </div>
                 <div style="padding: 1.25rem;">
-                    <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.85rem;">
-                        <li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);"><input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);"> Sourdough Bread</label></li>
-                        <li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);"><input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);"> Oat Milk x4</label></li>
-                        <li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);"><input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);"> Bananas</label></li>
+                    <ul id="shopping-list-container" style="list-style: none; display: flex; flex-direction: column; gap: 0.85rem;">
+                        <!-- JS Dynamic Inject -->
                     </ul>
                 </div>
             </div>
@@ -61,11 +59,8 @@
                         
                         <!-- CALENDAR MODULE -->
                         <div id="calendar-container" style="background: var(--color-surface); border: 1px solid var(--border-subtle); padding: 1.25rem; border-radius: var(--radius-md);">
-                            <div style="display: flex; gap: 1rem; align-items: center; height: 100%;">
-                                <div style="flex: 1; align-items: center; justify-content: center; display: flex; flex-direction: column; text-align: center;">
-                                    <p style="font-weight: 500; font-size: 0.95rem; margin-bottom: 0.75rem;">Connect Google Calendar to sync Family Events.</p>
-                                    <a href="/api/auth/google" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">Connect Calendar</a>
-                                </div>
+                            <div id="calendar-events-container" style="height: 100%;">
+                                <!-- Content will be dynamically loaded here -->
                             </div>
                         </div>
 
@@ -174,10 +169,19 @@
                         let acts = card.actions;
                         if (typeof acts === 'string') acts = JSON.parse(acts);
                         if (Array.isArray(acts)) {
-                             buttonsHtml = acts.map(act => `<button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">${act.label}</button>`).join('');
+                             buttonsHtml = acts.map(act => {
+                                 if (act.type === 'addToCalendar' || act.label.toLowerCase().includes('calendar') || act.type === 'book_event') {
+                                     return `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="addToCalendar('${card.id}')">${act.label}</button>`;
+                                 } else if (act.label.toLowerCase().includes('shopping') || act.type === 'add_to_shopping') {
+                                     return `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="moveToShopping('${card.id}')">${act.label}</button>`;
+                                 }
+                                 return `<button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">${act.label}</button>`;
+                             }).join('');
                         }
 
-                        buttonsHtml += `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="resolveCard('${card.id}')">Mark done</button>`;
+                        // Fallback mark done if not primary task
+                        if (!buttonsHtml) buttonsHtml += `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="resolveCard('${card.id}')">Mark done</button>`;
+                        else buttonsHtml += `<button class="btn btn-secondary" style="border: none; background: transparent; color: var(--color-accent); font-weight: 500; font-size: 0.85rem; padding: 0.5rem;" onclick="resolveCard('${card.id}')">Dismiss</button>`;
 
                         return `
                         <div class="card stream-card" style="padding: 1.5rem; border-left-color: ${color};">
@@ -199,12 +203,42 @@
                     streamContainer.innerHTML = '<p style="color: var(--text-muted); font-size: 0.95rem; text-align: center; padding: 2rem 0;">All caught up for now.</p>';
                 }
                 
+                // Render Shopping List
+                const shopContainer = document.getElementById('shopping-list-container');
+                if (data.shoppingItems && data.shoppingItems.length > 0) {
+                    shopContainer.innerHTML = data.shoppingItems.map(item => 
+                        `<li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);">
+                          <input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);" onchange="resolveCard('${item.id}')"> 
+                          ${item.title}
+                        </label></li>`
+                    ).join('');
+                } else {
+                    shopContainer.innerHTML = '<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">List is empty</p>';
+                }
+
             } catch (err) {
                 console.error("Failed to load brief", err);
             }
         }
         
         loadBrief();
+
+        async function addToCalendar(id) {
+            try {
+                // Show loading state gracefully
+                document.body.style.cursor = 'wait';
+                await fetch('/api/calendar/add', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ cardId: id })
+                });
+                loadBrief(); // Refresh UI instantly
+                document.body.style.cursor = 'default';
+            } catch(e) {
+                console.error('Failed to sync calendar');
+                document.body.style.cursor = 'default';
+            }
+        }
 
         async function resolveCard(id) {
             try {
@@ -216,6 +250,22 @@
                 loadBrief(); // Refresh list immediately
             } catch(e) {
                 console.error('Failed to resolve');
+            }
+        }
+
+        async function moveToShopping(id) {
+            try {
+                document.body.style.cursor = 'wait';
+                await fetch('/api/stream/to-shopping', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ cardId: id })
+                });
+                loadBrief();
+                document.body.style.cursor = 'default';
+            } catch(e) {
+                console.error('Failed to move to shopping');
+                document.body.style.cursor = 'default';
             }
         }
 

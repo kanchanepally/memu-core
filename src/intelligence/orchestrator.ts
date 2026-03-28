@@ -1,8 +1,10 @@
-import { WASocket, proto } from '@whiskeysockets/baileys';
+import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { getClaudeResponse } from './claude';
 import { retrieveRelevantContext } from './context';
 import { processGroupMessageExtraction } from './extraction';
+import { processVisualDocumentExtraction } from './vision';
+import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
 
 // Shared pipeline for both WhatsApp and PWA Web Frontend to guarantee absolute parity
@@ -37,25 +39,72 @@ export async function processIntelligencePipeline(profileId: string, content: st
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
   const senderJid = msg.key?.remoteJid;
-  const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
   
-  if (!content || !senderJid) return;
+  const isImage = !!msg.message?.imageMessage;
+  const imageMessage = msg.message?.imageMessage;
+  let content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || (isImage ? imageMessage?.caption || '' : '');
   
-  // Slice 2d: WhatsApp Group Observer Pipeline
-  if (senderJid.endsWith('@g.us')) {
-      const participantJid = msg.key?.participant || senderJid;
-      const profileId = await lookupOrCreateProfile(participantJid);
-      
-      // Silently extract context and yield stream cards
-      await processGroupMessageExtraction(profileId, content, senderJid, msg.key?.id || 'unknown');
-      return;
+  if (!senderJid) return;
+  if (!content && !isImage) return;
+
+  // Intercept URLs and inject scraped context implicitly
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const urls = content.match(urlRegex);
+  if (urls && urls.length > 0) {
+      await sock.sendMessage(senderJid, { text: "Reading link..." });
+      for (const url of urls) {
+          const scraped = await scrapeUrlContent(url);
+          if (scraped) {
+              content += `\n${scraped}`;
+          }
+      }
   }
   
-  // SAFETY LOCK: For personal number testing (Direct Messages only)
-  if (!msg.key?.fromMe) return;
+  // NOTE: Safety lock removed. Because you are running the bot on your office number, 
+  // you need to be able to text it from your personal number.
+  // In production, we will lock this down to a strict whitelist of known family numbers.
 
   try {
-    const profileId = await lookupOrCreateProfile(senderJid);
+    const participantJid = msg.key?.participant || senderJid;
+    const profileId = await lookupOrCreateProfile(participantJid);
+
+    // Slice 5: Document Ingestion (Vision)
+    if (isImage) {
+        await sock.sendMessage(senderJid, { text: "Scanning document..." });
+        
+        const buffer = await downloadMediaMessage(
+            msg as import('@whiskeysockets/baileys').WAMessage,
+            'buffer',
+            { },
+            { 
+                logger: console as any,
+                reuploadRequest: sock.updateMediaMessage 
+            }
+        );
+
+        if (buffer) {
+           const mimeType = imageMessage?.mimetype || 'image/jpeg';
+           const itemsFound = await processVisualDocumentExtraction(profileId, buffer as Buffer, mimeType, content, msg.key?.id || 'unknown');
+           
+           if (itemsFound && itemsFound > 0) {
+               await sock.sendMessage(senderJid, { text: `Got it. I extracted ${itemsFound} action item(s) and logged them to your Intelligence Stream.` });
+           } else {
+               await sock.sendMessage(senderJid, { text: "I couldn't find any actionable deadlines or events in that image." });
+           }
+        }
+        return;
+    }
+
+    // Agentic Execution: Always run background extraction to populate Shopping List / Calendar Tasks natively
+    await processGroupMessageExtraction(profileId, content, senderJid, msg.key?.id || 'unknown');
+
+    // Slice 2d: WhatsApp Group Observer Pipeline
+    // If it's a group, we intentionally swallowed it (no conversational reply) to avoid bot spam
+    if (senderJid.endsWith('@g.us')) {
+        return;
+    }
+    
+    // Slice 1: Intelligent Chat
     const realResponse = await processIntelligencePipeline(profileId, content, 'whatsapp', msg.key?.id || 'unknown');
     await sock.sendMessage(senderJid, { text: realResponse });
   } catch (err) {
