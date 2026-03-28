@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Logistics Command - The Ambient Hearth</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Space+Grotesk:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#D4AF37", // Brushed Brass
+                        "bg-dark": "#1A1C20", // Deep Slate
+                        "surface": "#25282E", // Matte Charcoal
+                        "text-main": "#EAE6D8", // Warm Cream
+                        "text-muted": "#737985", // Battleship Grey
+                        "alert": "#CD5D4F", // Oxide Red
+                        "pulse": "#3B8D65", // Signal Green
+                        "border-subtle": "#3A3F47",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Newsreader", "serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    backgroundImage: {
+                        'noise': "url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22 opacity=%220.05%22/%3E%3C/svg%3E')",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Scrollbar for Industrial Feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1A1C20; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3A3F47; 
+            border-radius: 2px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #D4AF37; 
+        }
+        
+        /* Noise Overlay */
+        .bg-noise {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.4;
+            mix-blend-mode: overlay;
+            background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22 opacity=%221%22/%3E%3C/svg%3E');
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-bg-dark text-text-main font-display antialiased overflow-hidden selection:bg-primary selection:text-bg-dark">
+<div class="bg-noise"></div>
+<div class="relative flex h-screen w-full flex-col overflow-hidden max-w-md mx-auto border-x border-border-subtle shadow-2xl">
+<!-- Header -->
+<header class="flex-none bg-bg-dark z-20 border-b border-border-subtle p-4 pb-2">
+<div class="flex items-center justify-between mb-4">
+<button class="flex items-center text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">arrow_back_ios_new</span>
+</button>
+<h1 class="text-[20px] font-bold tracking-tight uppercase text-text-main">Logistics Command</h1>
+<button class="flex items-center text-primary">
+<span class="material-symbols-outlined text-[24px]">add_box</span>
+</button>
+</div>
+<!-- Date Scrubber -->
+<div class="flex items-center justify-between bg-surface rounded-md border border-border-subtle p-2">
+<button class="flex items-center justify-center w-8 h-8 text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<div class="flex flex-col items-center">
+<span class="text-xs font-mono text-primary tracking-wider uppercase">Today</span>
+<span class="text-lg font-bold leading-none">Oct 24, Thursday</span>
+</div>
+<button class="flex items-center justify-center w-8 h-8 text-text-muted hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 overflow-y-auto relative z-10 scroll-smooth">
+<!-- Conflict Console (Sticky Top) -->
+<div class="sticky top-0 z-30 p-4 bg-gradient-to-b from-bg-dark via-bg-dark to-transparent pb-6">
+<div class="bg-surface border border-border-subtle border-l-4 border-l-alert rounded-r-md p-4 shadow-lg">
+<div class="flex items-start gap-3 mb-3">
+<div class="text-alert animate-pulse mt-0.5">
+<span class="material-symbols-outlined">warning</span>
+</div>
+<div>
+<h3 class="text-sm font-bold text-alert uppercase tracking-wide mb-1">Conflict Detected</h3>
+<p class="font-body text-text-main text-lg leading-snug">Soccer Practice overlaps with Piano Lesson at 3:30 PM.</p>
+</div>
+</div>
+<div class="flex gap-2 mt-4">
+<button class="flex-1 bg-bg-dark hover:bg-border-subtle border border-border-subtle text-text-main text-xs font-bold uppercase tracking-wider py-2.5 px-3 rounded shadow-inner flex items-center justify-center gap-2 transition-all">
+<span class="material-symbols-outlined text-[16px]">person</span>
+                            Delegate to Mom
+                        </button>
+<button class="flex-1 bg-alert/10 hover:bg-alert/20 border border-alert/30 text-alert text-xs font-bold uppercase tracking-wider py-2.5 px-3 rounded flex items-center justify-center gap-2 transition-all">
+<span class="material-symbols-outlined text-[16px]">edit_calendar</span>
+                            Reschedule
+                        </button>
+</div>
+</div>
+</div>
+<!-- Time Grid -->
+<div class="px-4 pb-24 relative">
+<!-- 08:00 AM Block -->
+<div class="flex mb-4 group">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-text-muted">08:00</span>
+</div>
+<div class="flex-1 relative">
+<!-- Connector Line -->
+<div class="absolute left-[-18px] top-3 bottom-[-20px] w-px bg-border-subtle group-last:hidden"></div>
+<div class="absolute left-[-21px] top-2.5 w-1.5 h-1.5 rounded-full bg-border-subtle"></div>
+<div class="bg-surface border border-border-subtle border-l-4 border-l-primary rounded-r-md p-3 h-[80px] hover:bg-[#2A2E35] transition-colors cursor-pointer">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="text-sm font-bold text-text-main mb-0.5">School Drop-off</h4>
+<div class="flex items-center gap-1 text-text-muted">
+<span class="material-symbols-outlined text-[14px]">location_on</span>
+<p class="font-body text-sm italic">Lincoln Elementary</p>
+</div>
+</div>
+<span class="bg-bg-dark text-text-muted text-[10px] font-mono px-1.5 py-0.5 rounded border border-border-subtle">15m</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 09:30 AM Block -->
+<div class="flex mb-4 group">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-text-muted">09:30</span>
+</div>
+<div class="flex-1 relative">
+<div class="absolute left-[-18px] top-3 bottom-[-20px] w-px bg-border-subtle group-last:hidden"></div>
+<div class="absolute left-[-21px] top-2.5 w-1.5 h-1.5 rounded-full bg-border-subtle"></div>
+<div class="bg-surface border border-border-subtle border-l-4 border-l-text-muted rounded-r-md p-3 h-[120px] hover:bg-[#2A2E35] transition-colors cursor-pointer">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="text-sm font-bold text-text-main mb-0.5">Deep Work</h4>
+<div class="flex items-center gap-1 text-text-muted">
+<span class="material-symbols-outlined text-[14px]">home</span>
+<p class="font-body text-sm italic">Home Office</p>
+</div>
+</div>
+<span class="bg-bg-dark text-text-muted text-[10px] font-mono px-1.5 py-0.5 rounded border border-border-subtle">2h 30m</span>
+</div>
+<div class="mt-3 pt-3 border-t border-border-subtle/50 flex gap-2">
+<span class="text-[10px] font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded">FOCUS_MODE: ON</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 12:00 PM Block -->
+<div class="flex mb-4 group">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-text-muted">12:00</span>
+</div>
+<div class="flex-1 relative">
+<div class="absolute left-[-18px] top-3 bottom-[-20px] w-px bg-border-subtle group-last:hidden"></div>
+<div class="absolute left-[-21px] top-2.5 w-1.5 h-1.5 rounded-full bg-border-subtle"></div>
+<div class="bg-surface border border-border-subtle border-l-4 border-l-primary rounded-r-md p-3 h-[90px] hover:bg-[#2A2E35] transition-colors cursor-pointer">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="text-sm font-bold text-text-main mb-0.5">Lunch with Sarah</h4>
+<div class="flex items-center gap-1 text-text-muted">
+<span class="material-symbols-outlined text-[14px]">restaurant</span>
+<p class="font-body text-sm italic">The Daily Catch, Downtown</p>
+</div>
+</div>
+<span class="bg-bg-dark text-text-muted text-[10px] font-mono px-1.5 py-0.5 rounded border border-border-subtle">1h</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 15:00 PM Ghost Block (AI Suggestion) -->
+<div class="flex mb-4 group">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-text-muted">15:00</span>
+</div>
+<div class="flex-1 relative">
+<div class="absolute left-[-18px] top-3 bottom-[-20px] w-px bg-border-subtle group-last:hidden"></div>
+<div class="absolute left-[-21px] top-2.5 w-1.5 h-1.5 rounded-full bg-border-subtle border border-text-muted"></div>
+<div class="bg-transparent border border-dashed border-text-muted/40 rounded-md p-3 h-[60px] flex items-center justify-between opacity-70 hover:opacity-100 transition-opacity cursor-pointer">
+<div class="flex items-center gap-3">
+<div class="w-1 h-8 bg-text-muted/30 rounded-full"></div>
+<div>
+<h4 class="text-sm font-medium text-text-muted mb-0.5 italic">Suggested: Drive Time</h4>
+<p class="font-body text-xs text-text-muted">Traffic is heavy (+15m)</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-text-muted text-[18px]">auto_awesome</span>
+</div>
+</div>
+</div>
+<!-- 15:30 PM Conflict Block -->
+<div class="flex mb-4 group">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-alert">15:30</span>
+</div>
+<div class="flex-1 relative">
+<div class="absolute left-[-18px] top-3 bottom-[-20px] w-px bg-border-subtle group-last:hidden"></div>
+<div class="absolute left-[-21px] top-2.5 w-1.5 h-1.5 rounded-full bg-alert"></div>
+<div class="relative grid grid-cols-2 gap-2">
+<!-- Conflict Item 1 -->
+<div class="bg-surface border border-alert/50 border-l-4 border-l-alert rounded-r-md p-3 h-[100px] relative overflow-hidden">
+<div class="absolute top-0 right-0 p-1 bg-alert/10 rounded-bl">
+<span class="material-symbols-outlined text-[14px] text-alert">warning</span>
+</div>
+<h4 class="text-xs font-bold text-text-main mb-1 truncate">Soccer Practice</h4>
+<div class="flex items-center gap-1 text-text-muted mb-2">
+<span class="material-symbols-outlined text-[12px]">sports_soccer</span>
+<p class="font-body text-xs italic truncate">Field 4</p>
+</div>
+<span class="bg-bg-dark text-text-muted text-[10px] font-mono px-1 py-0.5 rounded border border-border-subtle block w-max">1h 30m</span>
+</div>
+<!-- Conflict Item 2 -->
+<div class="bg-surface border border-alert/50 border-l-4 border-l-alert rounded-r-md p-3 h-[100px] opacity-60">
+<h4 class="text-xs font-bold text-text-main mb-1 truncate">Piano Lesson</h4>
+<div class="flex items-center gap-1 text-text-muted mb-2">
+<span class="material-symbols-outlined text-[12px]">piano</span>
+<p class="font-body text-xs italic truncate">Ms. Gable</p>
+</div>
+<span class="bg-bg-dark text-text-muted text-[10px] font-mono px-1 py-0.5 rounded border border-border-subtle block w-max">45m</span>
+</div>
+</div>
+</div>
+</div>
+<!-- 18:00 PM Block -->
+<div class="flex mb-4 group">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-text-muted">18:00</span>
+</div>
+<div class="flex-1 relative">
+<div class="absolute left-[-21px] top-2.5 w-1.5 h-1.5 rounded-full bg-border-subtle"></div>
+<div class="bg-surface border border-border-subtle border-l-4 border-l-primary rounded-r-md p-3 h-[90px] hover:bg-[#2A2E35] transition-colors cursor-pointer">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="text-sm font-bold text-text-main mb-0.5">Family Dinner</h4>
+<div class="flex items-center gap-1 text-text-muted">
+<span class="material-symbols-outlined text-[14px]">soup_kitchen</span>
+<p class="font-body text-sm italic">Home</p>
+</div>
+</div>
+<span class="bg-bg-dark text-text-muted text-[10px] font-mono px-1.5 py-0.5 rounded border border-border-subtle">1h 30m</span>
+</div>
+<div class="mt-3 pt-3 border-t border-border-subtle/50 flex gap-2">
+<span class="text-[10px] font-mono text-pulse bg-pulse/10 px-1.5 py-0.5 rounded">NO_PHONES</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Empty State Filler -->
+<div class="flex mb-4 opacity-30">
+<div class="w-14 flex-none pt-1">
+<span class="text-xs font-mono text-text-muted">20:00</span>
+</div>
+<div class="flex-1 border-t border-border-subtle mt-2.5"></div>
+</div>
+</div>
+</main>
+<!-- Bottom Navbar -->
+<nav class="flex-none bg-surface border-t border-border-subtle px-6 py-3 z-20">
+<div class="flex justify-between items-center">
+<a class="flex flex-col items-center gap-1 group" href="#">
+<span class="material-symbols-outlined text-text-muted group-hover:text-primary transition-colors text-[24px]">cottage</span>
+<span class="text-[10px] font-medium text-text-muted group-hover:text-primary transition-colors tracking-wide">Hearth</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<span class="material-symbols-outlined text-text-muted group-hover:text-primary transition-colors text-[24px]">photo_library</span>
+<span class="text-[10px] font-medium text-text-muted group-hover:text-primary transition-colors tracking-wide">Memories</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<div class="bg-primary/10 rounded-full px-4 py-1 flex flex-col items-center border border-primary/20">
+<span class="material-symbols-outlined text-primary text-[24px] fill-1">calendar_month</span>
+</div>
+<span class="text-[10px] font-bold text-primary tracking-wide">Logistics</span>
+</a>
+<a class="flex flex-col items-center gap-1 group" href="#">
+<span class="material-symbols-outlined text-text-muted group-hover:text-primary transition-colors text-[24px]">hub</span>
+<span class="text-[10px] font-medium text-text-muted group-hover:text-primary transition-colors tracking-wide">Node</span>
+</a>
+</div>
+</nav>
+</div>
+</body></html>

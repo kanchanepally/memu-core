@@ -1,0 +1,201 @@
+# The Ambient Hearth
+
+## Product Overview
+
+**The Pitch:** A "Mission Control" for family life that lives on your local network, balancing logistical precision with nostalgic warmth. It transforms your tablet or phone into an always-on hearth, surfacing critical daily intel alongside forgotten family memories without ever touching the cloud.
+
+**For:** Privacy-conscious families managing dense schedules who want technology to feel like furniture—solid, reliable, and private.
+
+**Device:** Mobile (Optimized for wall-mounted or counter-top docking).
+
+**Design Direction:** **Soft Industrial**. A tactile, matte dark mode aesthetic. Think high-end audio equipment meets a warm fireplace. Matte charcoal surfaces, brushed brass accents, and monospaced data visualization softened by cream typography.
+
+**Inspired by:** Teenage Engineering (tactile controls), Leica Camera interfaces (purposeful minimalism), and Braun (industrial warmth).
+
+---
+
+## Screens
+
+- **Screen 1: The Hearth (Home):** The default idle state combining the 'Context Carousel' and 'Unified Stream'.
+- **Screen 2: Memory Detail:** Immersive photo view with metadata and chat context extracted from local backups.
+- **Screen 3: Logistics Command:** Dense, functional calendar view with AI conflict detection and resource management.
+- **Screen 4: Node Status:** Hardware-level visualization of the local appliance's health, storage, and ingestion tasks.
+
+---
+
+## Key Flows
+
+**Flow: Morning Briefing**
+
+1. User wakes device -> sees **The Hearth (Home)** in "Morning State".
+2. Carousel displays "Traffic to School: Heavy" and "First Event: 8:00 AM".
+3. User taps "Traffic" tile -> expands to **Logistics Command** with route options.
+
+**Flow: Evening Reminiscing**
+
+1. Device is docked -> **The Hearth (Home)** auto-switches to "Evening State".
+2. Carousel rotates through "On this day" photos.
+3. User taps a photo of a birthday -> opens **Memory Detail**.
+4. Screen shows photo + local chat log: "Mom: Look at that cake!" (2019).
+
+---
+
+<details>
+<summary>Design System</summary>
+
+## Color Palette
+
+- **Primary:** `#D4AF37` - "Brushed Brass" - Active states, primary actions, "On" lights.
+- **Background:** `#1A1C20` - "Deep Slate" - The infinite void behind the interface.
+- **Surface:** `#25282E` - "Matte Charcoal" - Cards, headers, the carousel background.
+- **Text:** `#EAE6D8` - "Warm Cream" - Primary readability, evocative of old paper.
+- **Muted:** `#737985` - "Battleship Grey" - Timestamps, secondary metadata, borders.
+- **Accent:** `#3B8D65` - "Signal Green" - The 'System Pulse', success states, secure connection.
+- **Alert:** `#CD5D4F` - "Oxide Red" - Conflicts, urgent alerts.
+
+## Typography
+
+- **Headings:** **Space Grotesk**, 600, 24px-32px. (Geometric, slightly quirky, technical but friendly).
+- **Body:** **Newsreader**, 400, 18px. (Serif, high legibility, brings the "Hearth" warmth).
+- **Data/UI:** **JetBrains Mono**, 500, 12px. (Strictly for timestamps, stats, and coordinates).
+- **Buttons:** **Space Grotesk**, 500, 14px (Uppercase, tracked out).
+
+**Style notes:**
+- **Neumorphism (Subtle):** Very soft inner shadows on "depressed" buttons to mimic physical toggles.
+- **Noise:** A 2% monochromatic noise overlay on all backgrounds to prevent banding and add "grain."
+- **Borders:** 1px solid borders (`#3A3F47`) on all cards. No drop shadows; everything is flat and flush.
+
+## Design Tokens
+
+```css
+:root {
+  --color-primary: #D4AF37;
+  --color-bg: #1A1C20;
+  --color-surface: #25282E;
+  --color-text: #EAE6D8;
+  --color-muted: #737985;
+  --color-pulse: #3B8D65;
+  
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'Newsreader', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --radius-card: 4px; /* Tight, industrial corners */
+  --spacing-unit: 8px;
+  --border-subtle: 1px solid #3A3F47;
+}
+```
+
+</details>
+
+---
+
+<details>
+<summary>Screen Specifications</summary>
+
+### Screen 1: The Hearth (Home)
+
+**Purpose:** The central dashboard. Ambiently informs the family of logistical needs (AM) and emotional connections (PM).
+
+**Layout:**
+- **Top Bar (48px):** Weather (Left), Time (Center), **System Pulse** (Right).
+- **Context Carousel (35% height):** Dominant visual element.
+- **Unified Stream (Remaining height):** Vertical scroll below.
+
+**Key Elements:**
+- **System Pulse:** A 12px circle, `#3B8D65`. Animates with a slow "breathing" opacity (0.6 to 1.0) every 4s. Label next to it in Mono font: `LOCAL_NODE: ACTIVE`.
+- **Context Carousel:** Horizontal swipe container.
+    - *Tile 1 (Main):* Large typography. "School Run in 15m". Background is matte charcoal.
+    - *Tile 2 (Visual):* Photo memory. Rounded corners (4px).
+- **Unified Stream:** A timeline connector line runs down the left.
+    - *Item:* "Dad's Birthday" (Calendar icon) paired with "Dad blowing candles 2019" (Photo thumbnail).
+    - *Text:* Serif font, `#EAE6D8`, 18px.
+
+**States:**
+- **Morning Mode:** Carousel defaults to Weather + Next Event.
+- **Evening Mode:** Carousel defaults to Memories + Tomorrow's First Event.
+
+**Interactions:**
+- **Swipe Carousel:** Snaps to nearest tile. Haptic feedback on snap (heavy click).
+- **Tap Pulse:** Opens **Node Status**.
+
+---
+
+### Screen 2: Memory Detail
+
+**Purpose:** A focused, distraction-free view of a specific memory, enriched with local data context.
+
+**Layout:** Full-screen modal presentation.
+
+**Key Elements:**
+- **The Asset:** High-res image centered. Letterboxed if necessary to maintain aspect ratio against `#1A1C20` background.
+- **Metadata Badge:** Top left overlay. Mono font. `IMG_2021.JPG • IPHONE 12 • 42MB`.
+- **Context Drawer:** Bottom sheet (peeking 120px).
+    - **Header:** "Contextual Recall".
+    - **Content:** A snippet of a chat log from the same day the photo was taken.
+    - *Example:* "Mom: 'Just look at that face!' (14:02 PM)".
+
+**Interactions:**
+- **Drag Drawer Up:** Reveals full chat log from that day.
+- **Double Tap Image:** Zooms to 200%.
+- **Long Press:** "Send to Frame" (Broadcasts to other connected screens).
+
+---
+
+### Screen 3: Logistics Command
+
+**Purpose:** Hard logistics. The "Chief of Staff" view for resolving conflicts and planning.
+
+**Layout:** Grid-based calendar view with a "Conflict Console" at the top.
+
+**Key Elements:**
+- **Conflict Console:** A distinct container with a `#CD5D4F` (Red) left border.
+    - Text: "Conflict Detected: Soccer Practice overlaps with Piano Lesson."
+    - Action Buttons: `[DELEGATE TO MOM]` `[RESCHEDULE PIANO]`.
+- **Time Grid:** Vertical day view.
+    - **Hours:** Left column, Mono font.
+    - **Events:** Blocks in `#25282E` with `#D4AF37` left accent bar.
+    - **Ghost Events:** Translucent blocks showing AI suggestions (e.g., "Drive Time: 20m").
+
+**Components:**
+- **Event Block:** Height determined by duration. Title in Sans-Serif (Space Grotesk), Location in Serif (Newsreader).
+
+**Responsive:**
+- **Mobile:** Single day view.
+- **Tablet:** 3-day view.
+
+---
+
+### Screen 4: Node Status
+
+**Purpose:** Reassurance. Proves the hardware is working locally and respecting privacy.
+
+**Layout:** Dashboard of "gauges" and raw data streams.
+
+**Key Elements:**
+- **Header:** "Local Node Diagnostic".
+- **Storage Ring:** A circular SVG chart using `#D4AF37` stroke. Center text: `4.2TB FREE`.
+- **Ingestion Log:** A terminal-like list at the bottom.
+    - `[10:02:44] INGESTING: iCloud Backup...`
+    - `[10:02:45] PARSING: 42 photos processed locally.`
+- **Privacy Shield:** Large icon center screen. Shield symbol. Text: "Air-Gapped Mode: OFF" (or ON).
+
+**Interactions:**
+- **Tap 'Purge Cache':** Button triggers a "wiping" animation on the terminal log.
+
+</details>
+
+---
+
+<details>
+<summary>Build Guide</summary>
+
+**Stack:** HTML + Tailwind CSS v3
+
+**Build Order:**
+1. **Screen 1 (The Hearth):** Establishes the Layout Shell, Typography hierarchy, and the crucial "Dark Mode" palette tokens.
+2. **Screen 4 (Node Status):** Defines the "Industrial" component set (gauges, mono text, terminal logs) which informs the detail views.
+3. **Screen 3 (Logistics):** Implements the complex grid layouts.
+4. **Screen 2 (Memory):** Simple layout, focuses on overlay interactions.
+
+</details>

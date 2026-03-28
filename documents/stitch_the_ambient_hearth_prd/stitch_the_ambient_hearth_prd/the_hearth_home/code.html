@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Ambient Hearth</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#D4AF37", // Brushed Brass
+                        "background-dark": "#1A1C20", // Deep Slate
+                        "surface": "#25282E", // Matte Charcoal
+                        "text-cream": "#EAE6D8", // Warm Cream
+                        "text-muted": "#737985", // Battleship Grey
+                        "pulse": "#3B8D65", // Signal Green
+                        "alert": "#CD5D4F", // Oxide Red
+                        "border-subtle": "#3A3F47",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Newsreader", "serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {
+                        "card": "4px",
+                        "pill": "9999px",
+                    },
+                    boxShadow: {
+                        "soft-inner": "inset 0 2px 4px 0 rgba(0, 0, 0, 0.2)",
+                    },
+                    backgroundImage: {
+                        "noise": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E\")",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar hiding */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Breathing animation for system pulse */
+        @keyframes breathe {
+            0% { opacity: 0.6; transform: scale(0.95); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { opacity: 0.6; transform: scale(0.95); }
+        }
+        .animate-breathe {
+            animation: breathe 4s ease-in-out infinite;
+        }
+
+        /* Scanline effect */
+        .scanline {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-dark text-text-cream font-body h-screen w-full flex flex-col overflow-hidden relative selection:bg-primary selection:text-surface">
+<!-- Noise Overlay -->
+<div class="absolute inset-0 z-50 pointer-events-none mix-blend-overlay bg-noise opacity-50"></div>
+<!-- Scanline Overlay (Subtle) -->
+<div class="absolute inset-0 z-40 pointer-events-none opacity-5 scanline"></div>
+<!-- Header: Status Bar -->
+<header class="h-16 flex items-center justify-between px-6 border-b border-border-subtle bg-background-dark/95 backdrop-blur z-30 shrink-0">
+<!-- Weather (Left) -->
+<div class="flex items-center gap-2 w-1/3">
+<span class="material-symbols-outlined text-text-muted" style="font-size: 20px;">cloud</span>
+<span class="font-mono text-xs text-text-muted tracking-wide">64°F MIST</span>
+</div>
+<!-- Time (Center) -->
+<div class="flex flex-col items-center justify-center w-1/3">
+<h1 class="font-display font-bold text-2xl tracking-tight leading-none text-text-cream">08:14</h1>
+<span class="font-mono text-[10px] text-text-muted tracking-widest uppercase">Tuesday</span>
+</div>
+<!-- System Pulse (Right) -->
+<div class="flex items-center justify-end gap-3 w-1/3">
+<span class="font-mono text-[10px] text-pulse font-medium tracking-wider hidden sm:block">LOCAL_NODE: ACTIVE</span>
+<div class="relative flex h-3 w-3">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-pulse opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-pulse animate-breathe shadow-[0_0_8px_rgba(59,141,101,0.6)]"></span>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col overflow-hidden relative z-10">
+<!-- Context Carousel (35% Height) -->
+<section class="h-[35%] w-full flex flex-col justify-center bg-surface border-b border-border-subtle relative shrink-0">
+<div class="absolute top-4 left-6 z-10">
+<span class="font-mono text-[10px] text-primary uppercase tracking-widest">Context Awareness</span>
+</div>
+<div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar px-6 gap-4 items-center h-full pt-8 pb-4">
+<!-- Tile 1: Logistics Focus (Active) -->
+<div class="snap-center shrink-0 w-[85%] sm:w-[60%] md:w-[40%] h-full bg-[#2A2E35] border border-border-subtle rounded-card p-5 flex flex-col justify-between shadow-soft-inner group relative overflow-hidden">
+<div class="absolute top-0 left-0 w-1 h-full bg-alert"></div>
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="font-mono text-xs text-alert mb-1">ALERT: TRAFFIC</span>
+<h2 class="font-display text-2xl font-medium leading-tight text-white">School Run</h2>
+</div>
+<span class="material-symbols-outlined text-alert bg-alert/10 p-2 rounded-full">directions_car</span>
+</div>
+<div class="mt-4">
+<div class="flex items-baseline gap-2">
+<span class="font-display text-4xl font-bold text-white">15<span class="text-lg text-text-muted font-normal ml-1">min</span></span>
+<span class="font-body italic text-text-muted">estimated delay</span>
+</div>
+<p class="font-mono text-[10px] text-text-muted mt-2 border-t border-border-subtle pt-2 uppercase tracking-wide">
+                            Route: I-95 South • Heavy Congestion
+                        </p>
+</div>
+</div>
+<!-- Tile 2: Memory Peek -->
+<div class="snap-center shrink-0 w-[85%] sm:w-[60%] md:w-[40%] h-full bg-[#2A2E35] border border-border-subtle rounded-card flex flex-col shadow-soft-inner overflow-hidden group">
+<div class="relative h-2/3 w-full bg-cover bg-center" data-alt="A warm, grainy photo of students walking to school in autumn light" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA14b4q8Eh_6sTkp-4i_6SMyB68MoEHzr5kgw8PF57nqMH_b6hQmtL2BtM_gLdCOlUSI4FaLjzPUE-nzydrNJbKDewgpZHG3o-9m_TeOVBypvXb7HTUPp-CEys4GNv8iddlnsNTzQLjfZW45EFX1XJrHx7vXjD3Na2QPxbxm_kz6TRdJ8I5RPUHaRf4jOQdj24Xjpo184IY41Mj29kMus0kKmrfRIRCgXAsTQ4EOmNsiS5H23kLaCkk0shNjaIMrODnsE2xduZnNLc');">
+<div class="absolute inset-0 bg-gradient-to-t from-[#2A2E35] to-transparent"></div>
+<div class="absolute top-3 right-3 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-mono text-white border border-white/10">
+                            2019
+                        </div>
+</div>
+<div class="p-4 flex flex-col justify-center flex-1">
+<span class="font-mono text-[10px] text-primary uppercase tracking-widest mb-1">On This Day</span>
+<h3 class="font-body text-lg text-text-cream italic">"First day of 4th grade..."</h3>
+</div>
+</div>
+<!-- Tile 3: Weather/Future -->
+<div class="snap-center shrink-0 w-[85%] sm:w-[60%] md:w-[40%] h-full bg-[#2A2E35] border border-border-subtle rounded-card p-5 flex flex-col justify-between shadow-soft-inner opacity-60">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="font-mono text-xs text-primary mb-1">FORECAST</span>
+<h2 class="font-display text-2xl font-medium leading-tight text-white">Afternoon Rain</h2>
+</div>
+<span class="material-symbols-outlined text-primary bg-primary/10 p-2 rounded-full">water_drop</span>
+</div>
+<div class="mt-auto">
+<span class="font-mono text-[10px] text-text-muted uppercase tracking-wide">Precipitation: 80% • Starts 2:00 PM</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Unified Stream (Remaining Height) -->
+<section class="flex-1 overflow-y-auto relative bg-background-dark no-scrollbar">
+<!-- Timeline Line -->
+<div class="absolute left-8 top-0 bottom-0 w-px bg-border-subtle z-0"></div>
+<div class="px-6 py-8 space-y-8 relative z-10">
+<!-- Timeline Header -->
+<div class="flex items-center gap-4 mb-6">
+<div class="w-4 h-4 rounded-full bg-background-dark border border-primary flex items-center justify-center ml-[2px]">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+</div>
+<span class="font-mono text-xs text-primary tracking-widest uppercase">Unified Timeline • Today</span>
+</div>
+<!-- Item 1: Upcoming Event -->
+<div class="flex gap-6 group">
+<div class="flex flex-col items-center pt-1 w-6 shrink-0">
+<div class="w-3 h-3 rounded-full bg-surface border border-text-muted group-hover:border-primary group-hover:bg-primary transition-colors duration-300 ml-1"></div>
+<span class="font-mono text-[10px] text-text-muted mt-2 rotate-180 writing-vertical-rl">08:30</span>
+</div>
+<div class="flex-1 bg-surface/50 border border-border-subtle rounded-card p-4 hover:bg-surface transition-colors duration-200">
+<div class="flex items-center justify-between mb-2">
+<span class="font-display font-medium text-white text-sm uppercase tracking-wide">Drop Off</span>
+<span class="material-symbols-outlined text-text-muted text-sm">location_on</span>
+</div>
+<p class="font-body text-xl text-text-cream">Lincoln Elementary School</p>
+<div class="flex items-center gap-2 mt-3">
+<span class="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-text-muted">LOGISTICS</span>
+<span class="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-text-muted">RECURRING</span>
+</div>
+</div>
+</div>
+<!-- Item 2: Memory Injection -->
+<div class="flex gap-6 group">
+<div class="flex flex-col items-center pt-1 w-6 shrink-0">
+<div class="w-3 h-3 rounded-full bg-surface border border-primary ml-1 shadow-[0_0_8px_rgba(212,175,55,0.4)]"></div>
+<span class="font-mono text-[10px] text-primary mt-2 rotate-180 writing-vertical-rl">09:00</span>
+</div>
+<div class="flex-1 bg-[#202328] border border-border-subtle rounded-card p-0 flex overflow-hidden hover:border-primary/30 transition-colors duration-200">
+<div class="w-24 bg-cover bg-center shrink-0 border-r border-border-subtle relative" data-alt="A close up of a birthday cake with lit candles" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD4iYcL4CDRcnh7STnGcKIp7TQ3HibsQRI8sopF2MF39fi4ynp3PcRdS9D-ZzUfazbESPfocWd6IXjCvesjrLvswxa0sXrtdSOYIpSMIV-aLD1hZC2lNIROrEUQIxR42T4BAEHSMo6LO_ALjM_7g_Tfa1xXbF3TLaZKn3OMhMNoQuF7n5bP_OWilbSCBOLbnw0uU9iWj68eEQcM30oOvYrkLs8lc-XPJQCmi_tFCW2gosZc-WzLVm7fW4ykMfP_fzqmvp86CZn_F-s');">
+<div class="absolute inset-0 bg-primary/10 mix-blend-overlay"></div>
+</div>
+<div class="p-4 flex flex-col justify-center w-full">
+<div class="flex justify-between items-start mb-1">
+<span class="font-display font-medium text-primary text-sm uppercase tracking-wide">Memory Surface</span>
+<span class="material-symbols-outlined text-primary text-sm">cake</span>
+</div>
+<p class="font-body text-xl text-text-cream italic">"Dad's 50th Birthday"</p>
+<p class="font-mono text-[10px] text-text-muted mt-1">Found in: Local Backup (2018)</p>
+</div>
+</div>
+</div>
+<!-- Item 3: Work Event -->
+<div class="flex gap-6 group opacity-70 hover:opacity-100 transition-opacity">
+<div class="flex flex-col items-center pt-1 w-6 shrink-0">
+<div class="w-3 h-3 rounded-full bg-surface border border-text-muted ml-1"></div>
+<span class="font-mono text-[10px] text-text-muted mt-2 rotate-180 writing-vertical-rl">10:00</span>
+</div>
+<div class="flex-1 bg-surface/30 border border-border-subtle rounded-card p-4">
+<div class="flex items-center justify-between mb-2">
+<span class="font-display font-medium text-text-cream text-sm uppercase tracking-wide">Zoom Call</span>
+<span class="material-symbols-outlined text-text-muted text-sm">videocam</span>
+</div>
+<p class="font-body text-xl text-text-cream">Project Alpha Sync</p>
+<div class="flex items-center gap-2 mt-3">
+<span class="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-text-muted">WORK</span>
+</div>
+</div>
+</div>
+<!-- Item 4: Lunch -->
+<div class="flex gap-6 group opacity-50 hover:opacity-100 transition-opacity">
+<div class="flex flex-col items-center pt-1 w-6 shrink-0">
+<div class="w-3 h-3 rounded-full bg-surface border border-text-muted ml-1"></div>
+<span class="font-mono text-[10px] text-text-muted mt-2 rotate-180 writing-vertical-rl">12:30</span>
+</div>
+<div class="flex-1 bg-surface/30 border border-border-subtle rounded-card p-4">
+<div class="flex items-center justify-between mb-2">
+<span class="font-display font-medium text-text-cream text-sm uppercase tracking-wide">Lunch</span>
+<span class="material-symbols-outlined text-text-muted text-sm">restaurant</span>
+</div>
+<p class="font-body text-xl text-text-cream">Reservations: Bistro 42</p>
+</div>
+</div>
+<!-- Timeline Fade Out -->
+<div class="h-24 w-full bg-gradient-to-t from-background-dark to-transparent pointer-events-none sticky bottom-0"></div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation (Subtle Dock) -->
+<nav class="h-16 shrink-0 border-t border-border-subtle bg-[#1e2024] flex items-center justify-around px-8 z-30">
+<button class="flex flex-col items-center justify-center gap-1 text-primary group">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform duration-200" style="font-variation-settings: 'FILL' 1, 'wght' 400;">home_app_logo</span>
+<span class="font-mono text-[9px] uppercase tracking-widest opacity-100">Hearth</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-1 text-text-muted hover:text-text-cream transition-colors group">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform duration-200">photo_library</span>
+<span class="font-mono text-[9px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 bg-surface px-1 border border-border-subtle rounded">Memory</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-1 text-text-muted hover:text-text-cream transition-colors group">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform duration-200">calendar_month</span>
+<span class="font-mono text-[9px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 bg-surface px-1 border border-border-subtle rounded">Logistics</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-1 text-text-muted hover:text-text-cream transition-colors group">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform duration-200">developer_board</span>
+<span class="font-mono text-[9px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 bg-surface px-1 border border-border-subtle rounded">Node</span>
+</button>
+</nav>
+</body></html>

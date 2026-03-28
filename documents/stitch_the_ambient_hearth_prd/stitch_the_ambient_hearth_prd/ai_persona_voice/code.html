@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Persona &amp; Voice - Ambient Hearth</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#e0b629",
+                        "background-light": "#f8f7f6",
+                        "background-dark": "#211d11",
+                        "charcoal": "#1a1812",
+                        "surface": "#2d281a",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .waveform-bar {
+            transition: height 0.2s ease;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-white min-h-screen flex flex-col">
+<!-- Header -->
+<header class="sticky top-0 z-10 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+<div class="flex items-center p-4 justify-between max-w-2xl mx-auto w-full">
+<button class="text-white flex size-10 items-center justify-center hover:bg-primary/10 rounded-full transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h2 class="text-white text-lg font-bold leading-tight tracking-tight flex-1 text-center pr-10">Persona &amp; Voice</h2>
+</div>
+</header>
+<main class="flex-1 max-w-2xl mx-auto w-full p-4 space-y-8 pb-32">
+<!-- Persona Selection Section -->
+<section>
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-primary text-sm font-bold uppercase tracking-widest">AI Persona</h3>
+<span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full border border-primary/30">2 Active Profiles</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<!-- Persona Card 1 (Active) -->
+<div class="group relative flex flex-col gap-3 p-4 rounded-xl bg-surface border-2 border-primary ring-1 ring-primary/50 shadow-lg shadow-primary/5">
+<div class="absolute top-3 right-3">
+<span class="material-symbols-outlined text-primary text-xl">check_circle</span>
+</div>
+<div class="w-16 h-16 rounded-lg bg-primary/20 flex items-center justify-center border border-primary/30">
+<span class="material-symbols-outlined text-3-xl text-primary">psychology</span>
+</div>
+<div>
+<p class="text-white text-base font-bold leading-normal">The Calm Organizer</p>
+<p class="text-primary/70 text-sm font-normal leading-tight mt-1">Steady, precise, and reassuringly logical.</p>
+</div>
+</div>
+<!-- Persona Card 2 -->
+<div class="group flex flex-col gap-3 p-4 rounded-xl bg-charcoal border border-white/5 hover:border-primary/30 transition-all cursor-pointer">
+<div class="w-16 h-16 rounded-lg bg-white/5 flex items-center justify-center border border-white/10 group-hover:bg-primary/10">
+<span class="material-symbols-outlined text-3-xl text-white/40 group-hover:text-primary/60">sentiment_very_satisfied</span>
+</div>
+<div>
+<p class="text-white/80 text-base font-bold leading-normal group-hover:text-white">The Cheerful Companion</p>
+<p class="text-white/40 text-sm font-normal leading-tight mt-1 group-hover:text-white/60">Bright, energetic, and highly encouraging.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Voice Sample Section -->
+<section class="bg-charcoal rounded-xl border border-white/5 p-6">
+<h3 class="text-primary text-sm font-bold uppercase tracking-widest mb-6">Voice Sample</h3>
+<div class="flex items-center gap-6">
+<button class="size-14 rounded-full bg-primary flex items-center justify-center text-background-dark shadow-xl shadow-primary/20 hover:scale-105 transition-transform">
+<span class="material-symbols-outlined text-3xl fill-1">play_arrow</span>
+</button>
+<div class="flex-1 h-12 flex items-center gap-1">
+<!-- Fake Waveform -->
+<div class="waveform-bar w-1 bg-primary/20 h-4 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/40 h-6 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/60 h-8 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary h-10 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary h-6 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary h-12 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary h-9 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/80 h-11 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/60 h-5 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/40 h-8 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/30 h-10 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/20 h-4 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/20 h-6 rounded-full"></div>
+<div class="waveform-bar w-1 bg-primary/10 h-3 rounded-full"></div>
+<div class="hidden sm:block waveform-bar w-1 bg-primary/10 h-5 rounded-full"></div>
+<div class="hidden sm:block waveform-bar w-1 bg-primary/10 h-7 rounded-full"></div>
+</div>
+<span class="text-xs font-mono text-primary/60">0:04 / 0:12</span>
+</div>
+</section>
+<!-- System Settings Section -->
+<section class="space-y-3">
+<h3 class="text-primary text-sm font-bold uppercase tracking-widest mb-4">System Settings</h3>
+<!-- Toggle 1 -->
+<div class="flex items-center justify-between p-4 rounded-lg bg-charcoal border border-white/5">
+<div class="flex flex-col gap-1">
+<p class="text-white font-medium">Whisper Local Processing</p>
+<p class="text-white/40 text-xs">On-device AI for maximum privacy. No data leaves the hearth.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+<!-- Toggle 2 -->
+<div class="flex items-center justify-between p-4 rounded-lg bg-charcoal border border-white/5">
+<div class="flex flex-col gap-1">
+<p class="text-white font-medium">Voice Activation Keyword</p>
+<p class="text-white/40 text-xs">Wake the Hearth with "Hey Hearth".</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+<!-- Speed Slider (Extra Detail) -->
+<div class="flex flex-col gap-4 p-4 rounded-lg bg-charcoal border border-white/5 mt-4">
+<div class="flex justify-between items-center">
+<p class="text-white font-medium">Speech Rate</p>
+<span class="text-primary text-sm">1.0x</span>
+</div>
+<input class="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary" max="2.0" min="0.5" step="0.1" type="range" value="1.0"/>
+<div class="flex justify-between text-[10px] text-white/30 uppercase tracking-tighter">
+<span>Relaxed</span>
+<span>Standard</span>
+<span>Urgent</span>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 z-20 border-t border-white/5 bg-charcoal/90 backdrop-blur-lg px-4 pb-6 pt-3">
+<div class="max-w-2xl mx-auto flex gap-2">
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-white/40 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">home</span>
+<p class="text-[10px] font-medium leading-normal tracking-wide">Home</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-white/40 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">settings_input_component</span>
+<p class="text-[10px] font-medium leading-normal tracking-wide">Devices</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined fill-1 text-primary">face_retouching_natural</span>
+<p class="text-[10px] font-medium leading-normal tracking-wide">Persona</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-white/40 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-[10px] font-medium leading-normal tracking-wide">Settings</p>
+</a>
+</div>
+</nav>
+</body></html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Ambient Hearth - Recipes</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#e0b629",
+                        "background-light": "#f8f7f6",
+                        "background-dark": "#1a1a1a",
+                        "matte-charcoal": "#262626",
+                        "industrial-gray": "#404040",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .active-nav .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .soft-industrial-gradient {
+            background: linear-gradient(145deg, #262626, #1a1a1a);
+        }
+        .gold-glow {
+            box-shadow: 0 0 15px rgba(224, 182, 41, 0.15);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-white min-h-screen flex flex-col">
+<!-- Header -->
+<header class="sticky top-0 z-50 bg-background-dark/80 backdrop-blur-md border-b border-industrial-gray/30 px-6 py-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-3xl">menu</span>
+</div>
+<h1 class="text-xl font-bold tracking-tight text-white uppercase letter-spacing-[0.1em]">The Ambient Hearth</h1>
+<div class="size-10 rounded-full bg-industrial-gray flex items-center justify-center border border-primary/30 overflow-hidden">
+<span class="material-symbols-outlined text-primary">person</span>
+</div>
+</header>
+<main class="flex-1 overflow-y-auto pb-24">
+<!-- Search & Filters -->
+<div class="px-6 pt-6 pb-4">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary/60 group-focus-within:text-primary">search</span>
+<input class="w-full bg-matte-charcoal border border-industrial-gray rounded-lg py-3 pl-12 pr-4 text-white placeholder:text-neutral-500 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="Search recipes..." type="text"/>
+</div>
+<div class="flex gap-3 mt-4 overflow-x-auto no-scrollbar pb-2">
+<button class="flex items-center gap-2 bg-primary text-background-dark px-4 py-1.5 rounded-full font-bold text-sm">
+                    All <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<button class="flex items-center gap-2 bg-matte-charcoal border border-industrial-gray text-neutral-300 px-4 py-1.5 rounded-full text-sm hover:border-primary/50">
+                    Vegetarian <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<button class="flex items-center gap-2 bg-matte-charcoal border border-industrial-gray text-neutral-300 px-4 py-1.5 rounded-full text-sm hover:border-primary/50">
+                    Dinner <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<button class="flex items-center gap-2 bg-matte-charcoal border border-industrial-gray text-neutral-300 px-4 py-1.5 rounded-full text-sm hover:border-primary/50">
+                    Quick <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+</div>
+</div>
+<!-- Recipe Grid -->
+<div class="px-6 py-4">
+<h2 class="text-lg font-semibold mb-6 flex items-center gap-2">
+<span class="text-primary material-symbols-outlined">auto_awesome</span>
+                Top Pantry Matches
+            </h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Recipe Card 1 -->
+<div class="bg-matte-charcoal rounded-xl overflow-hidden border border-industrial-gray/50 gold-glow hover:border-primary/40 transition-all flex flex-col">
+<div class="relative h-56 w-full">
+<img class="w-full h-full object-cover" data-alt="Gourmet salad with fresh vegetables and grains" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbf9d5Y5KTKM8fmhvjfsNkDS5aJAGOqdUPtBKdHziW3ga899copuNOEfyhHD5TaxeqgsZ8jU1HatD6mo0YgZSADREsLIoD9amQaRz8TJOQb-3rA530NGH3h2uCeZ_eExjOI-h7V11Qe_BOi8SHkrw_Ub8bLaWWXA_fx3IkkKrt-Of1OUYeHOHOvEJGbFjS2dVE8NZLdnaPjReavPm1xNdM07Tpi26vuEExpQTOJYcLRhWH_qGKN8MkOrjDLZhUQgAvZHIC2j0YwYQ"/>
+<div class="absolute top-3 right-3 bg-background-dark/90 backdrop-blur-sm border border-primary px-3 py-1 rounded-full flex items-center gap-1.5 shadow-lg">
+<span class="text-primary font-bold text-sm">92% Match</span>
+</div>
+<div class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-matte-charcoal to-transparent"></div>
+<div class="absolute bottom-3 left-4 flex items-center gap-3">
+<div class="flex items-center gap-1 text-xs text-neutral-300 bg-background-dark/60 backdrop-blur-sm px-2 py-1 rounded">
+<span class="material-symbols-outlined text-sm">schedule</span>
+                                20 min
+                            </div>
+<div class="flex items-center gap-1 text-xs text-neutral-300 bg-background-dark/60 backdrop-blur-sm px-2 py-1 rounded">
+<span class="material-symbols-outlined text-sm">local_fire_department</span>
+                                320 kcal
+                            </div>
+</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-xl font-bold text-white">Autumn Harvest Bowl</h3>
+<span class="material-symbols-outlined text-neutral-500 cursor-pointer hover:text-primary">bookmark</span>
+</div>
+<p class="text-neutral-400 text-sm mb-4 line-clamp-2">Roasted butternut squash, kale, and toasted pecans with a maple-tahini dressing.</p>
+<div class="mt-auto pt-4 border-t border-industrial-gray/30 flex items-center justify-between">
+<span class="text-xs text-neutral-500 uppercase tracking-widest font-medium">Have all ingredients</span>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                View Recipe <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Recipe Card 2 -->
+<div class="bg-matte-charcoal rounded-xl overflow-hidden border border-industrial-gray/50 hover:border-primary/40 transition-all flex flex-col">
+<div class="relative h-56 w-full">
+<img class="w-full h-full object-cover opacity-80" data-alt="Rustic pasta dish with herbs and Parmesan" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCOIqQWNShStJowxuLNlkflaVpZzjXnwqNRCHbBeeGksFY7PzzhR06F1zKaUSqHm0YmkitAymxNImQAImtfq14Hk2Z1LKehHYxPoOXry-EbeykyHTtvHbvVIqb4eT_inzqJTh-LnSTvtLU8TuhYS0qQjSH7kN4hPHoI33QSUvQnwYr6iEoFIsjfgMiWKvXYgfyTVyQHyIMfUPKjMvtdUTANi-EQ-ld74sxMigOA5Ge8_szMtZGYYWGybSvenwSj8Jmr8EdQL5NQiWk"/>
+<div class="absolute top-3 right-3 bg-background-dark/90 backdrop-blur-sm border border-primary/40 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-lg">
+<span class="text-primary/80 font-bold text-sm">75% Match</span>
+</div>
+<div class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-matte-charcoal to-transparent"></div>
+<div class="absolute bottom-3 left-4 flex items-center gap-3">
+<div class="flex items-center gap-1 text-xs text-neutral-300 bg-background-dark/60 backdrop-blur-sm px-2 py-1 rounded">
+<span class="material-symbols-outlined text-sm">schedule</span>
+                                35 min
+                            </div>
+<div class="flex items-center gap-1 text-xs text-neutral-300 bg-background-dark/60 backdrop-blur-sm px-2 py-1 rounded">
+<span class="material-symbols-outlined text-sm">restaurant</span>
+                                Intermediate
+                            </div>
+</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-xl font-bold text-white">Sage Butter Pappardelle</h3>
+<span class="material-symbols-outlined text-neutral-500 cursor-pointer hover:text-primary">bookmark</span>
+</div>
+<p class="text-neutral-400 text-sm mb-4 line-clamp-2">Hand-cut pasta ribbons tossed in a brown butter sage sauce with crispy pancetta.</p>
+<div class="mt-auto pt-4 border-t border-industrial-gray/30 flex items-center justify-between">
+<span class="text-xs text-primary/70 uppercase tracking-widest font-medium">Need 2 items</span>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                View Recipe <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Recipe Card 3 -->
+<div class="bg-matte-charcoal rounded-xl overflow-hidden border border-industrial-gray/50 hover:border-primary/40 transition-all flex flex-col">
+<div class="relative h-56 w-full">
+<img class="w-full h-full object-cover" data-alt="Pan-seared salmon with lemon and asparagus" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAW0ebIDu3Ui4xmMP7ASZ3FwH5zvjLFLBCcBqkXSS8elIqMUxVq8SZsCMKc3ecTL8fq7SkFF1nJ3VJw4GDUAiRY_eB9h7QXCZr8AjrnUohpMqawmaYabLVw1ZJqwsxlMVPjZGyhy3KDIWAELjnsXW0xwsQSd1we23GwOuDgq61WbtzmggomEZ5XrWjrUKEVf3z3nSyysYNC1_l7VBqwu9JvBFUlVwYw8fycKJ3I2zeSLKXnrYFR0WhEA0BOAaPVOKb8yhGzP9aZ4Ok"/>
+<div class="absolute top-3 right-3 bg-background-dark/90 backdrop-blur-sm border border-primary/20 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-lg">
+<span class="text-primary/60 font-bold text-sm">60% Match</span>
+</div>
+<div class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-matte-charcoal to-transparent"></div>
+<div class="absolute bottom-3 left-4 flex items-center gap-3">
+<div class="flex items-center gap-1 text-xs text-neutral-300 bg-background-dark/60 backdrop-blur-sm px-2 py-1 rounded">
+<span class="material-symbols-outlined text-sm">schedule</span>
+                                15 min
+                            </div>
+</div>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-xl font-bold text-white">Cast-Iron Citrus Salmon</h3>
+<span class="material-symbols-outlined text-neutral-500 cursor-pointer hover:text-primary">bookmark</span>
+</div>
+<p class="text-neutral-400 text-sm mb-4 line-clamp-2">Crispy skin salmon with a lemon-herb crust served over charred asparagus.</p>
+<div class="mt-auto pt-4 border-t border-industrial-gray/30 flex items-center justify-between">
+<span class="text-xs text-neutral-500 uppercase tracking-widest font-medium">Need 4 items</span>
+<button class="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                                View Recipe <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 bg-matte-charcoal border-t border-industrial-gray/40 px-6 py-3 flex justify-between items-center z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+<a class="flex flex-col items-center gap-1 text-neutral-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="text-[10px] font-medium uppercase tracking-wider">Home</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-neutral-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">kitchen</span>
+<span class="text-[10px] font-medium uppercase tracking-wider">Pantry</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-primary active-nav" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="text-[10px] font-bold uppercase tracking-wider">Recipes</span>
+<div class="w-1 h-1 bg-primary rounded-full mt-0.5"></div>
+</a>
+<a class="flex flex-col items-center gap-1 text-neutral-500 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-[10px] font-medium uppercase tracking-wider">Settings</span>
+</a>
+</nav>
+</body></html>
