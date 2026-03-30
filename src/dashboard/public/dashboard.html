@@ -99,6 +99,22 @@
 
     </main>
 
+    <!-- Edit Modal -->
+    <div id="edit-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:1000; justify-content:center; align-items:center;">
+        <div style="background:#fff; border-radius:12px; padding:2rem; width:90%; max-width:480px; box-shadow:0 8px 30px rgba(0,0,0,0.15);">
+            <h3 style="margin:0 0 1.25rem; font-size:1.2rem; color:var(--text-primary);">Edit Card</h3>
+            <input type="hidden" id="edit-card-id">
+            <label style="font-size:0.85rem; font-weight:500; color:var(--text-secondary); display:block; margin-bottom:0.25rem;">Title</label>
+            <input type="text" id="edit-title" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border-subtle); border-radius:8px; font-size:0.95rem; margin-bottom:1rem; box-sizing:border-box;">
+            <label style="font-size:0.85rem; font-weight:500; color:var(--text-secondary); display:block; margin-bottom:0.25rem;">Details</label>
+            <textarea id="edit-body" rows="4" style="width:100%; padding:0.6rem 0.75rem; border:1px solid var(--border-subtle); border-radius:8px; font-size:0.95rem; resize:vertical; margin-bottom:1.25rem; box-sizing:border-box;"></textarea>
+            <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+                <button class="btn btn-secondary" style="padding:0.5rem 1rem; font-size:0.9rem;" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" id="edit-save-btn" style="padding:0.5rem 1.5rem; font-size:0.9rem;" onclick="saveEdit()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Persistent Chat Drawer -->
     <div class="chat-drawer" id="chatDrawer">
         <!-- Exact same code as prior drawer -->
@@ -165,23 +181,19 @@
                         
                         const timeStr = new Date(card.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                         
-                        let buttonsHtml = '';
-                        let acts = card.actions;
-                        if (typeof acts === 'string') acts = JSON.parse(acts);
-                        if (Array.isArray(acts)) {
-                             buttonsHtml = acts.map(act => {
-                                 if (act.type === 'addToCalendar' || act.label.toLowerCase().includes('calendar') || act.type === 'book_event') {
-                                     return `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="addToCalendar('${card.id}')">${act.label}</button>`;
-                                 } else if (act.label.toLowerCase().includes('shopping') || act.type === 'add_to_shopping') {
-                                     return `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="moveToShopping('${card.id}')">${act.label}</button>`;
-                                 }
-                                 return `<button class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">${act.label}</button>`;
-                             }).join('');
+                        // Contextual actions
+                        let contextHtml = '';
+                        if (card.card_type !== 'shopping') {
+                            contextHtml += `<button class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem;" onclick="addToCalendar('${card.id}')">📅 Calendar</button>`;
+                            contextHtml += `<button class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem;" onclick="moveToShopping('${card.id}')">🛒 List</button>`;
                         }
-
-                        // Fallback mark done if not primary task
-                        if (!buttonsHtml) buttonsHtml += `<button class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="resolveCard('${card.id}')">Mark done</button>`;
-                        else buttonsHtml += `<button class="btn btn-secondary" style="border: none; background: transparent; color: var(--color-accent); font-weight: 500; font-size: 0.85rem; padding: 0.5rem;" onclick="resolveCard('${card.id}')">Dismiss</button>`;
+                        // Core three: Edit, Done, Dismiss
+                        const buttonsHtml = `
+                            ${contextHtml}
+                            <button class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; margin-left: auto;" onclick="openEditModal('${card.id}', \`${card.title.replace(/`/g,'\\`').replace(/'/g,"\\'")}\`, \`${card.body.replace(/`/g,'\\`').replace(/'/g,"\\'")}\`)">✏️ Edit</button>
+                            <button class="btn btn-primary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; background: #10b981; border-color: #10b981;" onclick="resolveCard('${card.id}')">✓ Done</button>
+                            <button class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; color: var(--text-muted); border-color: var(--border-subtle);" onclick="dismissCard('${card.id}')">✕ Dismiss</button>
+                        `;
 
                         return `
                         <div class="card stream-card" style="padding: 1.5rem; border-left-color: ${color};">
@@ -206,11 +218,14 @@
                 // Render Shopping List
                 const shopContainer = document.getElementById('shopping-list-container');
                 if (data.shoppingItems && data.shoppingItems.length > 0) {
-                    shopContainer.innerHTML = data.shoppingItems.map(item => 
-                        `<li><label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary);">
-                          <input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);" onchange="resolveCard('${item.id}')"> 
-                          ${item.title}
-                        </label></li>`
+                    shopContainer.innerHTML = data.shoppingItems.map(item =>
+                        `<li style="display: flex; justify-content: space-between; align-items: center;">
+                          <label style="display: flex; gap: 0.75rem; cursor: pointer; align-items: center; font-size: 0.95rem; color: var(--text-primary); flex: 1;">
+                            <input type="checkbox" style="width: 1.1rem; height: 1.1rem; accent-color: var(--color-accent);" onchange="resolveCard('${item.id}')">
+                            ${item.title}
+                          </label>
+                          <button style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:var(--text-muted); padding:0.25rem;" onclick="openEditModal('${item.id}', '${item.title.replace(/'/g,"\\'")}', '${(item.body||'').replace(/'/g,"\\'")}')">✏️</button>
+                        </li>`
                     ).join('');
                 } else {
                     shopContainer.innerHTML = '<p style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">List is empty</p>';
@@ -225,18 +240,23 @@
 
         async function addToCalendar(id) {
             try {
-                // Show loading state gracefully
                 document.body.style.cursor = 'wait';
-                await fetch('/api/calendar/add', {
+                const res = await fetch('/api/calendar/add', {
                      method: 'POST',
                      headers: { 'Content-Type': 'application/json' },
                      body: JSON.stringify({ cardId: id })
                 });
-                loadBrief(); // Refresh UI instantly
+                const data = await res.json();
                 document.body.style.cursor = 'default';
+                if (!res.ok || data.error) {
+                    showToast(data.error || 'Calendar sync failed. Connect Google Calendar in Settings first.', true);
+                } else {
+                    showToast('Added to calendar');
+                    loadBrief();
+                }
             } catch(e) {
-                console.error('Failed to sync calendar');
                 document.body.style.cursor = 'default';
+                showToast('Network error — could not reach Memu', true);
             }
         }
 
@@ -247,9 +267,10 @@
                      headers: { 'Content-Type': 'application/json' },
                      body: JSON.stringify({ cardId: id })
                 });
-                loadBrief(); // Refresh list immediately
+                showToast('Done');
+                loadBrief();
             } catch(e) {
-                console.error('Failed to resolve');
+                showToast('Failed to resolve', true);
             }
         }
 
@@ -261,11 +282,76 @@
                      headers: { 'Content-Type': 'application/json' },
                      body: JSON.stringify({ cardId: id })
                 });
+                document.body.style.cursor = 'default';
+                showToast('Moved to shopping list');
                 loadBrief();
-                document.body.style.cursor = 'default';
             } catch(e) {
-                console.error('Failed to move to shopping');
                 document.body.style.cursor = 'default';
+                showToast('Failed to move to list', true);
+            }
+        }
+
+        function showToast(msg, isError) {
+            const el = document.createElement('div');
+            el.textContent = msg;
+            Object.assign(el.style, {
+                position: 'fixed', bottom: '100px', left: '50%', transform: 'translateX(-50%)',
+                background: isError ? '#fef2f2' : '#f0fdf4', color: isError ? '#dc2626' : '#16a34a',
+                border: `1px solid ${isError ? '#fecaca' : '#bbf7d0'}`,
+                padding: '0.75rem 1.5rem', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '500',
+                zIndex: '2000', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', transition: 'opacity 0.3s',
+            });
+            document.body.appendChild(el);
+            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
+        }
+
+        async function dismissCard(id) {
+            try {
+                await fetch('/api/stream/dismiss', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ cardId: id })
+                });
+                showToast('Dismissed');
+                loadBrief();
+            } catch(e) {
+                showToast('Failed to dismiss', true);
+            }
+        }
+
+        // Edit modal
+        function openEditModal(id, title, body) {
+            const modal = document.getElementById('edit-modal');
+            document.getElementById('edit-card-id').value = id;
+            document.getElementById('edit-title').value = title;
+            document.getElementById('edit-body').value = body;
+            modal.style.display = 'flex';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+
+        async function saveEdit() {
+            const cardId = document.getElementById('edit-card-id').value;
+            const title = document.getElementById('edit-title').value.trim();
+            const body = document.getElementById('edit-body').value.trim();
+            const btn = document.getElementById('edit-save-btn');
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
+            try {
+                await fetch('/api/stream/edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cardId, title, body })
+                });
+                closeEditModal();
+                loadBrief();
+            } catch(e) {
+                console.error('Failed to save edit');
+            } finally {
+                btn.textContent = 'Save';
+                btn.disabled = false;
             }
         }
 

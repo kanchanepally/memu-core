@@ -9,6 +9,7 @@ import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { fetchTodayEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
 import { generateAndPushMorningBriefing } from './intelligence/briefing';
 import fastifyStatic from '@fastify/static';
+import fastifyCors from '@fastify/cors';
 import path from 'path';
 import cron from 'node-cron';
 
@@ -20,6 +21,12 @@ const logger = pino({
 // Create Fastify Gateway
 const server = Fastify({
   logger
+});
+
+// CORS for mobile app and web dashboard
+server.register(fastifyCors, {
+  origin: true, // Allow all origins in development; lock down in production
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
 });
 
 // Serve frontend Memu PWA (Slice 2b)
@@ -70,7 +77,8 @@ server.post('/api/message', async (request, reply) => {
     }
     
     const testProfileId = res.rows[0].id;
-    const responseText = await processIntelligencePipeline(testProfileId, body.content, 'web');
+    const messageId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const responseText = await processIntelligencePipeline(testProfileId, body.content, 'mobile', messageId);
     return { response: responseText };
   } catch (err) {
     server.log.error(err);
@@ -161,6 +169,56 @@ server.post('/api/stream/resolve', async (request, reply) => {
   }
 });
 
+// Dismiss Stream Card (human says "not relevant")
+server.post('/api/stream/dismiss', async (request, reply) => {
+  const { cardId } = request.body as any;
+  if (!cardId) return reply.code(400).send({ error: 'cardId required' });
+
+  try {
+    await pool.query("UPDATE stream_cards SET status = 'dismissed', resolved_at = NOW() WHERE id = $1", [cardId]);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
+// Edit Stream Card (human-in-the-middle: fix wrong info before confirming)
+server.post('/api/stream/edit', async (request, reply) => {
+  const { cardId, title, body } = request.body as any;
+  if (!cardId) return reply.code(400).send({ error: 'cardId required' });
+
+  try {
+    const updates: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (title !== undefined) {
+      updates.push(`title = $${idx++}`);
+      values.push(title);
+    }
+    if (body !== undefined) {
+      updates.push(`body = $${idx++}`);
+      values.push(body);
+    }
+
+    if (updates.length === 0) return reply.code(400).send({ error: 'Nothing to update' });
+
+    values.push(cardId);
+    await pool.query(
+      `UPDATE stream_cards SET ${updates.join(', ')} WHERE id = $${idx}`,
+      values
+    );
+
+    // Return the updated card
+    const res = await pool.query("SELECT * FROM stream_cards WHERE id = $1", [cardId]);
+    return { success: true, card: res.rows[0] };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
 // PWA: Move Card to Shopping List
 server.post('/api/stream/to-shopping', async (request, reply) => {
   const { cardId } = request.body as any;
@@ -201,6 +259,25 @@ server.post('/api/calendar/add', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
+// PRIVACY LEDGER: Show what Claude saw (mobile app + PWA)
+server.get('/api/ledger', async (request, reply) => {
+  try {
+    const res = await pool.query(
+      `SELECT id, content_original, content_translated, content_response_raw,
+              content_response_translated, entity_translations, channel,
+              cloud_tokens_in, cloud_tokens_out, created_at
+       FROM messages
+       WHERE content_translated IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 50`
+    );
+    return res.rows;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load ledger' });
   }
 });
 
@@ -298,7 +375,13 @@ const start = async () => {
     
     // Initialize required external services
     await testConnection();
-    await connectToWhatsApp();
+
+    // WhatsApp is OPTIONAL — mobile app is the primary channel
+    try {
+      await connectToWhatsApp();
+    } catch (err) {
+      server.log.warn('WhatsApp connection skipped or failed — mobile app is primary channel');
+    }
 
     // Listen on all network interfaces
     await server.listen({ port: 3100, host: '0.0.0.0' });
