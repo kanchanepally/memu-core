@@ -118,6 +118,23 @@ export async function editCard(cardId: string, title: string, body: string) {
   });
 }
 
+// Chat history (persists across app restarts)
+export interface ChatHistoryMessage {
+  id: string;
+  userMessage: string;
+  memuResponse: string;
+  channel: string;
+  timestamp: string;
+}
+
+export interface ChatHistoryResponse {
+  messages: ChatHistoryMessage[];
+}
+
+export async function getChatHistory(profileId: string = 'adult-default', limit: number = 50): Promise<ApiResponse<ChatHistoryResponse>> {
+  return request<ChatHistoryResponse>(`/api/chat/history?profileId=${profileId}&limit=${limit}`);
+}
+
 // Privacy Ledger
 export interface LedgerEntry {
   id: string;

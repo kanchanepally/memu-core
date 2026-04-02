@@ -1,6 +1,6 @@
 # CLAUDE.md - Memu Core Operating Instructions
 
-**Last updated:** March 2026
+**Last updated:** April 2026
 
 ---
 
@@ -457,7 +457,7 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ---
 
-## Current State (March 2026)
+## Current State (April 2026)
 
 ### Working
 - WhatsApp gateway (Baileys) with auto-profile creation (optional on startup)
@@ -472,29 +472,37 @@ Cloud AI costs money. Families shouldn't worry about bills.
 - URL scraping and context injection
 - Data export endpoint
 - Household detachment (divorce scenario)
-- PWA dashboard (basic: briefing + stream cards + shopping list + chat drawer)
-- Kids portal (basic: large-font chat)
+- PWA dashboard (briefing + stream cards + shopping list + chat drawer + card actions + edit modal)
+- Kids portal (large-font chat with conversation history)
 - CORS enabled for mobile app connections
 - Privacy Ledger API endpoint (`/api/ledger`)
 - **Mobile app (Expo SDK 54)** -- 4 tabs (Today, Chat, Lists, Settings), custom chat UI, Privacy Ledger modal, brand icons (three-circle mark), connects to backend via HTTPS
 - **Mobile chat → Claude pipeline working end-to-end** (message → Digital Twin → Claude → response)
+- **Stream card confirm/edit/dismiss** -- human-in-the-middle pattern working on mobile + PWA
+- **Conversation history** -- multi-turn chat across all surfaces (mobile, PWA, kids portal). Last 10 exchanges sent to Claude for context. Chat persists across app restarts via `GET /api/chat/history`. Claude receives anonymous conversation history so Digital Twin privacy is maintained across turns.
+- **General-purpose AI mode** -- system prompt updated so Memu works as both Chief of Staff AND general AI assistant. Users can ask about anything (work, knowledge, drafting, creative) not just family topics. Digital Twin anonymisation runs regardless of topic.
 
-### Building Now (Critical Path)
-1. **Stream card confirm/edit/dismiss** -- human-in-the-middle (P0)
-2. **Calendar tab** -- Google Calendar display in app (P1)
-3. **Profile avatar → Settings** -- move settings out of tab bar (P1)
-4. **Push notifications** -- morning briefing via Expo Push (P1)
-5. **Onboarding flow** -- server connect + profile + calendar (P1)
-6. **Message persistence** -- chat history across sessions (P1)
+### Building Now (Critical Path -- Beta Sessions 5-8)
+1. ~~Stream card confirm/edit/dismiss~~ -- DONE (Session 3)
+2. ~~Conversation history + message persistence~~ -- DONE (Session 4)
+3. **Auto-learning** -- extract facts/preferences from every conversation into `context_entries` automatically (Session 5)
+4. **WhatsApp .txt import** -- parse exported chat for context seeding (Session 6)
+5. **Push notifications** -- morning briefing via Expo Push (Session 7)
+6. **Onboarding flow** -- server connect + profile + calendar (Session 8)
+
+### Also Needed Before Beta
+- Per-person context isolation (individual vs family layer privacy boundary)
+- Privacy Ledger UI polish on mobile
+- Stable deployment (VPS or Tailscale, not ngrok)
 
 ### Not Yet Built
 - Telegram Bot channel
-- WhatsApp export import (RAG context seeding)
 - Share Extension ("Share to Memu" from any app)
 - Email observer (IMAP)
 - Photo observer (Immich integration, when docked)
 - Billing/subscription system
 - Child safety classification UI (schema exists, frontend doesn't)
+- Calendar tab in mobile app
 - Comprehensive test suite
 - Production monitoring
 
@@ -513,6 +521,11 @@ Cloud AI costs money. Families shouldn't worry about bills.
 | 2026-03-29 | Unique message IDs for mobile/web | Was using hardcoded 'unknown' as PK, causing duplicate key errors after first message. |
 | 2026-03-29 | Settings → profile modal, not tab | Settings is admin, not a daily action. Tab bar should be: Today, Chat, Calendar, Lists. |
 | 2026-03-29 | Mobile App Spec created | `memu-platform/08-MOBILE-APP-SPEC.md` — screens, channels, backlog, competitive analysis. |
+| 2026-04-02 | Kickstarter deferred, app-first strategy | June 2026 not realistic. Ship Memu app first, get 10 families using it, then Kickstarter for Memu Home. |
+| 2026-04-02 | Two modes, one experience | Memu is both proactive Chief of Staff AND general-purpose private AI. Users never pick a mode. |
+| 2026-04-02 | Digital Twin + Privacy Ledger is the marketing wedge | Not hardware, not self-hosting. "See exactly what the AI received" is the viral moment. |
+| 2026-04-02 | Naming simplified | User-facing: "Memu" (the app) and "Memu Home" (the box). Internal repo names stay. |
+| 2026-04-02 | DMA interoperability noted as strategic opportunity | When EU DMA group messaging interop arrives (~2027), Memu's Matrix infrastructure gets official WhatsApp bridge for free. |
 
 Full decision log: `C:\Users\Lenovo\OneDrive\Obsidian-Ventures\01-Projects\Memu\decisions\`
 

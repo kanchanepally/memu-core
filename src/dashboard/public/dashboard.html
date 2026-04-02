@@ -360,25 +360,50 @@
         const header = document.getElementById('chatHeader');
         const toggleText = document.getElementById('drawerToggleText');
         const form = document.getElementById('chat-form');
-        const input = document.getElementById('chat-input');
-        const history = document.getElementById('chat-history');
+        const chatInput = document.getElementById('chat-input');
+        const chatHistory = document.getElementById('chat-history');
         const submitBtn = document.getElementById('chat-submit');
+        let historyLoaded = false;
+
+        // Load conversation history from server
+        async function loadChatHistory() {
+            if (historyLoaded) return;
+            historyLoaded = true;
+            try {
+                const res = await fetch('/api/chat/history?limit=30');
+                const data = await res.json();
+                if (data.messages && data.messages.length > 0) {
+                    chatHistory.innerHTML = '';
+                    for (const msg of data.messages) {
+                        addMessage(msg.userMessage, true);
+                        addMessage(msg.memuResponse, false);
+                    }
+                } else {
+                    addMessage("Good to see you. Ask me anything about your family's day, or tell me something to remember.", false);
+                }
+            } catch (err) {
+                console.error('Failed to load chat history:', err);
+                addMessage("Good to see you. Ask me anything about your family's day, or tell me something to remember.", false);
+            }
+        }
 
         header.addEventListener('click', () => {
             drawer.classList.toggle('open');
             if (drawer.classList.contains('open')) {
-                input.focus();
+                chatInput.focus();
                 toggleText.textContent = 'Click to collapse';
+                loadChatHistory();
             } else {
                 toggleText.textContent = 'Click to expand';
-                input.blur();
+                chatInput.blur();
             }
         });
 
-        input.addEventListener('focus', () => {
+        chatInput.addEventListener('focus', () => {
             if (!drawer.classList.contains('open')) {
                 drawer.classList.add('open');
                 toggleText.textContent = 'Click to collapse';
+                loadChatHistory();
             }
         });
 
@@ -386,17 +411,17 @@
             const div = document.createElement('div');
             div.className = isUser ? 'chat-bubble chat-user' : 'chat-bubble chat-memu';
             div.textContent = text;
-            history.appendChild(div);
-            history.scrollTop = history.scrollHeight;
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
         }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const text = input.value.trim();
+            const text = chatInput.value.trim();
             if (!text) return;
 
             addMessage(text, true);
-            input.value = '';
+            chatInput.value = '';
             submitBtn.disabled = true;
 
             const loadingId = 'loading-' + Date.now();
@@ -405,8 +430,8 @@
             loadingDiv.className = 'chat-bubble chat-memu';
             loadingDiv.style.opacity = '0.5';
             loadingDiv.textContent = 'Memu is thinking...';
-            history.appendChild(loadingDiv);
-            history.scrollTop = history.scrollHeight;
+            chatHistory.appendChild(loadingDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
 
             try {
                 const res = await fetch('/api/message', {
@@ -415,7 +440,7 @@
                     body: JSON.stringify({ content: text })
                 });
                 const data = await res.json();
-                
+
                 document.getElementById(loadingId).remove();
                 addMessage(data.response || 'Sorry, I encountered an error.');
             } catch (err) {
@@ -423,7 +448,7 @@
                 addMessage('Network error. Please try again.');
             } finally {
                 submitBtn.disabled = false;
-                input.focus();
+                chatInput.focus();
             }
         });
     </script>

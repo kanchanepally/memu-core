@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import type { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { sendMessage } from '../../lib/api';
+import { sendMessage, getChatHistory } from '../../lib/api';
 import { colors, spacing, radius, typography } from '../../lib/tokens';
 
 interface Message {
@@ -26,7 +26,35 @@ export default function ChatScreen() {
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const flatListRef = useRef<FlatList>(null);
+
+  // Load chat history from server on mount
+  useEffect(() => {
+    (async () => {
+      const { data } = await getChatHistory();
+      if (data?.messages && data.messages.length > 0) {
+        const restored: Message[] = [];
+        for (const msg of data.messages) {
+          restored.push({
+            id: `hist-user-${msg.id}`,
+            text: msg.userMessage,
+            fromMemu: false,
+            timestamp: new Date(msg.timestamp),
+          });
+          restored.push({
+            id: `hist-memu-${msg.id}`,
+            text: msg.memuResponse,
+            fromMemu: true,
+            timestamp: new Date(msg.timestamp),
+          });
+        }
+        // Replace the welcome message with real history
+        setMessages(restored);
+      }
+      setLoadingHistory(false);
+    })();
+  }, []);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -96,6 +124,12 @@ export default function ChatScreen() {
         renderItem={renderMessage}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.messageList}
+        ListHeaderComponent={loadingHistory ? (
+          <View style={styles.typingRow}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={styles.typingText}>Loading conversation...</Text>
+          </View>
+        ) : null}
         ListFooterComponent={sending ? (
           <View style={styles.typingRow}>
             <ActivityIndicator size="small" color={colors.accent} />

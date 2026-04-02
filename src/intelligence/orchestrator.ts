@@ -1,11 +1,54 @@
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { getClaudeResponse } from './claude';
+import { getClaudeResponse, ConversationMessage } from './claude';
 import { retrieveRelevantContext } from './context';
 import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
+
+const HISTORY_LIMIT = 10; // Last N message pairs for multi-turn conversation
+
+// Fetch recent conversation history for a profile, already in anonymous form
+async function getConversationHistory(profileId: string): Promise<ConversationMessage[]> {
+  try {
+    // Get the most recent conversation for this profile
+    const convRes = await pool.query(
+      'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
+      [profileId]
+    );
+    if (convRes.rows.length === 0) return [];
+
+    const convId = convRes.rows[0].id;
+
+    // Fetch recent messages — we use the translated (anonymous) versions
+    // so Claude sees consistent anonymous labels across the conversation
+    const msgRes = await pool.query(
+      `SELECT content_translated, content_response_raw
+       FROM messages
+       WHERE conversation_id = $1
+         AND content_translated IS NOT NULL
+         AND content_response_raw IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [convId, HISTORY_LIMIT]
+    );
+
+    if (msgRes.rows.length === 0) return [];
+
+    // Reverse to chronological order, then flatten into user/assistant pairs
+    const history: ConversationMessage[] = [];
+    const rows = msgRes.rows.reverse();
+    for (const row of rows) {
+      history.push({ role: 'user', content: row.content_translated });
+      history.push({ role: 'assistant', content: row.content_response_raw });
+    }
+    return history;
+  } catch (err) {
+    console.error('Error fetching conversation history:', err);
+    return [];
+  }
+}
 
 // Shared pipeline for both WhatsApp and PWA Web Frontend to guarantee absolute parity
 export async function processIntelligencePipeline(profileId: string, content: string, channel: string, messageId: string = 'unknown'): Promise<string> {
@@ -15,7 +58,7 @@ export async function processIntelligencePipeline(profileId: string, content: st
 
   // 2. Context Retrieval (Slice 2a RAG)
   const rawContexts = await retrieveRelevantContext(content, 3);
-  
+
   const anonymousContexts = [];
   for (const ctx of rawContexts) {
     anonymousContexts.push(await translateToAnonymous(ctx));
@@ -24,14 +67,20 @@ export async function processIntelligencePipeline(profileId: string, content: st
     console.log(`[CONTEXT -> Injected]: ${anonymousContexts.length} relevant facts found.`);
   }
 
-  // 3. Claude API
-  const claudeResponse = await getClaudeResponse(anonymousMsg, anonymousContexts);
+  // 3. Fetch conversation history (already anonymous from prior audit storage)
+  const history = await getConversationHistory(profileId);
+  if (history.length > 0) {
+    console.log(`[HISTORY -> Loaded]: ${history.length / 2} previous exchanges.`);
+  }
+
+  // 4. Claude API (with history for multi-turn conversation)
+  const claudeResponse = await getClaudeResponse(anonymousMsg, anonymousContexts, history);
   console.log(`[CLAUDE -> Raw]: ${claudeResponse}`);
 
-  // 4. Reverse Translation (Anonymous -> Real)
+  // 5. Reverse Translation (Anonymous -> Real)
   const realResponse = await translateToReal(claudeResponse);
 
-  // 5. Immutable Message Storage (Audit Trail required for Tier 1 Trust)
+  // 6. Immutable Message Storage (Audit Trail required for Tier 1 Trust)
   await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
 
   return realResponse;

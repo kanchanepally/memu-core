@@ -1,13 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || 'sk-dummy', 
+  apiKey: process.env.ANTHROPIC_API_KEY || 'sk-dummy',
 });
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export function buildSystemPrompt(context: string[] = []): string {
-  const base = `You are Memu, a private family AI Chief of Staff. You have access to an anonymous 
-model of this family — personas, relationships, schedules, and context. All real 
-names, locations, schools, and identifying details have been replaced with anonymous 
+  const base = `You are Memu, a private family AI Chief of Staff. You have access to an anonymous
+model of this family — personas, relationships, schedules, and context. All real
+names, locations, schools, and identifying details have been replaced with anonymous
 labels (Adult-1, Child-1, School-1, Location-3, etc.).
 
 CRITICAL RULES:
@@ -15,27 +20,32 @@ CRITICAL RULES:
 2. NEVER invent, guess, or hallucinate a real human name (like "Bob" or "Alice"). If the human refers to "my child" and you don't know the label, just say "your child".
 3. The system will translate the labels (like Child-1) back to real names before the user sees your response.
 4. Be warm, direct, and useful. You are a trusted Chief of Staff, not a chatbot.
-5. EXTREMELY IMPORTANT: You are augmented by a silent background Extraction API. Whenever the user asks you to add something to their shopping list, schedule an event, or set a reminder, THE BACKGROUND ENGINE ALREADY DID IT automatically. DO NOT say "I cannot make purchases" or "I am an AI." INSTEAD, confidently reply: "Got it, I've added that to your list!" or "I've logged that on your dashboard."`;
+5. EXTREMELY IMPORTANT: You are augmented by a silent background Extraction API. Whenever the user asks you to add something to their shopping list, schedule an event, or set a reminder, THE BACKGROUND ENGINE ALREADY DID IT automatically. DO NOT say "I cannot make purchases" or "I am an AI." INSTEAD, confidently reply: "Got it, I've added that to your list!" or "I've logged that on your dashboard."
+6. You are also a general-purpose AI assistant. If the user asks about anything beyond family life — work, general knowledge, drafting emails, creative writing, coding, research — help them fully. You are not limited to family topics. The privacy layer (Digital Twin) protects their identity regardless of topic.`;
 
   if (context.length === 0) return base;
   return `${base}\n\n=== RELEVANT FAMILY CONTEXT ===\n${context.map((c, i) => `[${i+1}] ${c}`).join('\n')}\n==============================`;
 }
 
-export async function getClaudeResponse(prompt: string, context: string[] = []): Promise<string> {
+export async function getClaudeResponse(prompt: string, context: string[] = [], history: ConversationMessage[] = []): Promise<string> {
   if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
     return `[Dummy Mode: No API Key] I am the Chief of Staff. I hear you saying: "${prompt}". My anonymity is guaranteed.`;
   }
 
   try {
+    // Build messages array: conversation history + current message
+    const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+      ...history,
+      { role: 'user' as const, content: prompt }
+    ];
+
     const msg = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: buildSystemPrompt(context),
-      messages: [
-        { role: "user", content: prompt }
-      ]
+      messages
     });
-    
+
     const content = msg.content[0] as any;
     return content.text || "I'm sorry, I couldn't form a response.";
   } catch (err) {

@@ -262,6 +262,53 @@ server.post('/api/calendar/add', async (request, reply) => {
   }
 });
 
+// CHAT HISTORY: Fetch recent messages for mobile app persistence
+server.get('/api/chat/history', async (request, reply) => {
+  try {
+    const query = request.query as any;
+    const role = query.profileId === 'child-profile-1' ? 'child' : 'adult';
+
+    const profileRes = await pool.query("SELECT id FROM profiles WHERE role = $1 LIMIT 1", [role]);
+    if (profileRes.rows.length === 0) return { messages: [] };
+    const profileId = profileRes.rows[0].id;
+
+    // Get the most recent conversation
+    const convRes = await pool.query(
+      'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
+      [profileId]
+    );
+    if (convRes.rows.length === 0) return { messages: [] };
+
+    const limit = Math.min(parseInt(query.limit || '50', 10), 100);
+
+    // Return real (de-anonymised) content for display in the app
+    const msgRes = await pool.query(
+      `SELECT id, content_original, content_response_translated, channel, created_at
+       FROM messages
+       WHERE conversation_id = $1
+         AND content_original IS NOT NULL
+         AND content_response_translated IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [convRes.rows[0].id, limit]
+    );
+
+    // Reverse to chronological order for the app
+    const messages = msgRes.rows.reverse().map((row: any) => ({
+      id: row.id,
+      userMessage: row.content_original,
+      memuResponse: row.content_response_translated,
+      channel: row.channel,
+      timestamp: row.created_at,
+    }));
+
+    return { messages };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load chat history' });
+  }
+});
+
 // PRIVACY LEDGER: Show what Claude saw (mobile app + PWA)
 server.get('/api/ledger', async (request, reply) => {
   try {
