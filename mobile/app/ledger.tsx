@@ -122,7 +122,7 @@ export default function LedgerScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
       <View style={styles.intro}>
-        <Ionicons name="shield-checkmark" size={24} color={colors.accent} />
+        <Ionicons name="eye-outline" size={24} color={colors.accent} />
         <Text style={styles.introTitle}>The Privacy Ledger</Text>
         <Text style={styles.introBody}>
           Every time Memu sends a query to Claude, real names and places are replaced with anonymous labels. This page shows you exactly what Claude received and what was translated back.

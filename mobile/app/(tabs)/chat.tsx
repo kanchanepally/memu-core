@@ -101,14 +101,27 @@ export default function ChatScreen() {
     }
   }, [handleSend, sending]);
 
+  const formatMessageTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   const renderMessage = useCallback(({ item }: { item: Message }) => (
-    <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
+    <View style={[styles.messageRow, item.fromMemu ? styles.messageRowMemu : styles.messageRowUser]}>
       {item.fromMemu && (
-        <Text style={styles.bubbleName}>Memu</Text>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>M</Text>
+        </View>
       )}
-      <Text style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}>
-        {item.text}
-      </Text>
+      <View style={styles.bubbleWrap}>
+        <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
+          <Text style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}>
+            {item.text}
+          </Text>
+        </View>
+        <Text style={[styles.timestamp, item.fromMemu ? styles.timestampLeft : styles.timestampRight]}>
+          {formatMessageTime(item.timestamp)}
+        </Text>
+      </View>
     </View>
   ), []);
 
@@ -174,29 +187,60 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.sm,
   },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  messageRowMemu: {
+    justifyContent: 'flex-start',
+  },
+  messageRowUser: {
+    justifyContent: 'flex-end',
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.accentLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarText: {
+    fontSize: 13,
+    fontWeight: typography.weights.bold,
+    color: colors.accent,
+  },
+  bubbleWrap: {
+    maxWidth: '78%',
+  },
   bubble: {
-    maxWidth: '80%',
     borderRadius: radius.lg,
     padding: spacing.md,
-    marginBottom: spacing.sm,
   },
   bubbleMemu: {
-    alignSelf: 'flex-start',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderBottomLeftRadius: radius.sm,
   },
   bubbleUser: {
-    alignSelf: 'flex-end',
     backgroundColor: colors.accent,
     borderBottomRightRadius: radius.sm,
   },
-  bubbleName: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.accent,
-    marginBottom: 4,
+  timestamp: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 3,
+    paddingHorizontal: 4,
+  },
+  timestampLeft: {
+    textAlign: 'left',
+  },
+  timestampRight: {
+    textAlign: 'right',
   },
   bubbleText: {
     fontSize: 15,

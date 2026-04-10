@@ -9,6 +9,7 @@ import {
   getTodayBrief, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
   type BriefEvent, type StreamCard,
 } from '../../lib/api';
+import { loadAuthState } from '../../lib/auth';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 
 function formatTime(isoString: string | null): string {
@@ -57,6 +58,7 @@ export default function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState('');
 
   const loadBrief = useCallback(async () => {
     const { data, error: err } = await getTodayBrief();
@@ -74,6 +76,9 @@ export default function TodayScreen() {
 
   useEffect(() => {
     loadBrief();
+    loadAuthState().then(auth => {
+      if (auth.displayName) setDisplayName(auth.displayName);
+    });
   }, [loadBrief]);
 
   const onRefresh = useCallback(async () => {
@@ -149,7 +154,7 @@ export default function TodayScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.greeting}>{getGreeting()}</Text>
+        <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
         <Text style={styles.date}>{formatDate()}</Text>
       </View>
 
@@ -170,11 +175,12 @@ export default function TodayScreen() {
         {!calendarConnected ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>Calendar not connected yet.</Text>
-            <Text style={styles.emptyHint}>Connect Google Calendar in Settings.</Text>
+            <Text style={styles.emptyHint}>Tap the Calendar tab to connect.</Text>
           </View>
         ) : events.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Nothing scheduled today.</Text>
+            <Ionicons name="sunny-outline" size={20} color={colors.textMuted} style={{ marginBottom: spacing.xs }} />
+            <Text style={styles.emptyText}>No events today — your day is wide open.</Text>
           </View>
         ) : (
           events.map((event, i) => (
@@ -201,7 +207,10 @@ export default function TodayScreen() {
               style={[styles.streamCard, { borderLeftColor: getSourceColor(card.source) }]}
             >
               <View style={styles.streamCardHeader}>
-                <Text style={styles.streamCardSource}>{card.source.replace('_', ' ')}</Text>
+                <View style={[styles.sourcePill, { backgroundColor: getSourceColor(card.source) + '18' }]}>
+                  <View style={[styles.sourceDot, { backgroundColor: getSourceColor(card.source) }]} />
+                  <Text style={[styles.sourcePillText, { color: getSourceColor(card.source) }]}>{card.source.replace('_', ' ')}</Text>
+                </View>
                 <Text style={styles.streamCardType}>{card.card_type.replace('_', ' ')}</Text>
               </View>
               <Text style={styles.streamCardTitle}>{card.title}</Text>
@@ -255,7 +264,7 @@ export default function TodayScreen() {
 
       {/* Privacy footer */}
       <Pressable style={styles.privacyFooter} onPress={() => router.push('/ledger')}>
-        <Ionicons name="shield-checkmark-outline" size={14} color={colors.textMuted} />
+        <Ionicons name="eye-outline" size={14} color={colors.textMuted} />
         <Text style={styles.privacyText}>All queries anonymised via Digital Twin</Text>
         <Text style={styles.privacyLink}>See what Claude saw</Text>
       </Pressable>
@@ -316,7 +325,7 @@ const styles = StyleSheet.create({
   loadingText: { color: colors.textMuted, fontSize: typography.sizes.body },
 
   header: { marginBottom: spacing.lg },
-  greeting: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold, color: colors.text },
+  greeting: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold, color: colors.text },
   date: { fontSize: typography.sizes.body, color: colors.textSecondary, marginTop: spacing.xs },
 
   errorBanner: {
@@ -355,7 +364,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm, ...shadows.sm,
   },
   streamCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
-  streamCardSource: { fontSize: typography.sizes.xs, color: colors.textMuted, textTransform: 'capitalize' },
+  sourcePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing.sm, paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  sourceDot: { width: 6, height: 6, borderRadius: 3 },
+  sourcePillText: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
   streamCardType: { fontSize: typography.sizes.xs, color: colors.textMuted, textTransform: 'capitalize' },
   streamCardTitle: { fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text, marginBottom: spacing.xs },
   streamCardBody: { fontSize: typography.sizes.sm, color: colors.textSecondary, lineHeight: 20 },

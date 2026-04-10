@@ -3,40 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memu | Your Family's Chief of Staff</title>
+    <title>Memu</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+<div class="container">
 
-    <nav class="navbar container">
-        <a href="/" class="brand" style="display: flex; align-items: center;">
-            <img src="/assets/logo.svg" alt="Memu Logo" onerror="this.src='/assets/logo.png'" style="height: 38px;">
-        </a>
-        <div class="nav-links">
-            <a href="/dashboard.html" class="btn btn-secondary">Sign In</a>
+    <!-- Welcome (shown if not authenticated) -->
+    <div id="screen-welcome" class="onboarding">
+        <div class="onboarding-hero">
+            <div class="onboarding-icon">&#x1F465;</div>
+            <h1 class="onboarding-title">Memu</h1>
+            <p class="onboarding-subtitle">Intelligence without surveillance</p>
         </div>
-    </nav>
 
-    <main class="container" style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding-top: 5rem;">
-        <div class="glass-panel" style="max-width: 600px; text-align: center;">
-            <div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 20px; background: var(--gradient-primary); margin-bottom: 2rem; box-shadow: 0 8px 32px rgba(99, 102, 241, 0.4);">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                </svg>
+        <div class="feature-list">
+            <div class="feature-item">
+                <div class="feature-icon">&#x1F4AC;</div>
+                <div>
+                    <div class="feature-title">Ask anything</div>
+                    <div class="feature-body">A private AI that learns about you — without ever knowing your name.</div>
+                </div>
             </div>
-            
-            <h1>Your family's Chief of Staff.<br>Private by design.</h1>
-            <p style="margin-bottom: 2.5rem; font-size: 1.125rem;">Memu coordinates your family's calendar, school emails, and daily chaos. Talk to it on WhatsApp or right here. The AI never learns your real names.</p>
-            
-            <div style="display: flex; gap: 1rem; justify-content: center;">
-                <a href="/dashboard.html" class="btn btn-primary">
-                    Start Free
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-                </a>
-                <a href="#how-it-works" class="btn btn-secondary">See how it works</a>
+            <div class="feature-item">
+                <div class="feature-icon">&#x2600;&#xFE0F;</div>
+                <div>
+                    <div class="feature-title">Stay on top of your day</div>
+                    <div class="feature-body">Morning briefings, smart reminders, and proactive suggestions.</div>
+                </div>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon">&#x1F441;</div>
+                <div>
+                    <div class="feature-title">See what the AI sees</div>
+                    <div class="feature-body">The Privacy Ledger shows you exactly what was sent — anonymised, every time.</div>
+                </div>
             </div>
         </div>
-    </main>
 
+        <button class="btn btn-primary w-full" onclick="showSetup()">Get started</button>
+    </div>
+
+    <!-- Setup Step 1: Server URL -->
+    <div id="screen-server" class="onboarding hidden">
+        <div class="progress-dots">
+            <div class="dot dot-active"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+
+        <h2>Connect to your server</h2>
+        <p class="text-muted mb-lg">Enter the address of your Memu server. Your beta invite email has this.</p>
+
+        <div class="mb-md">
+            <label class="input-label">Server address</label>
+            <input type="url" id="server-url" class="input" placeholder="api.memu.digital" autocapitalize="none" autocorrect="off">
+        </div>
+
+        <div id="server-error" class="error-banner hidden"></div>
+
+        <button class="btn btn-primary w-full" id="btn-connect" onclick="verifyServer()">Connect</button>
+    </div>
+
+    <!-- Setup Step 2: Profile -->
+    <div id="screen-profile" class="onboarding hidden">
+        <div class="progress-dots">
+            <div class="dot dot-active"></div>
+            <div class="dot dot-active"></div>
+            <div class="dot"></div>
+        </div>
+
+        <h2>Create your profile</h2>
+        <p class="text-muted mb-md">This is how Memu will know you. Your name is stored on the server — it never goes to any AI model.</p>
+
+        <div id="server-confirm" class="success-banner mb-md"></div>
+
+        <div class="mb-md">
+            <label class="input-label">Your name</label>
+            <input type="text" id="profile-name" class="input" placeholder="Hareesh" autocapitalize="words">
+        </div>
+        <div class="mb-md">
+            <label class="input-label">Email (optional — for beta updates)</label>
+            <input type="email" id="profile-email" class="input" placeholder="you@example.com">
+        </div>
+
+        <div id="profile-error" class="error-banner hidden"></div>
+
+        <button class="btn btn-primary w-full" id="btn-register" onclick="registerProfile()">Create profile</button>
+
+        <div class="text-center mt-md">
+            <button class="btn btn-secondary btn-sm" onclick="showScreen('screen-server')" style="border:none;color:var(--text-muted);">
+                &#8592; Change server
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// Auth state in localStorage
+const AUTH_KEY = 'memu_auth';
+
+function getAuth() {
+    try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; } catch { return {}; }
+}
+function setAuth(data) {
+    localStorage.setItem(AUTH_KEY, JSON.stringify(data));
+}
+function clearAuth() {
+    localStorage.removeItem(AUTH_KEY);
+}
+
+// If already authenticated, go straight to dashboard
+const auth = getAuth();
+if (auth.apiKey && auth.serverUrl) {
+    window.location.href = '/dashboard.html';
+}
+
+let verifiedUrl = '';
+
+function showScreen(id) {
+    document.querySelectorAll('.onboarding').forEach(el => el.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+}
+
+function showSetup() { showScreen('screen-server'); }
+
+function normalizeUrl(url) {
+    let u = url.trim();
+    if (u && !u.startsWith('http://') && !u.startsWith('https://')) {
+        u = 'https://' + u;
+    }
+    return u.replace(/\/+$/, '');
+}
+
+async function verifyServer() {
+    const url = normalizeUrl(document.getElementById('server-url').value);
+    if (!url) {
+        showError('server-error', 'Enter your Memu server address');
+        return;
+    }
+
+    const btn = document.getElementById('btn-connect');
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    hideError('server-error');
+
+    try {
+        const res = await fetch(url + '/health');
+        const data = await res.json();
+        if (data.status === 'ok') {
+            verifiedUrl = url;
+            document.getElementById('server-confirm').innerHTML = '&#10004; Connected to ' + url;
+            showScreen('screen-profile');
+        } else {
+            showError('server-error', "Can't reach server at " + url + '. Check the address and try again.');
+        }
+    } catch (err) {
+        showError('server-error', "Can't reach server at " + url + '. Check the address and try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+    }
+}
+
+async function registerProfile() {
+    const name = document.getElementById('profile-name').value.trim();
+    const email = document.getElementById('profile-email').value.trim();
+
+    if (!name) {
+        showError('profile-error', 'Enter your name');
+        return;
+    }
+
+    const btn = document.getElementById('btn-register');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    hideError('profile-error');
+
+    try {
+        const res = await fetch(verifiedUrl + '/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email: email || undefined }),
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.apiKey) {
+            showError('profile-error', data.error || 'Registration failed. Try again.');
+            return;
+        }
+
+        setAuth({
+            serverUrl: verifiedUrl,
+            apiKey: data.apiKey,
+            profileId: data.id,
+            displayName: data.displayName,
+        });
+
+        window.location.href = '/dashboard.html';
+    } catch (err) {
+        showError('profile-error', 'Network error. Try again.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create profile';
+    }
+}
+
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+function hideError(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+
+// Allow Enter key on inputs
+document.getElementById('server-url').addEventListener('keydown', e => { if (e.key === 'Enter') verifyServer(); });
+document.getElementById('profile-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('profile-email').focus(); });
+document.getElementById('profile-email').addEventListener('keydown', e => { if (e.key === 'Enter') registerProfile(); });
+</script>
 </body>
 </html>

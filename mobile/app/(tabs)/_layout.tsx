@@ -1,6 +1,16 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
+import { Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/tokens';
+
+function SettingsButton() {
+  const router = useRouter();
+  return (
+    <Pressable onPress={() => router.push('/settings')} style={{ marginRight: 16 }}>
+      <Ionicons name="cog-outline" size={22} color={colors.textSecondary} />
+    </Pressable>
+  );
+}
 
 export default function TabLayout() {
   return (
@@ -12,8 +22,8 @@ export default function TabLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          paddingBottom: 4,
-          height: 56,
+          paddingBottom: Platform.OS === 'ios' ? 0 : 4,
+          height: Platform.OS === 'ios' ? 84 : 60,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -26,6 +36,7 @@ export default function TabLayout() {
         headerTitleStyle: {
           fontWeight: '600',
         },
+        headerRight: () => <SettingsButton />,
       }}
     >
       <Tabs.Screen
@@ -47,6 +58,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendar',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="lists"
         options={{
           title: 'Lists',
@@ -55,13 +75,11 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* Settings is no longer a tab — accessed via gear icon in header */}
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cog-outline" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

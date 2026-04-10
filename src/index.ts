@@ -8,6 +8,8 @@ import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { fetchTodayEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
 import { generateAndPushMorningBriefing } from './intelligence/briefing';
+import { requireAuth, registerProfile } from './auth';
+import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import path from 'path';
@@ -20,7 +22,8 @@ const logger = pino({
 
 // Create Fastify Gateway
 const server = Fastify({
-  logger
+  logger,
+  bodyLimit: 50 * 1024 * 1024, // 50MB — WhatsApp exports and Obsidian vaults can be large
 });
 
 // CORS for mobile app and web dashboard
@@ -35,50 +38,140 @@ server.register(fastifyStatic, {
   prefix: '/', // Serve at root
 });
 
-// Health check endpoint (Slice 1 - Step 1)
+// Health check endpoint (no auth required)
 server.get('/health', async (request, reply) => {
-  return { 
-    status: 'ok', 
-    service: 'memu-core', 
-    timestamp: new Date().toISOString() 
+  return {
+    status: 'ok',
+    service: 'memu-core',
+    timestamp: new Date().toISOString()
   };
 });
 
-// Manual Context Seeding Endpoint (Slice 2a)
+// ==========================================
+// REGISTRATION (no auth required)
+// ==========================================
+
+server.post('/api/register', async (request, reply) => {
+  const body = request.body as any;
+  if (!body || !body.name) {
+    return reply.code(400).send({ error: 'Name is required' });
+  }
+
+  try {
+    const profile = await registerProfile(
+      body.name.trim(),
+      (body.email || '').trim(),
+      body.role || 'adult'
+    );
+    return {
+      id: profile.id,
+      displayName: profile.display_name,
+      email: profile.email,
+      apiKey: profile.api_key,
+    };
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Registration failed' });
+  }
+});
+
+// ==========================================
+// AUTH MIDDLEWARE — all /api/* routes below require auth
+// ==========================================
+
+server.addHook('preHandler', async (request, reply) => {
+  const url = request.url;
+  // Skip auth for health, registration, OAuth callback, and static assets
+  if (
+    url === '/health' ||
+    url === '/api/register' ||
+    url.startsWith('/api/auth/google/callback') ||
+    !url.startsWith('/api/')
+  ) {
+    return;
+  }
+  return requireAuth(request, reply);
+});
+
+// Manual Context Seeding — uses authenticated profile
 server.post('/api/seed', async (request, reply) => {
   const body = request.body as any;
   if (!body || !body.content) {
     return reply.code(400).send({ error: 'Content is required' });
   }
-  const result = await seedContext(body.content, body.source || 'manual');
+  const profileId = (request as any).profileId;
+  const result = await seedContext(body.content, body.source || 'manual', profileId);
   return result;
 });
 
-// PWA Frontend Chat API (Slice 2b)
+// ==========================================
+// IMPORT ENDPOINTS
+// ==========================================
+
+// Import WhatsApp .txt export — can be run multiple times, deduplicates
+server.post('/api/import/whatsapp', async (request, reply) => {
+  const body = request.body as any;
+  if (!body || !body.content) {
+    return reply.code(400).send({ error: 'content (the .txt file content) is required' });
+  }
+
+  const profileId = (request as any).profileId;
+  const chatName = body.chatName || 'WhatsApp Chat';
+
+  try {
+    const result = await importWhatsAppExport(profileId, body.content, chatName);
+    return result;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Import failed' });
+  }
+});
+
+// Import a single text/markdown file — can be run multiple times, deduplicates
+server.post('/api/import/file', async (request, reply) => {
+  const body = request.body as any;
+  if (!body || !body.content || !body.filename) {
+    return reply.code(400).send({ error: 'content and filename are required' });
+  }
+
+  const profileId = (request as any).profileId;
+
+  try {
+    const result = await importTextFile(profileId, body.content, body.filename);
+    return result;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Import failed' });
+  }
+});
+
+// Import multiple files at once (e.g., Obsidian vault export)
+server.post('/api/import/bundle', async (request, reply) => {
+  const body = request.body as any;
+  if (!body || !body.files || !Array.isArray(body.files)) {
+    return reply.code(400).send({ error: 'files array is required, each with {filename, content}' });
+  }
+
+  const profileId = (request as any).profileId;
+
+  try {
+    const result = await importFileBundle(profileId, body.files);
+    return result;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Import failed' });
+  }
+});
+
+// Chat API — uses authenticated profile
 server.post('/api/message', async (request, reply) => {
   const body = request.body as any;
   if (!body || !body.content) return reply.code(400).send({ error: 'Content required' });
-  
-  const role = body.profileId === 'child-profile-1' ? 'child' : 'adult';
-  
-  try {
-    let res = await pool.query("SELECT id FROM profiles WHERE role = $1 LIMIT 1", [role]);
-    
-    // Auto-create a child test profile if they hit the Kids portal first
-    if (res.rows.length === 0 && role === 'child') {
-      const idRes = await pool.query("INSERT INTO profiles (display_name, role) VALUES ('Child Test', 'child') RETURNING id");
-      await pool.query("INSERT INTO personas (id, profile_id, persona_label) VALUES ($1, $2, $3)", [`child-${Date.now()}`, idRes.rows[0].id, 'Child-1']);
-      res = idRes;
-    }
 
-    if (res.rows.length === 0) {
-      server.log.warn('No adult profile exists yet. Send a WhatsApp message to initialize one.');
-      return reply.code(500).send({ error: 'System not initialized via WhatsApp yet.' });
-    }
-    
-    const testProfileId = res.rows[0].id;
+  try {
+    const profileId = (request as any).profileId;
     const messageId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const responseText = await processIntelligencePipeline(testProfileId, body.content, 'mobile', messageId);
+    const responseText = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId);
     return { response: responseText };
   } catch (err) {
     server.log.error(err);
@@ -86,11 +179,14 @@ server.post('/api/message', async (request, reply) => {
   }
 });
 
-// OAuth: Initiate Google Sign In
+// OAuth: Initiate Google Sign In — uses authenticated profile
 server.get('/api/auth/google', async (request, reply) => {
-  const res = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-  if (res.rows.length === 0) return reply.code(500).send({ error: 'System not initialized via WhatsApp' });
-  const url = getGoogleAuthUrl(res.rows[0].id);
+  const profileId = (request as any).profileId;
+  const url = getGoogleAuthUrl(profileId);
+  const query = request.query as any;
+  if (query.format === 'json') {
+    return { url };
+  }
   return reply.redirect(url);
 });
 
@@ -112,12 +208,10 @@ server.get('/api/auth/google/callback', async (request, reply) => {
   }
 });
 
-// PWA: Today's Brief + Stream Cards Endpoint
+// Today's Brief + Stream Cards — uses authenticated profile
 server.get('/api/dashboard/brief', async (request, reply) => {
   try {
-    const adultRes = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-    if (adultRes.rows.length === 0) return reply.code(500).send({ error: 'System not initialized' });
-    const profileId = adultRes.rows[0].id;
+    const profileId = (request as any).profileId;
 
     // 1. Fetch Today's Calendar Events
     const events = await fetchTodayEvents(profileId);
@@ -243,11 +337,10 @@ server.post('/api/calendar/add', async (request, reply) => {
     if (cardRes.rows.length === 0) return reply.code(404).send({ error: 'Card not found' });
     
     const card = cardRes.rows[0];
-    const adultRes = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-    if (adultRes.rows.length === 0) return reply.code(500).send({ error: 'Uninitialized' });
-    
+    const profileId = (request as any).profileId;
+
     // Attempt to write event to connected Google Calendar
-    const success = await createGoogleCalendarEvent(adultRes.rows[0].id, card.title, card.body);
+    const success = await createGoogleCalendarEvent(profileId, card.title, card.body);
     
     if (success) {
        // Mark card as handled
@@ -262,15 +355,11 @@ server.post('/api/calendar/add', async (request, reply) => {
   }
 });
 
-// CHAT HISTORY: Fetch recent messages for mobile app persistence
+// Chat history — uses authenticated profile
 server.get('/api/chat/history', async (request, reply) => {
   try {
+    const profileId = (request as any).profileId;
     const query = request.query as any;
-    const role = query.profileId === 'child-profile-1' ? 'child' : 'adult';
-
-    const profileRes = await pool.query("SELECT id FROM profiles WHERE role = $1 LIMIT 1", [role]);
-    if (profileRes.rows.length === 0) return { messages: [] };
-    const profileId = profileRes.rows[0].id;
 
     // Get the most recent conversation
     const convRes = await pool.query(
@@ -309,17 +398,19 @@ server.get('/api/chat/history', async (request, reply) => {
   }
 });
 
-// PRIVACY LEDGER: Show what Claude saw (mobile app + PWA)
+// PRIVACY LEDGER: Show what Claude saw — filtered to authenticated profile
 server.get('/api/ledger', async (request, reply) => {
   try {
+    const profileId = (request as any).profileId;
     const res = await pool.query(
       `SELECT id, content_original, content_translated, content_response_raw,
               content_response_translated, entity_translations, channel,
               cloud_tokens_in, cloud_tokens_out, created_at
        FROM messages
-       WHERE content_translated IS NOT NULL
+       WHERE content_translated IS NOT NULL AND profile_id = $1
        ORDER BY created_at DESC
-       LIMIT 50`
+       LIMIT 50`,
+      [profileId]
     );
     return res.rows;
   } catch (err) {
@@ -328,13 +419,10 @@ server.get('/api/ledger', async (request, reply) => {
   }
 });
 
-// ADMIN: Manually Trigger Morning Briefing (Slice 3 Test)
+// ADMIN: Manually Trigger Morning Briefing
 server.get('/api/admin/trigger-briefing', async (request, reply) => {
   try {
-    const adultRes = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-    if (adultRes.rows.length === 0) return reply.code(500).send({ error: 'System not initialized' });
-    const profileId = adultRes.rows[0].id;
-
+    const profileId = (request as any).profileId;
     const message = await generateAndPushMorningBriefing(profileId);
     return { success: true, messagePushed: message };
   } catch (err) {
@@ -347,13 +435,13 @@ server.get('/api/admin/trigger-briefing', async (request, reply) => {
 // SLICE 6: TRUST ARCHITECTURE
 // ==========================================
 
-// DATA SOVEREIGNTY: Export full profile dataset
+// DATA SOVEREIGNTY: Export full profile dataset — uses authenticated profile
 server.get('/api/export', async (request, reply) => {
   try {
-    const adultRes = await pool.query("SELECT * FROM profiles WHERE role = 'adult' LIMIT 1");
-    if (adultRes.rows.length === 0) return reply.code(404).send({ error: 'No profile found' });
-    const profile = adultRes.rows[0];
-    const profileId = profile.id;
+    const profileId = (request as any).profileId;
+    const profileRes = await pool.query("SELECT * FROM profiles WHERE id = $1", [profileId]);
+    if (profileRes.rows.length === 0) return reply.code(404).send({ error: 'No profile found' });
+    const profile = profileRes.rows[0];
 
     // Fetch all related sovereign data
     const personas = await pool.query("SELECT * FROM personas WHERE profile_id = $1", [profileId]);
@@ -387,9 +475,7 @@ server.get('/api/export', async (request, reply) => {
 // DATA SOVEREIGNTY: Divorce / Household Detachment
 server.post('/api/family/detach', async (request, reply) => {
   try {
-    const adultRes = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-    if (adultRes.rows.length === 0) return reply.code(404).send({ error: 'No primary household found' });
-    const primaryId = adultRes.rows[0].id;
+    const primaryId = (request as any).profileId;
 
     // 1. Physically sever the secondary adult into their own parallel household namespace
     const newAdult = await pool.query("INSERT INTO profiles (display_name, role) VALUES ('Detached Adult', 'adult') RETURNING id");
@@ -435,13 +521,30 @@ const start = async () => {
     server.log.info(`PWA running at http://localhost:3100`);
 
     // Slice 3: Schedule Morning Briefing for 7:00 AM Every Day
+    // Picks every adult/admin profile that has a linked WhatsApp channel.
+    // Runs them sequentially so one bad briefing can't take down the rest.
     cron.schedule('0 7 * * *', async () => {
       server.log.info('Running daily morning briefings...');
-      // For V1, we just run the adult-1 profile. 
-      // Multi-tenant architecture would map over all families here.
-      const adultRes = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-      if (adultRes.rows.length > 0) {
-        await generateAndPushMorningBriefing(adultRes.rows[0].id);
+      const recipientsRes = await pool.query(`
+        SELECT p.id, p.display_name
+        FROM profiles p
+        INNER JOIN profile_channels pc
+          ON pc.profile_id = p.id AND pc.channel = 'whatsapp'
+        WHERE p.role IN ('adult', 'admin')
+      `);
+
+      if (recipientsRes.rows.length === 0) {
+        server.log.warn('No adults with a linked WhatsApp channel — skipping briefings');
+        return;
+      }
+
+      for (const row of recipientsRes.rows) {
+        try {
+          server.log.info(`Pushing briefing to ${row.display_name} (${row.id})`);
+          await generateAndPushMorningBriefing(row.id);
+        } catch (err) {
+          server.log.error({ err, profileId: row.id }, 'Briefing failed for profile');
+        }
       }
     });
 

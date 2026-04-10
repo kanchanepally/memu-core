@@ -1,26 +1,44 @@
 /**
  * Memu API Client
  * Connects to the memu-core Fastify backend.
+ * Uses auth credentials from SecureStore.
  */
 
-// In development, this is your local machine.
-// In production, this will be the family's memu-core server.
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3100';
+import { loadAuthState } from './auth';
 
 interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
 
+/**
+ * Get the current server URL and API key from stored auth state.
+ * Falls back to env var / localhost for development.
+ */
+async function getConfig() {
+  const auth = await loadAuthState();
+  return {
+    baseUrl: auth.serverUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3100',
+    apiKey: auth.apiKey,
+  };
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true', // Skip ngrok interstitial in dev
-        ...options?.headers,
-      },
+    const { baseUrl, apiKey } = await getConfig();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+      ...((options?.headers as Record<string, string>) || {}),
+    };
+
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const res = await fetch(`${baseUrl}${path}`, {
       ...options,
+      headers,
     });
 
     if (!res.ok) {
@@ -36,21 +54,76 @@ async function request<T>(path: string, options?: RequestInit): Promise<ApiRespo
   }
 }
 
-// Health check
-export async function checkHealth() {
-  return request<{ status: string; service: string; timestamp: string }>('/health');
+// ==========================================
+// Registration (no auth needed)
+// ==========================================
+
+export interface RegisterResponse {
+  id: string;
+  displayName: string;
+  email: string;
+  apiKey: string;
 }
+
+export async function register(
+  serverUrl: string,
+  name: string,
+  email: string
+): Promise<ApiResponse<RegisterResponse>> {
+  try {
+    const res = await fetch(`${serverUrl}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: 'Registration failed' }));
+      return { error: body.error || `HTTP ${res.status}` };
+    }
+
+    const data = await res.json();
+    return { data };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Network error';
+    return { error: message };
+  }
+}
+
+// Health check (no auth needed)
+export async function checkServerHealth(serverUrl: string): Promise<ApiResponse<{ status: string }>> {
+  try {
+    const res = await fetch(`${serverUrl}/health`, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    const data = await res.json();
+    return { data };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Cannot reach server';
+    return { error: message };
+  }
+}
+
+// ==========================================
+// Authenticated endpoints
+// ==========================================
 
 // Chat with Memu
 export interface ChatResponse {
   response: string;
 }
 
-export async function sendMessage(content: string, profileId: string = 'adult-default'): Promise<ApiResponse<ChatResponse>> {
+export async function sendMessage(content: string): Promise<ApiResponse<ChatResponse>> {
   return request<ChatResponse>('/api/message', {
     method: 'POST',
-    body: JSON.stringify({ content, profileId }),
+    body: JSON.stringify({ content }),
   });
+}
+
+// Google Calendar OAuth
+export async function getGoogleAuthUrl(): Promise<ApiResponse<{ url: string }>> {
+  return request<{ url: string }>('/api/auth/google?format=json');
 }
 
 // Today's briefing
@@ -118,7 +191,7 @@ export async function editCard(cardId: string, title: string, body: string) {
   });
 }
 
-// Chat history (persists across app restarts)
+// Chat history
 export interface ChatHistoryMessage {
   id: string;
   userMessage: string;
@@ -131,8 +204,8 @@ export interface ChatHistoryResponse {
   messages: ChatHistoryMessage[];
 }
 
-export async function getChatHistory(profileId: string = 'adult-default', limit: number = 50): Promise<ApiResponse<ChatHistoryResponse>> {
-  return request<ChatHistoryResponse>(`/api/chat/history?profileId=${profileId}&limit=${limit}`);
+export async function getChatHistory(limit: number = 50): Promise<ApiResponse<ChatHistoryResponse>> {
+  return request<ChatHistoryResponse>(`/api/chat/history?limit=${limit}`);
 }
 
 // Privacy Ledger

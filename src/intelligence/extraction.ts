@@ -51,9 +51,7 @@ JSON Schema (return an array of objects):
         return;
     }
 
-    // Get the primary Family ID for Dashboard display
-    const adultRes = await pool.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
-    const familyId = adultRes.rows.length > 0 ? adultRes.rows[0].id : senderProfileId;
+    const familyId = senderProfileId;
 
     for (const extraction of extractions) {
       // 3. Translate BACK to Real Domain

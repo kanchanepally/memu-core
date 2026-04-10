@@ -1,7 +1,9 @@
-import { View, Text, StyleSheet, ScrollView, Pressable, Linking } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors, spacing, radius, typography } from '../../lib/tokens';
+import { loadAuthState, clearAuthState } from '../../lib/auth';
 
 interface SettingRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -9,16 +11,17 @@ interface SettingRowProps {
   subtitle?: string;
   onPress?: () => void;
   rightElement?: React.ReactNode;
+  destructive?: boolean;
 }
 
-function SettingRow({ icon, title, subtitle, onPress, rightElement }: SettingRowProps) {
+function SettingRow({ icon, title, subtitle, onPress, rightElement, destructive }: SettingRowProps) {
   return (
     <Pressable style={styles.row} onPress={onPress}>
-      <View style={styles.rowIcon}>
-        <Ionicons name={icon} size={20} color={colors.accent} />
+      <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
+        <Ionicons name={icon} size={20} color={destructive ? colors.error : colors.accent} />
       </View>
       <View style={styles.rowContent}>
-        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={[styles.rowTitle, destructive && { color: colors.error }]}>{title}</Text>
         {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}
       </View>
       {rightElement || <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
@@ -28,16 +31,54 @@ function SettingRow({ icon, title, subtitle, onPress, rightElement }: SettingRow
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [serverUrl, setServerUrl] = useState('');
+  const [displayName, setDisplayName] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const auth = await loadAuthState();
+      setServerUrl(auth.serverUrl || 'Not connected');
+      setDisplayName(auth.displayName || 'Unknown');
+    })();
+  }, []);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign out',
+      'This will remove your connection to the server. You can sign back in anytime.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign out',
+          style: 'destructive',
+          onPress: async () => {
+            await clearAuthState();
+            router.replace('/onboarding/welcome');
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Profile */}
+      <Text style={styles.sectionLabel}>Profile</Text>
+      <View style={styles.section}>
+        <SettingRow
+          icon="person-outline"
+          title={displayName}
+          subtitle="Your profile"
+        />
+      </View>
+
       {/* Connection */}
       <Text style={styles.sectionLabel}>Connection</Text>
       <View style={styles.section}>
         <SettingRow
           icon="server-outline"
           title="Server"
-          subtitle="localhost:3100"
+          subtitle={serverUrl}
         />
         <SettingRow
           icon="logo-google"
@@ -46,11 +87,22 @@ export default function SettingsScreen() {
         />
       </View>
 
+      {/* Context */}
+      <Text style={styles.sectionLabel}>Context</Text>
+      <View style={styles.section}>
+        <SettingRow
+          icon="cloud-upload-outline"
+          title="Import Context"
+          subtitle="WhatsApp exports, Obsidian notes, documents"
+          onPress={() => router.push('/import')}
+        />
+      </View>
+
       {/* Privacy */}
       <Text style={styles.sectionLabel}>Privacy</Text>
       <View style={styles.section}>
         <SettingRow
-          icon="shield-checkmark-outline"
+          icon="eye-outline"
           title="What Claude Saw"
           subtitle="View the Privacy Ledger"
           onPress={() => router.push('/ledger')}
@@ -62,7 +114,7 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* AI */}
+      {/* Intelligence */}
       <Text style={styles.sectionLabel}>Intelligence</Text>
       <View style={styles.section}>
         <SettingRow
@@ -83,7 +135,7 @@ export default function SettingsScreen() {
         <SettingRow
           icon="information-circle-outline"
           title="Memu"
-          subtitle="v0.1.0 — Your family's Chief of Staff"
+          subtitle="v0.1.0 — Intelligence without surveillance"
         />
         <SettingRow
           icon="logo-github"
@@ -95,6 +147,18 @@ export default function SettingsScreen() {
           icon="globe-outline"
           title="memu.digital"
           onPress={() => Linking.openURL('https://memu.digital')}
+        />
+      </View>
+
+      {/* Account */}
+      <Text style={styles.sectionLabel}>Account</Text>
+      <View style={styles.section}>
+        <SettingRow
+          icon="log-out-outline"
+          title="Sign out"
+          subtitle="Disconnect from this server"
+          onPress={handleLogout}
+          destructive
         />
       </View>
 
@@ -127,6 +191,9 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: radius.sm,
     backgroundColor: colors.accentLight,
     justifyContent: 'center', alignItems: 'center',
+  },
+  rowIconDestructive: {
+    backgroundColor: '#fef2f2',
   },
   rowContent: { flex: 1 },
   rowTitle: { fontSize: typography.sizes.body, color: colors.text },
