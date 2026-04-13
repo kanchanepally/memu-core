@@ -10,7 +10,11 @@ export default function WelcomeScreen() {
     <View style={styles.container}>
       <View style={styles.hero}>
         <View style={styles.iconCircle}>
-          <Ionicons name="people" size={48} color={colors.accent} />
+          <View style={{position: 'relative', width: 44, height: 44, justifyContent: 'center', alignItems: 'center'}}>
+            <View style={{position: 'absolute', top: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(102,126,234,0.8)'}} />
+            <View style={{position: 'absolute', bottom: 0, left: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(118,75,162,0.8)'}} />
+            <View style={{position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(46,204,113,0.8)'}} />
+          </View>
         </View>
         <Text style={styles.title}>Memu</Text>
         <Text style={styles.subtitle}>Intelligence without surveillance</Text>

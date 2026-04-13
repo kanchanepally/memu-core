@@ -29,8 +29,8 @@ interface WhatsAppMessage {
 function parseWhatsAppExport(text: string): WhatsAppMessage[] {
   const messages: WhatsAppMessage[] = [];
 
-  // Match common WhatsApp export timestamp patterns
-  const lineRegex = /^[\[]?(\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[APap][Mm])?)[\]]?\s*[-–]\s*([^:]+):\s*(.*)/;
+  // Match common WhatsApp export timestamp patterns (Relaxed for US/UK/24H/12H and var separators)
+  const lineRegex = /^\[?(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4}.*?)\]?\s*[-–]?\s*([^:]+):\s*(.*)/;
 
   const lines = text.split('\n');
   let current: WhatsAppMessage | null = null;
@@ -162,21 +162,15 @@ async function isAlreadyImported(sourceId: string): Promise<boolean> {
 // EXTRACTION (batch of messages → facts)
 // ==========================================
 
+import { generateResponse } from './provider';
+
 /**
  * Extract durable facts from a batch of messages or a text chunk.
  * Returns an array of fact strings.
  */
 async function extractFactsFromChunk(content: string, contextLabel: string): Promise<string[]> {
-  if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
-    return [];
-  }
-
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 800,
-      temperature: 0,
-      system: `You are a memory extraction system. Given text from ${contextLabel}, extract durable facts worth remembering about the people, their routines, preferences, relationships, commitments, plans, and interests.
+    const prompt = `You are a memory extraction system. Given text from ${contextLabel}, extract durable facts worth remembering about the people, their routines, preferences, relationships, commitments, plans, and interests.
 
 Extract ONLY facts that would be useful in future conversations:
 - Preferences and routines ("Alice does ballet on Tuesdays")
@@ -191,11 +185,13 @@ Extract ONLY facts that would be useful in future conversations:
 DO NOT extract: temporary states, jokes, greetings, logistics that have already passed, or generic conversation.
 
 Return a JSON array of strings. Each string is one self-contained fact.
-If there are no durable facts, return [].`,
-      messages: [{ role: 'user', content }],
-    });
+If there are no durable facts, return [].
 
-    const replyText = response.content[0].type === 'text' ? response.content[0].text : '';
+Text to extract from:
+${content}`;
+
+    const replyText = await generateResponse(prompt, [], []);
+
     const jsonMatch = replyText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
 

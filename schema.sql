@@ -13,6 +13,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE profiles (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   display_name TEXT NOT NULL,
+  email TEXT,
+  api_key TEXT UNIQUE,
   role TEXT NOT NULL CHECK (role IN ('admin', 'adult', 'child')),
   date_of_birth DATE,
   school_year INTEGER,
@@ -140,6 +142,20 @@ CREATE INDEX idx_context_embedding ON context_entries
 CREATE INDEX idx_context_source ON context_entries(source);
 CREATE INDEX idx_context_occurred ON context_entries(occurred_at DESC);
 
+-- ============================================================
+-- SLICE 5: COMPILED SYNTHESIS (ARCHITECTURE V2)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS synthesis_pages (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    category TEXT NOT NULL CHECK (category IN ('person', 'routine', 'household', 'commitment', 'document')),
+    title TEXT NOT NULL,
+    body_markdown TEXT NOT NULL,
+    last_updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(profile_id, category, title)
+);
 -- ============================================================
 -- ACTIONS (agentic capability)
 -- ============================================================

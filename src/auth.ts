@@ -46,7 +46,7 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
 /**
  * Register a new profile. Returns the profile with API key.
  */
-export async function registerProfile(displayName: string, email: string, role: string = 'adult') {
+export async function registerProfile(displayName: string, email: string, role: string = 'adult', familyNames: string = '') {
   const apiKey = generateApiKey();
 
   const res = await pool.query(
@@ -65,6 +65,25 @@ export async function registerProfile(displayName: string, email: string, role: 
     'INSERT INTO personas (id, profile_id, persona_label) VALUES ($1, $2, $3)',
     [personaId, profile.id, personaLabel]
   );
+
+  // Add the registering user to the entity_registry securely
+  await pool.query(
+    `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by)
+     VALUES ('person', $1, $2, 'onboarding') ON CONFLICT DO NOTHING`,
+    [displayName.trim(), role === 'child' ? `Child-0` : `Adult-0`]
+  );
+
+  // Add any explicitly declared family members to the registry
+  if (familyNames) {
+    const names = familyNames.split(',').map(n => n.trim()).filter(Boolean);
+    for (let i = 0; i < names.length; i++) {
+      await pool.query(
+        `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by)
+         VALUES ('person', $1, $2, 'onboarding') ON CONFLICT DO NOTHING`,
+        [names[i], `Family-${Date.now()}-${i}`]
+      );
+    }
+  }
 
   return profile;
 }

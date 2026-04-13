@@ -9,7 +9,7 @@ const anthropic = new Anthropic({
 export async function processGroupMessageExtraction(
   senderProfileId: string, 
   content: string, 
-  groupId: string, 
+  channel: string, 
   messageId: string
 ) {
   // 1. Twin Translation (Real -> Anonymous)
@@ -67,7 +67,7 @@ JSON Schema (return an array of objects):
           extraction.card_type || 'extraction',
           realTitle,
           realBody,
-          'whatsapp_group',
+          channel.endsWith('@g.us') ? 'whatsapp_group' : channel,
           messageId,
           JSON.stringify(extraction.actions || [])
         ]

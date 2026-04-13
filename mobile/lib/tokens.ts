@@ -5,23 +5,26 @@
  */
 
 export const colors = {
-  accent: '#667eea',
-  accentEnd: '#764ba2',
-  accentLight: '#ede9ff',
+  // Vibrant accents
+  accent: '#6D28D9', // Purple from new logo
+  accentEnd: '#8B5CF6', 
+  accentLight: '#EDE9FE', // Very light lavender
 
-  bg: '#fafaf9',
-  surface: '#ffffff',
-  surfaceHover: '#f5f4f1',
+  // Cool backgrounds
+  bg: '#FAFAFC', // Clean off-white background
+  surface: '#FFFFFF', // Clean white cards
+  surfaceHover: '#F5F3FF', // Lavender highlight
 
-  text: '#1e293b',
-  textSecondary: '#475569',
-  textMuted: '#94a3b8',
+  // Text colors (Indigo scale)
+  text: '#1E1B4B',
+  textSecondary: '#4338CA',
+  textMuted: '#94A3B8',
   textInverse: '#ffffff',
 
-  success: '#10b981',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  info: '#3b82f6',
+  success: '#34A853',
+  warning: '#FBBC05',
+  error: '#EA4335',
+  info: '#4285F4',
 
   // Source semantics (stream card left border)
   sourceChat: '#10b981',
@@ -82,16 +85,16 @@ export const typography = {
 export const shadows = {
   sm: {
     shadowColor: '#4a3f8c',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
   },
   md: {
     shadowColor: '#4a3f8c',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.20,
+    shadowRadius: 8,
+    elevation: 4,
   },
 } as const;

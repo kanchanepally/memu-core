@@ -154,7 +154,15 @@ export default function TodayScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
+        <View style={styles.headerTitleRow}>
+          {/* Memu 3-circle logo */}
+          <View style={styles.logoContainer}>
+            <View style={[styles.circle, styles.circleLeft]} />
+            <View style={[styles.circle, styles.circleRight]} />
+            <View style={[styles.circle, styles.circleTop]} />
+          </View>
+          <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
+        </View>
         <Text style={styles.date}>{formatDate()}</Text>
       </View>
 
@@ -195,13 +203,20 @@ export default function TodayScreen() {
       </View>
 
       {/* Stream Cards */}
-      {cards.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="bulb-outline" size={18} color={colors.textSecondary} />
-            <Text style={styles.sectionTitle}>Intelligence</Text>
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="bulb-outline" size={18} color={colors.textSecondary} />
+          <Text style={styles.sectionTitle}>Intelligence</Text>
+        </View>
+
+        {cards.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Ionicons name="sparkles-outline" size={20} color={colors.textMuted} style={{ marginBottom: spacing.xs }} />
+            <Text style={styles.emptyText}>No new intelligence.</Text>
+            <Text style={styles.emptyHint}>Memu is listening in the background.</Text>
           </View>
-          {cards.map(card => (
+        ) : (
+          cards.map(card => (
             <View
               key={card.id}
               style={[styles.streamCard, { borderLeftColor: getSourceColor(card.source) }]}
@@ -248,8 +263,7 @@ export default function TodayScreen() {
               </View>
             </View>
           ))}
-        </View>
-      )}
+      </View>
 
       {/* Shopping summary */}
       {shoppingCount > 0 && (
@@ -266,7 +280,7 @@ export default function TodayScreen() {
       <Pressable style={styles.privacyFooter} onPress={() => router.push('/ledger')}>
         <Ionicons name="eye-outline" size={14} color={colors.textMuted} />
         <Text style={styles.privacyText}>All queries anonymised via Digital Twin</Text>
-        <Text style={styles.privacyLink}>See what Claude saw</Text>
+        <Text style={styles.privacyLink}>See what Cloud AI saw</Text>
       </Pressable>
     </ScrollView>
 
@@ -325,8 +339,39 @@ const styles = StyleSheet.create({
   loadingText: { color: colors.textMuted, fontSize: typography.sizes.body },
 
   header: { marginBottom: spacing.lg },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
+  
+  logoContainer: {
+    width: 32,
+    height: 32,
+    marginRight: spacing.sm,
+    position: 'relative'
+  },
+  circle: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+  },
+  circleLeft: {
+    borderColor: '#6D28D9', // Deep Purple
+    bottom: 2,
+    left: 0,
+  },
+  circleRight: {
+    borderColor: '#A78BFA', // Light Purple
+    bottom: 2,
+    right: 0,
+  },
+  circleTop: {
+    borderColor: '#8B5CF6', // Mid Purple
+    top: 0,
+    left: 6,
+  },
+
   greeting: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold, color: colors.text },
-  date: { fontSize: typography.sizes.body, color: colors.textSecondary, marginTop: spacing.xs },
+  date: { fontSize: typography.sizes.body, color: colors.textSecondary },
 
   errorBanner: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

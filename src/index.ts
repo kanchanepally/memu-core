@@ -6,7 +6,7 @@ import { testConnection, pool } from './db/connection';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
-import { fetchTodayEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
+import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
 import { generateAndPushMorningBriefing } from './intelligence/briefing';
 import { requireAuth, registerProfile } from './auth';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
@@ -61,7 +61,8 @@ server.post('/api/register', async (request, reply) => {
     const profile = await registerProfile(
       body.name.trim(),
       (body.email || '').trim(),
-      body.role || 'adult'
+      body.role || 'adult',
+      body.familyNames || ''
     );
     return {
       id: profile.id,
@@ -213,13 +214,32 @@ server.get('/api/dashboard/brief', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
 
-    // 1. Fetch Today's Calendar Events
-    const events = await fetchTodayEvents(profileId);
-    const formattedEvents = events.map(e => ({
-      title: e.summary || 'Busy',
-      startTime: e.start?.dateTime || e.start?.date || null,
-      endTime: e.end?.dateTime || e.end?.date || null
-    }));
+    // 1. Fetch upcoming Calendar Events (Next 7 days)
+    const events = await fetchUpcomingEvents(profileId);
+    
+    // Nori Dashboard pattern: Today vs Future
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    const todayEvents = [];
+    const futureEvents = [];
+
+    for (const e of events) {
+      const startTime = e.start?.dateTime || e.start?.date || null;
+      if (!startTime) continue;
+      
+      const evt = {
+        title: e.summary || 'Busy',
+        startTime,
+        endTime: e.end?.dateTime || e.end?.date || null
+      };
+
+      if (new Date(startTime) <= todayEnd) {
+        todayEvents.push(evt);
+      } else {
+        futureEvents.push(evt);
+      }
+    }
     
     // Check if the calendar is linked
     const linkRes = await pool.query(`SELECT 1 FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
@@ -238,7 +258,9 @@ server.get('/api/dashboard/brief', async (request, reply) => {
     );
 
     return { 
-      events: formattedEvents,
+      events: todayEvents, // Maintaining backward compatibility for old endpoints
+      todayEvents,
+      futureEvents,
       streamCards: streamRes.rows,
       shoppingItems: shoppingRes.rows,
       isCalendarConnected
@@ -246,6 +268,42 @@ server.get('/api/dashboard/brief', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to build brief' });
+  }
+});
+
+import { processGroupMessageExtraction } from './intelligence/extraction';
+
+// Spaces (Compiled Synthesis Pages)
+server.get('/api/dashboard/spaces', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const res = await pool.query(
+      `SELECT * FROM synthesis_pages WHERE profile_id = $1 ORDER BY last_updated_at DESC`,
+      [profileId]
+    );
+    return { spaces: res.rows };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch spaces' });
+  }
+});
+
+// Explicit extraction command (e.g. from Lists tab)
+server.post('/api/extract', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { content } = request.body as any;
+    
+    // Process purely as extraction (fire and forget)
+    // Pass 'manual_list_input' as the channel so we know where it came from
+    processGroupMessageExtraction(profileId, content, 'manual_list_input', `req-${Date.now()}`).catch(err => {
+      console.error('[EXTRACTION] Direct list extraction failed:', err);
+    });
+
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Extraction trigger failed' });
   }
 });
 

@@ -51,7 +51,9 @@ export async function handleGoogleCallback(code: string, profileId: string): Pro
   return email;
 }
 
-export async function fetchTodayEvents(profileId: string): Promise<calendar_v3.Schema$Event[]> {
+import { addDays } from 'date-fns';
+
+export async function fetchUpcomingEvents(profileId: string): Promise<calendar_v3.Schema$Event[]> {
   // 1. Get token from DB
   const res = await pool.query(`SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
   
@@ -65,13 +67,13 @@ export async function fetchTodayEvents(profileId: string): Promise<calendar_v3.S
   const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
   
   const todayStart = startOfDay(new Date());
-  const todayEnd = endOfDay(new Date());
+  const nextWeekEnd = endOfDay(addDays(new Date(), 7));
 
   try {
     const eventsRes = await calendar.events.list({
       calendarId: 'primary',
       timeMin: todayStart.toISOString(),
-      timeMax: todayEnd.toISOString(),
+      timeMax: nextWeekEnd.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
     });

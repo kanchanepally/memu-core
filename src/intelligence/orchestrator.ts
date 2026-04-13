@@ -7,6 +7,7 @@ import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
+import { processSynthesisUpdate } from './synthesis';
 
 const HISTORY_LIMIT = 10; // Last N message pairs for multi-turn conversation
 const CONVERSATION_GAP_MS = 30 * 60 * 1000; // 30 minutes — start new conversation after this gap
@@ -131,6 +132,11 @@ export async function processIntelligencePipeline(
   // 8. Stream card extraction from chat messages (fire-and-forget)
   processGroupMessageExtraction(profileId, content, channel, messageId).catch(err => {
     console.error('[EXTRACTION] Background extraction failed:', err);
+  });
+
+  // 9. Synthesis Page Update (fire-and-forget)
+  processSynthesisUpdate(profileId, anonymousMsg, claudeResponse).catch(err => {
+    console.error('[SYNTHESIS] Background synthesis update failed:', err);
   });
 
   return realResponse;

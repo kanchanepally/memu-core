@@ -68,13 +68,14 @@ export interface RegisterResponse {
 export async function register(
   serverUrl: string,
   name: string,
-  email: string
+  email: string,
+  familyNames: string
 ): Promise<ApiResponse<RegisterResponse>> {
   try {
     const res = await fetch(`${serverUrl}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify({ name, email, familyNames }),
     });
 
     if (!res.ok) {
@@ -146,6 +147,8 @@ export interface StreamCard {
 
 export interface BriefResponse {
   events: BriefEvent[];
+  todayEvents: BriefEvent[];
+  futureEvents: BriefEvent[];
   streamCards: StreamCard[];
   shoppingItems: StreamCard[];
   isCalendarConnected: boolean;
@@ -224,4 +227,24 @@ export interface LedgerEntry {
 
 export async function getLedger(): Promise<ApiResponse<LedgerEntry[]>> {
   return request<LedgerEntry[]>('/api/ledger');
+}
+
+// Synthesis Spaces
+export interface SynthesisPage {
+  id: string;
+  category: string;
+  title: string;
+  body_markdown: string;
+  last_updated_at: string;
+}
+
+export async function getSpaces(): Promise<ApiResponse<{ spaces: SynthesisPage[] }>> {
+  return request<{ spaces: SynthesisPage[] }>('/api/dashboard/spaces');
+}
+
+export async function extractListCommand(content: string) {
+  return request<{ success: boolean }>('/api/extract', {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
 }

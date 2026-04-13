@@ -24,9 +24,16 @@ export default function RootLayout() {
 
     const inOnboarding = segments[0] === 'onboarding';
 
-    if (!isAuthenticated && !inOnboarding) {
-      // Not logged in and not on onboarding — redirect
-      router.replace('/onboarding/welcome');
+    // When they try to navigate out of onboarding (e.g. to tabs), re-verify auth.
+    // This fixes the bug where the local `isAuthenticated` state is stale after setup.
+    if (!inOnboarding) {
+      loadAuthState().then((auth) => {
+        if (!auth.isAuthenticated) {
+          router.replace('/onboarding/welcome');
+        } else if (!isAuthenticated) {
+          setIsAuthenticated(true);
+        }
+      });
     } else if (isAuthenticated && inOnboarding) {
       // Logged in but still on onboarding — go to main app
       router.replace('/(tabs)');

@@ -29,9 +29,9 @@ function LedgerCard({ entry }: { entry: LedgerEntry }) {
         <Text style={styles.value}>{entry.content_original}</Text>
       </View>
 
-      {/* What Claude received */}
+      {/* What Cloud AI received */}
       <View style={[styles.row, styles.anonymised]}>
-        <Text style={styles.label}>Claude received:</Text>
+        <Text style={styles.label}>Cloud AI received:</Text>
         <Text style={[styles.value, styles.anonymisedText]}>{entry.content_translated}</Text>
       </View>
 
@@ -51,9 +51,9 @@ function LedgerCard({ entry }: { entry: LedgerEntry }) {
             </View>
           )}
 
-          {/* Claude's raw response */}
+          {/* Cloud AI's raw response */}
           <View style={[styles.row, styles.anonymised]}>
-            <Text style={styles.label}>Claude replied (raw):</Text>
+            <Text style={styles.label}>Cloud AI replied (raw):</Text>
             <Text style={[styles.value, styles.anonymisedText]}>{entry.content_response_raw}</Text>
           </View>
 
@@ -125,7 +125,7 @@ export default function LedgerScreen() {
         <Ionicons name="eye-outline" size={24} color={colors.accent} />
         <Text style={styles.introTitle}>The Privacy Ledger</Text>
         <Text style={styles.introBody}>
-          Every time Memu sends a query to Claude, real names and places are replaced with anonymous labels. This page shows you exactly what Claude received and what was translated back.
+          Every time Memu sends a query to the Cloud inference engine, real names and places are replaced with anonymous labels. This page shows you exactly what the Cloud AI received and what was translated back.
         </Text>
       </View>
 

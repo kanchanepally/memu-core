@@ -1,5 +1,5 @@
 import { pool } from '../db/connection';
-import { fetchTodayEvents } from '../channels/calendar/google';
+import { fetchUpcomingEvents } from '../channels/calendar/google';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { generateResponse } from './provider';
 import { sock } from '../channels/whatsapp';
@@ -19,7 +19,17 @@ export async function generateAndPushMorningBriefing(profileId: string) {
     const whatsappJid = channelRes.rows[0].channel_identifier;
 
     // 2. Extract Substantive Context
-    const events = await fetchTodayEvents(profileId);
+    const upcomingEvents = await fetchUpcomingEvents(profileId);
+    
+    // Filter for today
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    const events = upcomingEvents.filter(e => {
+        const startTime = e.start?.dateTime || e.start?.date || null;
+        if (!startTime) return false;
+        return new Date(startTime) <= todayEnd;
+    });
+
     const streamRes = await pool.query(
       `SELECT * FROM stream_cards WHERE family_id = $1 AND status = 'active' ORDER BY created_at DESC`, 
       [profileId]

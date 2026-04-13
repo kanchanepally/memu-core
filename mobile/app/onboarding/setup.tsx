@@ -20,6 +20,7 @@ export default function SetupScreen() {
   const [serverUrl, setServerUrl] = useState(BAKED_SERVER_URL);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [familyNames, setFamilyNames] = useState('');
   const [step, setStep] = useState<'server' | 'profile'>(
     BAKED_SERVER_URL ? 'profile' : 'server'
   );
@@ -86,7 +87,7 @@ export default function SetupScreen() {
     setError(null);
 
     const url = normalizeUrl(serverUrl);
-    const { data, error: err } = await register(url, name.trim(), email.trim());
+    const { data, error: err } = await register(url, name.trim(), email.trim(), familyNames.trim());
 
     setLoading(false);
 
@@ -169,7 +170,7 @@ export default function SetupScreen() {
           <>
             <Text style={styles.heading}>Create your profile</Text>
             <Text style={styles.subheading}>
-              This is how Memu will know you. Your name is stored on the server — it never goes to any AI model.
+              This is how Memu will know you. Adding your household names here helps the Digital Twin aggressively anonymise them. The cloud AI never learns your real names.
             </Text>
 
             <View style={styles.serverConfirm}>
@@ -187,6 +188,19 @@ export default function SetupScreen() {
                 placeholderTextColor={colors.textMuted}
                 value={name}
                 onChangeText={(t) => { setName(t); setError(null); }}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Family names (comma separated)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Rach, Robin"
+                placeholderTextColor={colors.textMuted}
+                value={familyNames}
+                onChangeText={(t) => { setFamilyNames(t); setError(null); }}
                 autoCapitalize="words"
                 returnKeyType="next"
               />

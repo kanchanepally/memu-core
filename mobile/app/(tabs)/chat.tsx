@@ -158,12 +158,10 @@ export default function ChatScreen() {
           placeholderTextColor={colors.textMuted}
           value={input}
           onChangeText={setInput}
-          onSubmitEditing={handleSend}
-          onKeyPress={handleKeyPress}
-          returnKeyType="send"
           blurOnSubmit={false}
-          multiline
-          maxLength={2000}
+          multiline={true}
+          scrollEnabled={true}
+          maxLength={10000}
           editable={!sending}
         />
         <Pressable
