@@ -1,6 +1,6 @@
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { getClaudeResponse, ConversationMessage } from './claude';
+import { generateResponse, ConversationMessage } from './provider';
 import { retrieveRelevantContext } from './context';
 import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
@@ -113,9 +113,9 @@ export async function processIntelligencePipeline(
     console.log(`[HISTORY -> Loaded]: ${history.length / 2} previous exchanges.`);
   }
 
-  // 4. Claude API (with history for multi-turn conversation)
-  const claudeResponse = await getClaudeResponse(anonymousMsg, anonymousContexts, history);
-  console.log(`[CLAUDE -> Raw]: ${claudeResponse}`);
+  // 4. LLM call (provider selected via MEMU_LLM_PROVIDER; Digital Twin guarantees anonymity regardless)
+  const claudeResponse = await generateResponse(anonymousMsg, anonymousContexts, history);
+  console.log(`[LLM -> Raw]: ${claudeResponse}`);
 
   // 5. Reverse Translation (Anonymous -> Real)
   const realResponse = await translateToReal(claudeResponse);

@@ -1,7 +1,7 @@
 import { pool } from '../db/connection';
 import { fetchTodayEvents } from '../channels/calendar/google';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { getClaudeResponse } from './claude';
+import { generateResponse } from './provider';
 import { sock } from '../channels/whatsapp';
 
 export async function generateAndPushMorningBriefing(profileId: string) {
@@ -60,7 +60,7 @@ HERE IS THE FAMILY STATE FOR TODAY:
 ${anonState}`;
 
     console.log(`[BRIEFING ENGINE] Dispatching context synthesis to Claude...`);
-    const claudeRaw = await getClaudeResponse(prompt, []);
+    const claudeRaw = await generateResponse(prompt, []);
 
     // 6. Translate response back into Real Identity
     const realResponse = await translateToReal(claudeRaw);
