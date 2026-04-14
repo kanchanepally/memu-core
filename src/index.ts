@@ -313,6 +313,56 @@ server.get('/api/dashboard/spaces', async (request, reply) => {
   }
 });
 
+// Update a Space (human-edited synthesis page)
+server.put('/api/spaces/:id', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const { title, body_markdown } = request.body as { title?: string; body_markdown?: string };
+
+    if (typeof body_markdown !== 'string' || body_markdown.length === 0) {
+      return reply.code(400).send({ error: 'body_markdown is required' });
+    }
+
+    const res = await pool.query(
+      `UPDATE synthesis_pages
+         SET title = COALESCE($1, title),
+             body_markdown = $2,
+             last_updated_at = NOW()
+       WHERE id = $3 AND profile_id = $4
+       RETURNING *`,
+      [title || null, body_markdown, id, profileId]
+    );
+
+    if (res.rowCount === 0) {
+      return reply.code(404).send({ error: 'Space not found' });
+    }
+    return { space: res.rows[0] };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to update space' });
+  }
+});
+
+// Delete a Space
+server.delete('/api/spaces/:id', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const res = await pool.query(
+      `DELETE FROM synthesis_pages WHERE id = $1 AND profile_id = $2 RETURNING id`,
+      [id, profileId]
+    );
+    if (res.rowCount === 0) {
+      return reply.code(404).send({ error: 'Space not found' });
+    }
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to delete space' });
+  }
+});
+
 // Explicit extraction command (e.g. from Lists tab)
 server.post('/api/extract', async (request, reply) => {
   try {

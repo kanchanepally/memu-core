@@ -11,6 +11,7 @@ import {
 } from '../../lib/api';
 import { loadAuthState } from '../../lib/auth';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import ScreenHeader from '../../components/ScreenHeader';
 
 function formatTime(isoString: string | null): string {
   if (!isoString) return '';
@@ -158,6 +159,8 @@ export default function TodayScreen() {
 
   return (
     <>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <ScreenHeader showWordmark />
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -167,7 +170,7 @@ export default function TodayScreen() {
       <View style={styles.synthesisContainer}>
         <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
         <Text style={styles.date}>{formatDate()}</Text>
-        
+
         <View style={styles.synthesisCard}>
           {synthesisLoading ? (
             <Text style={styles.synthesisLoading}>Memu is synthesizing your day...</Text>
@@ -292,6 +295,7 @@ export default function TodayScreen() {
         <Text style={styles.privacyLink}>See what Cloud AI saw</Text>
       </Pressable>
     </ScrollView>
+    </View>
 
     {/* Edit Modal */}
     <Modal visible={!!editingCard} animationType="slide" transparent>
@@ -374,15 +378,14 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
 
   emptyCard: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
+    ...shadows.sm,
   },
   emptyText: { color: colors.textSecondary, fontSize: typography.sizes.body },
   emptyHint: { color: colors.textMuted, fontSize: typography.sizes.sm, marginTop: spacing.xs },
 
   eventCard: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm,
     ...shadows.sm,
   },
@@ -410,14 +413,14 @@ const styles = StyleSheet.create({
   streamCardType: { fontSize: typography.sizes.xs, color: colors.textMuted, textTransform: 'capitalize' },
   streamCardTitle: { fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text, marginBottom: spacing.xs },
   streamCardBody: { fontSize: typography.sizes.sm, color: colors.textSecondary, lineHeight: 20 },
-  streamCardActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  streamCardActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md, paddingTop: spacing.sm },
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   actionText: { fontSize: typography.sizes.sm, color: colors.accent, fontWeight: typography.weights.medium },
 
   shoppingSummary: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg,
+    ...shadows.sm,
   },
   shoppingText: { flex: 1, fontSize: typography.sizes.body, color: colors.text },
 
@@ -443,7 +446,6 @@ const styles = StyleSheet.create({
   },
   modalInput: {
     backgroundColor: colors.bg, borderRadius: radius.md, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
     fontSize: typography.sizes.body, color: colors.text, marginBottom: spacing.md,
   },
   modalInputMultiline: {
@@ -454,7 +456,7 @@ const styles = StyleSheet.create({
   },
   modalCancelButton: {
     paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, backgroundColor: colors.surfaceHover,
   },
   modalCancelText: {
     fontSize: typography.sizes.body, color: colors.textSecondary, fontWeight: typography.weights.medium,

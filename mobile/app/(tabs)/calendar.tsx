@@ -5,6 +5,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { getTodayBrief, getGoogleAuthUrl, type BriefEvent } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import ScreenHeader from '../../components/ScreenHeader';
 
 function formatTime(isoString: string | null): string {
   if (!isoString) return 'All day';
@@ -66,6 +67,8 @@ export default function CalendarScreen() {
   }
 
   return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <ScreenHeader title="Calendar" />
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -110,6 +113,7 @@ export default function CalendarScreen() {
         </>
       )}
     </ScrollView>
+    </View>
   );
 }
 
@@ -123,11 +127,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
     gap: spacing.md,
     marginTop: spacing.xl,
+    ...shadows.md,
   },
   connectTitle: {
     fontSize: typography.sizes.lg,
@@ -167,23 +170,18 @@ const styles = StyleSheet.create({
 
   emptyCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
     alignItems: 'center',
     gap: spacing.sm,
+    ...shadows.sm,
   },
   emptyText: { color: colors.textSecondary, fontSize: typography.sizes.body },
 
   eventCard: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.sourceCalendar,
     marginBottom: spacing.sm,
     ...shadows.sm,
   },

@@ -7,6 +7,7 @@ import type { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { sendMessage, getChatHistory } from '../../lib/api';
 import { colors, spacing, radius, typography } from '../../lib/tokens';
+import ScreenHeader from '../../components/ScreenHeader';
 
 interface Message {
   id: string;
@@ -131,6 +132,7 @@ export default function ChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
+      <ScreenHeader title="Chat" />
       <FlatList
         ref={flatListRef}
         data={messages}

@@ -1,54 +1,43 @@
 /**
  * Memu Design Tokens — Mobile
  * Source of truth: memu-platform/03-UX-DESIGN-SYSTEM.md
- * System fonts only. Purple accent. No Google Fonts.
+ * Anytype-inspired: spatial separation over borders, soft wide shadows,
+ * cool off-white background with pristine white cards.
  */
 
 export const colors = {
-  // Vibrant accents
-  accent: '#6D28D9', // Purple from new logo
-  accentEnd: '#8B5CF6', 
-  accentLight: '#EDE9FE', // Very light lavender
+  // Accent (memu purple gradient)
+  accent: '#667eea',
+  accentEnd: '#764ba2',
+  accentLight: '#EDE9FE',
 
-  // Cool backgrounds
-  bg: '#FAFAFC', // Clean off-white background
-  surface: '#FFFFFF', // Clean white cards
-  surfaceHover: '#F5F3FF', // Lavender highlight
+  // Surfaces — cool neutral bg, pristine white cards
+  bg: '#F5F5F7',
+  surface: '#FFFFFF',
+  surfaceHover: '#F5F3FF',
 
-  // Text colors (Indigo scale)
+  // Text (indigo scale)
   text: '#1E1B4B',
   textSecondary: '#4338CA',
   textMuted: '#94A3B8',
-  textInverse: '#ffffff',
+  textInverse: '#FFFFFF',
 
+  // Very subtle dividers — use sparingly, prefer shadow spacing
+  border: '#ECECF0',
+  borderHover: '#D9D9E0',
+
+  // Semantic
   success: '#34A853',
   warning: '#FBBC05',
   error: '#EA4335',
   info: '#4285F4',
 
-  // Source semantics (stream card left border)
-  sourceChat: '#10b981',
-  bg: baseColors.gray[50],
-  surface: baseColors.white,
-  surfaceHover: baseColors.gray[100],
-  text: baseColors.black,
-  textSecondary: baseColors.gray[600],
-  textMuted: baseColors.gray[400],
-  border: baseColors.gray[100], // Extemely subtle dividers if needed
-  borderHover: baseColors.gray[200],
-  accent: baseColors.accent.main,
-  accentBg: baseColors.accent.light,
-  error: '#EF4444',
-  success: baseColors.green,
-  info: baseColors.blue,
-  warning: baseColors.yellow,
-  
-  // Intelligence card source colors (softened)
-  sourceChat: baseColors.green,
-  sourceCalendar: baseColors.blue,
-  sourceEmail: baseColors.yellow,
-  sourceDocument: baseColors.gray[500],
-  sourceManual: baseColors.accent.main,
+  // Stream card source accents (used as minimalist dots)
+  sourceChat: '#10B981',
+  sourceCalendar: '#4285F4',
+  sourceEmail: '#FBBC05',
+  sourceDocument: '#94A3B8',
+  sourceManual: '#667eea',
 } as const;
 
 export const spacing = {
@@ -69,7 +58,7 @@ export const radius = {
 } as const;
 
 export const typography = {
-  fontFamily: 'Outfit_400Regular', // React Native uses system font by default
+  fontFamily: 'Outfit_400Regular',
   sizes: {
     xs: 12,
     sm: 14,
@@ -78,6 +67,7 @@ export const typography = {
     xl: 20,
     '2xl': 24,
     '3xl': 30,
+    '4xl': 40,
   },
   weights: {
     normal: '400' as const,
@@ -87,27 +77,28 @@ export const typography = {
   },
 } as const;
 
+// Anytype-style shadows: incredibly soft, wide, layered
 export const shadows = {
   none: {},
   sm: {
-    shadowColor: baseColors.gray[600],
+    shadowColor: '#1E1B4B',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 1,
   },
   md: {
-    shadowColor: baseColors.gray[800],
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#1E1B4B',
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowRadius: 20,
+    elevation: 3,
   },
   lg: {
-    shadowColor: baseColors.gray[900],
-    shadowOffset: { width: 0, height: 16 },
+    shadowColor: '#1E1B4B',
+    shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowRadius: 28,
+    elevation: 6,
   },
 } as const;

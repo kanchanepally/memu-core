@@ -246,6 +246,19 @@ export async function getSpaces(): Promise<ApiResponse<{ spaces: SynthesisPage[]
   return request<{ spaces: SynthesisPage[] }>('/api/dashboard/spaces');
 }
 
+export async function updateSpace(id: string, title: string, body_markdown: string) {
+  return request<{ space: SynthesisPage }>(`/api/spaces/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ title, body_markdown }),
+  });
+}
+
+export async function deleteSpace(id: string) {
+  return request<{ success: boolean }>(`/api/spaces/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function extractListCommand(content: string) {
   return request<{ success: boolean }>('/api/extract', {
     method: 'POST',

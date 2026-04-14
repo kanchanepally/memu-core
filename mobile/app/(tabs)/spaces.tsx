@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Modal, KeyboardAvoidingView, Platform, TextInput, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
-import { getSpaces, type SynthesisPage } from '../../lib/api';
+import { getSpaces, updateSpace, type SynthesisPage } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { stripMarkdown } from '../../lib/markdown';
+import ScreenHeader from '../../components/ScreenHeader';
 
 export default function SpacesScreen() {
   const [spaces, setSpaces] = useState<SynthesisPage[]>([]);
@@ -12,6 +14,35 @@ export default function SpacesScreen() {
 
   // Modal State
   const [selectedPage, setSelectedPage] = useState<SynthesisPage | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const openEditor = () => {
+    if (!selectedPage) return;
+    setEditTitle(selectedPage.title);
+    setEditBody(selectedPage.body_markdown);
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!selectedPage) return;
+    setSaving(true);
+    const { data } = await updateSpace(selectedPage.id, editTitle.trim(), editBody);
+    setSaving(false);
+    if (data?.space) {
+      const updated = data.space;
+      setSpaces(prev => prev.map(s => (s.id === updated.id ? updated : s)));
+      setSelectedPage(updated);
+      setIsEditing(false);
+    }
+  };
+
+  const closeModal = () => {
+    setIsEditing(false);
+    setSelectedPage(null);
+  };
 
   const loadSpaces = useCallback(async () => {
     const { data } = await getSpaces();
@@ -52,12 +83,13 @@ export default function SpacesScreen() {
 
   return (
     <>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScreenHeader title="Spaces" />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
-        <Text style={styles.viewTitle}>Family Spaces</Text>
         <Text style={styles.viewSubtitle}>Living knowledge, compiled automatically.</Text>
         
         {spaces.length === 0 && (
@@ -76,11 +108,12 @@ export default function SpacesScreen() {
                 <Text style={styles.categoryText}>{page.category}</Text>
               </View>
               <Text style={styles.cardTitle}>{page.title}</Text>
-              <Text style={styles.cardPreview} numberOfLines={3}>{page.body_markdown}</Text>
+              <Text style={styles.cardPreview} numberOfLines={3}>{stripMarkdown(page.body_markdown)}</Text>
             </Pressable>
           ))}
         </View>
       </ScrollView>
+      </View>
 
       {/* Detail Modal */}
       <Modal visible={!!selectedPage} animationType="slide" transparent>
@@ -88,41 +121,82 @@ export default function SpacesScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderTop}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 }}>
                   <Ionicons name={getCategoryIcon(selectedPage?.category || '')} size={24} color={colors.accent} />
-                  <Text style={styles.modalTitle}>{selectedPage?.title}</Text>
+                  {isEditing ? (
+                    <TextInput
+                      style={styles.editTitleInput}
+                      value={editTitle}
+                      onChangeText={setEditTitle}
+                      placeholder="Space title"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  ) : (
+                    <Text style={styles.modalTitle}>{selectedPage?.title}</Text>
+                  )}
                 </View>
-                <Pressable onPress={() => setSelectedPage(null)}>
+                <Pressable onPress={closeModal}>
                   <Ionicons name="close-circle" size={28} color={colors.textMuted} />
                 </Pressable>
               </View>
               {/* Action Bar */}
               <View style={styles.modalActions}>
-                <Pressable style={styles.actionButton}>
-                  <Ionicons name="create-outline" size={16} color={colors.accent} />
-                  <Text style={styles.actionText}>Edit</Text>
-                </Pressable>
-                <Pressable 
-                  style={styles.actionButton}
-                  onPress={() => {
-                    if (selectedPage) {
-                      Share.share({
-                        title: selectedPage.title,
-                        message: selectedPage.body_markdown
-                      });
-                    }
-                  }}
-                >
-                  <Ionicons name="share-outline" size={16} color={colors.accent} />
-                  <Text style={styles.actionText}>Share</Text>
-                </Pressable>
+                {isEditing ? (
+                  <>
+                    <Pressable
+                      style={[styles.actionButton, saving && { opacity: 0.6 }]}
+                      onPress={handleSave}
+                      disabled={saving}
+                    >
+                      <Ionicons name="checkmark-outline" size={16} color={colors.accent} />
+                      <Text style={styles.actionText}>{saving ? 'Saving…' : 'Save'}</Text>
+                    </Pressable>
+                    <Pressable style={styles.actionButton} onPress={() => setIsEditing(false)}>
+                      <Ionicons name="close-outline" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.actionText, { color: colors.textSecondary }]}>Cancel</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable style={styles.actionButton} onPress={openEditor}>
+                      <Ionicons name="create-outline" size={16} color={colors.accent} />
+                      <Text style={styles.actionText}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.actionButton}
+                      onPress={() => {
+                        if (selectedPage) {
+                          Share.share({
+                            title: selectedPage.title,
+                            message: selectedPage.body_markdown,
+                          });
+                        }
+                      }}
+                    >
+                      <Ionicons name="share-outline" size={16} color={colors.accent} />
+                      <Text style={styles.actionText}>Share</Text>
+                    </Pressable>
+                  </>
+                )}
               </View>
             </View>
-            <ScrollView style={styles.modalScroll}>
-              <Markdown style={markdownStyles}>
-                {selectedPage?.body_markdown || ''}
-              </Markdown>
-            </ScrollView>
+            {isEditing ? (
+              <TextInput
+                style={styles.editBodyInput}
+                value={editBody}
+                onChangeText={setEditBody}
+                multiline
+                textAlignVertical="top"
+                placeholder="Markdown content…"
+                placeholderTextColor={colors.textMuted}
+              />
+            ) : (
+              <ScrollView style={styles.modalScroll}>
+                <Markdown style={markdownStyles}>
+                  {selectedPage?.body_markdown || ''}
+                </Markdown>
+              </ScrollView>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -147,10 +221,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.sm,
+    borderRadius: radius.lg,
+    ...shadows.md,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
   categoryText: { fontSize: typography.sizes.xs, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -173,6 +245,27 @@ const styles = StyleSheet.create({
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surfaceHover, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
   actionText: { color: colors.accent, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   modalScroll: { flex: 1 },
+  editTitleInput: {
+    flex: 1,
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surfaceHover,
+    borderRadius: radius.sm,
+  },
+  editBodyInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.body,
+    color: colors.text,
+    fontFamily: 'Outfit_400Regular',
+    lineHeight: 24,
+    ...shadows.sm,
+  },
 });
 
 const markdownStyles = StyleSheet.create({

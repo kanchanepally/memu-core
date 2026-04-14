@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, TextInpu
 import { Ionicons } from '@expo/vector-icons';
 import { getTodayBrief, resolveCard, extractListCommand, type StreamCard } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import ScreenHeader from '../../components/ScreenHeader';
 
 export default function ListsScreen() {
   const [tasks, setTasks] = useState<StreamCard[]>([]);
@@ -58,6 +59,7 @@ export default function ListsScreen() {
 
   return (
     <View style={styles.container}>
+      <ScreenHeader title="Lists" />
       {/* Nori-inspired Segmented Control */}
       <View style={styles.tabContainer}>
         <Pressable 
@@ -140,8 +142,6 @@ const styles = StyleSheet.create({
   },
   tabActive: {
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
     ...shadows.sm,
   },
   tabText: {
@@ -162,9 +162,9 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1, backgroundColor: colors.surface, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: spacing.md, paddingVertical: 12,
     fontSize: typography.sizes.body, color: colors.text,
+    ...shadows.sm,
   },
   addButton: {
     backgroundColor: colors.accent, borderRadius: radius.pill,
@@ -176,9 +176,9 @@ const styles = StyleSheet.create({
 
   item: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
-    marginBottom: spacing.sm, 
-    borderWidth: 1, borderColor: colors.surfaceHover,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...shadows.sm,
   },
   checkbox: { width: 32, justifyContent: 'center' },
   itemContent: { flex: 1 },
