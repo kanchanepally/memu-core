@@ -158,6 +158,10 @@ export async function getTodayBrief(): Promise<ApiResponse<BriefResponse>> {
   return request<BriefResponse>('/api/dashboard/brief');
 }
 
+export async function getSynthesis(): Promise<ApiResponse<{ synthesis: string | null }>> {
+  return request<{ synthesis: string | null }>('/api/dashboard/synthesis');
+}
+
 // Stream card actions
 export async function resolveCard(cardId: string) {
   return request<{ success: boolean }>('/api/stream/resolve', {

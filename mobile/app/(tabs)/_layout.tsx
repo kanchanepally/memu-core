@@ -1,7 +1,8 @@
 import { Tabs, useRouter } from 'expo-router';
-import { Pressable, Platform } from 'react-native';
+import { Pressable, Platform, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/tokens';
+import Logo from '../../components/Logo';
 
 function SettingsButton() {
   const router = useRouter();
@@ -16,26 +17,23 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.text,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
           borderTopWidth: 1,
-          paddingBottom: Platform.OS === 'ios' ? 0 : 4,
-          height: Platform.OS === 'ios' ? 84 : 60,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          borderTopColor: colors.border,
+          backgroundColor: colors.surface,
+          paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+          paddingTop: 10,
+          height: Platform.OS === 'ios' ? 85 : 65,
         },
         headerStyle: {
           backgroundColor: colors.surface,
         },
+        headerShadowVisible: false,
         headerTintColor: colors.text,
-        headerTitleStyle: {
-          fontWeight: '600',
-        },
+        headerLeft: () => <View style={{ marginLeft: 16 }}><Logo scale={0.25} width={100} height={30} /></View>,
+        headerTitle: '',
         headerRight: () => <SettingsButton />,
       }}
     >
@@ -94,3 +92,36 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  logoContainer: {
+    width: 28,
+    height: 28,
+    marginLeft: 16,
+    marginRight: 8,
+    position: 'relative'
+  },
+  circle: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+  },
+  circleLeft: {
+    borderColor: '#6D28D9', // Deep Purple
+    bottom: 2,
+    left: 0,
+  },
+  circleRight: {
+    borderColor: '#A78BFA', // Light Purple
+    bottom: 2,
+    right: 0,
+  },
+  circleTop: {
+    borderColor: '#8B5CF6', // Mid Purple
+    top: 0,
+    left: 5,
+  },
+});
+

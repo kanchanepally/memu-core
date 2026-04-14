@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Modal, KeyboardAvoidingView, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Modal, KeyboardAvoidingView, Platform, TextInput, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Markdown from 'react-native-markdown-display';
 import { getSpaces, type SynthesisPage } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 
@@ -101,14 +102,26 @@ export default function SpacesScreen() {
                   <Ionicons name="create-outline" size={16} color={colors.accent} />
                   <Text style={styles.actionText}>Edit</Text>
                 </Pressable>
-                <Pressable style={styles.actionButton}>
+                <Pressable 
+                  style={styles.actionButton}
+                  onPress={() => {
+                    if (selectedPage) {
+                      Share.share({
+                        title: selectedPage.title,
+                        message: selectedPage.body_markdown
+                      });
+                    }
+                  }}
+                >
                   <Ionicons name="share-outline" size={16} color={colors.accent} />
-                  <Text style={styles.actionText}>Share / Invite</Text>
+                  <Text style={styles.actionText}>Share</Text>
                 </Pressable>
               </View>
             </View>
             <ScrollView style={styles.modalScroll}>
-              <Text style={styles.modalBody}>{selectedPage?.body_markdown}</Text>
+              <Markdown style={markdownStyles}>
+                {selectedPage?.body_markdown || ''}
+              </Markdown>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -160,5 +173,41 @@ const styles = StyleSheet.create({
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surfaceHover, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
   actionText: { color: colors.accent, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   modalScroll: { flex: 1 },
-  modalBody: { fontSize: typography.sizes.body, color: colors.text, lineHeight: 24 },
+});
+
+const markdownStyles = StyleSheet.create({
+  body: {
+    fontSize: typography.sizes.body,
+    lineHeight: 24,
+    color: colors.text,
+    fontFamily: 'Outfit_400Regular',
+  },
+  heading1: {
+    fontSize: typography.sizes['2xl'],
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    fontFamily: 'Outfit_700Bold',
+  },
+  heading2: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.bold,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    fontFamily: 'Outfit_700Bold',
+  },
+  heading3: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.semibold,
+    color: colors.textSecondary,
+    fontFamily: 'Outfit_600SemiBold',
+  },
+  paragraph: {
+    marginBottom: spacing.sm,
+  },
+  listItem: {
+    marginBottom: spacing.xs,
+  },
 });

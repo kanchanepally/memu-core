@@ -4,6 +4,59 @@ import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { generateResponse } from './provider';
 import { sock } from '../channels/whatsapp';
 
+export async function generateProactiveSynthesis(profileId: string): Promise<string | null> {
+  try {
+    const upcomingEvents = await fetchUpcomingEvents(profileId);
+    
+    // Filter for today
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    const events = upcomingEvents.filter(e => {
+        const startTime = e.start?.dateTime || e.start?.date || null;
+        if (!startTime) return false;
+        return new Date(startTime) <= todayEnd;
+    });
+
+    const streamRes = await pool.query(
+      `SELECT * FROM stream_cards WHERE family_id = $1 AND status = 'active' ORDER BY created_at DESC`, 
+      [profileId]
+    );
+
+    const eventsStr = events.map((e: any) => {
+        const title = e.summary;
+        const start = e.start.dateTime ? new Date(e.start.dateTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'All Day';
+        const end = e.end.dateTime ? new Date(e.end.dateTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'All Day';
+        return `${title} (${start} to ${end})`;
+    }).join('\n');
+    
+    const streamStr = streamRes.rows.map((card: any) => `- [${card.card_type.toUpperCase()}] ${card.title}: ${card.body}`).join('\n');
+    
+    if (events.length === 0 && streamRes.rows.length === 0) {
+      return "Your day is completely clear. No scheduled events and no pending items require your attention.";
+    }
+
+    const compiledState = `TODAY'S CALENDAR:\n${eventsStr || 'No events.'}\n\nACTIVE ITEMS/COLLISIONS:\n${streamStr || 'No pending items.'}`;
+    const anonState = await translateToAnonymous(compiledState);
+
+    const prompt = `You are the family Chief of Staff. Write a short, highly empathetic morning briefing directly to the adult based on the context below. Focus on being proactively helpful.
+Your tone must be warm, casual, and highly competent. 
+DO NOT simply list the items. Synthesize them like a trusted human assistant would. 
+If there is a collision or tight overlap, flag it immediately.
+If there are pending items, gently mention 1 or 2 of them to keep things moving.
+Keep it firmly under 2 short paragraphs.
+
+HERE IS THE FAMILY STATE FOR TODAY:
+${anonState}`;
+
+    const claudeRaw = await generateResponse(prompt, []);
+    const realResponse = await translateToReal(claudeRaw);
+    return realResponse;
+  } catch(err) {
+    console.error('[SYNTHESIS ERROR]:', err);
+    return null;
+  }
+}
+
 export async function generateAndPushMorningBriefing(profileId: string) {
   try {
     // 1. Get WhatsApp Channel associated with the profile

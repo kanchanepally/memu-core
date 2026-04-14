@@ -102,8 +102,14 @@ export default function SettingsScreen() {
       <Text style={styles.sectionLabel}>Privacy</Text>
       <View style={styles.section}>
         <SettingRow
+          icon="library-outline"
+          title="Family Memory"
+          subtitle="View compounded context graph"
+          onPress={() => router.push('/memory')}
+        />
+        <SettingRow
           icon="eye-outline"
-          title="What Claude Saw"
+          title="What AI Saw"
           subtitle="View the Privacy Ledger"
           onPress={() => router.push('/ledger')}
         />

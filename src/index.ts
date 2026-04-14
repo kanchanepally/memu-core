@@ -7,7 +7,7 @@ import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
-import { generateAndPushMorningBriefing } from './intelligence/briefing';
+import { generateAndPushMorningBriefing, generateProactiveSynthesis } from './intelligence/briefing';
 import { requireAuth, registerProfile } from './auth';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
 import fastifyStatic from '@fastify/static';
@@ -206,6 +206,31 @@ server.get('/api/auth/google/callback', async (request, reply) => {
        message: err.message, 
        stack: err.stack 
     });
+  }
+});
+
+// Synthesis Endpoint for App Landing Page
+server.get('/api/dashboard/synthesis', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const synthesis = await generateProactiveSynthesis(profileId);
+    return { synthesis };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to generate synthesis' });
+  }
+});
+
+// Family Memory Endpoint
+server.get('/api/memory/recent', async (request, reply) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, source, content, created_at FROM context_entries ORDER BY created_at DESC LIMIT 50`
+    );
+    return rows;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch memory' });
   }
 });
 

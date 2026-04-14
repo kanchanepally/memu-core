@@ -28,21 +28,27 @@ export const colors = {
 
   // Source semantics (stream card left border)
   sourceChat: '#10b981',
-  sourceCalendar: '#3b82f6',
-  sourceEmail: '#f59e0b',
-  sourceDocument: '#8b5cf6',
-  sourcePhoto: '#ec4899',
-  sourceManual: '#94a3b8',
-
-  // Stream card states
-  stateSuggested: '#667eea',
-  stateConfirmed: '#10b981',
-  stateExecuted: '#475569',
-  stateDismissed: '#cbd5e1',
-
-  // Borders
-  border: '#e2e8f0',
-  borderFocus: '#667eea',
+  bg: baseColors.gray[50],
+  surface: baseColors.white,
+  surfaceHover: baseColors.gray[100],
+  text: baseColors.black,
+  textSecondary: baseColors.gray[600],
+  textMuted: baseColors.gray[400],
+  border: baseColors.gray[100], // Extemely subtle dividers if needed
+  borderHover: baseColors.gray[200],
+  accent: baseColors.accent.main,
+  accentBg: baseColors.accent.light,
+  error: '#EF4444',
+  success: baseColors.green,
+  info: baseColors.blue,
+  warning: baseColors.yellow,
+  
+  // Intelligence card source colors (softened)
+  sourceChat: baseColors.green,
+  sourceCalendar: baseColors.blue,
+  sourceEmail: baseColors.yellow,
+  sourceDocument: baseColors.gray[500],
+  sourceManual: baseColors.accent.main,
 } as const;
 
 export const spacing = {
@@ -63,8 +69,7 @@ export const radius = {
 } as const;
 
 export const typography = {
-  // System fonts — no custom font loading needed
-  fontFamily: undefined, // React Native uses system font by default
+  fontFamily: 'Outfit_400Regular', // React Native uses system font by default
   sizes: {
     xs: 12,
     sm: 14,
@@ -83,18 +88,26 @@ export const typography = {
 } as const;
 
 export const shadows = {
+  none: {},
   sm: {
-    shadowColor: '#4a3f8c',
+    shadowColor: baseColors.gray[600],
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
     elevation: 2,
   },
   md: {
-    shadowColor: '#4a3f8c',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.20,
-    shadowRadius: 8,
+    shadowColor: baseColors.gray[800],
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
     elevation: 4,
+  },
+  lg: {
+    shadowColor: baseColors.gray[900],
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 8,
   },
 } as const;

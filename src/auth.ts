@@ -47,6 +47,12 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
  * Register a new profile. Returns the profile with API key.
  */
 export async function registerProfile(displayName: string, email: string, role: string = 'adult', familyNames: string = '') {
+  // SINGLE-TENANT MVP: Return the primary profile if it exists to keep mobile and web perfectly synced.
+  const existingRes = await pool.query('SELECT id, display_name, email, role, api_key, created_at FROM profiles ORDER BY created_at ASC LIMIT 1');
+  if (existingRes.rowCount > 0 && existingRes.rows[0]) {
+    return existingRes.rows[0];
+  }
+
   const apiKey = generateApiKey();
 
   const res = await pool.query(

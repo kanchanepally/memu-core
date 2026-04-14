@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit';
 import { colors } from '../lib/tokens';
 import { loadAuthState } from '../lib/auth';
 
@@ -10,6 +11,14 @@ export default function RootLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
   const segments = useSegments();
+
+  // Load custom premium fonts
+  const [fontsLoaded] = useFonts({
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_600SemiBold,
+    Outfit_700Bold,
+  });
 
   useEffect(() => {
     (async () => {
@@ -20,12 +29,10 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (!isReady) return;
+    if (!isReady || !fontsLoaded) return;
 
     const inOnboarding = segments[0] === 'onboarding';
 
-    // When they try to navigate out of onboarding (e.g. to tabs), re-verify auth.
-    // This fixes the bug where the local `isAuthenticated` state is stale after setup.
     if (!inOnboarding) {
       loadAuthState().then((auth) => {
         if (!auth.isAuthenticated) {
@@ -35,12 +42,11 @@ export default function RootLayout() {
         }
       });
     } else if (isAuthenticated && inOnboarding) {
-      // Logged in but still on onboarding — go to main app
       router.replace('/(tabs)');
     }
-  }, [isReady, isAuthenticated, segments]);
+  }, [isReady, isAuthenticated, segments, fontsLoaded]);
 
-  if (!isReady) {
+  if (!isReady || !fontsLoaded) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -55,7 +61,7 @@ export default function RootLayout() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: '600' },
+          headerTitleStyle: { fontWeight: '600', fontFamily: 'Outfit_600SemiBold' },
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
@@ -64,7 +70,14 @@ export default function RootLayout() {
         <Stack.Screen
           name="ledger"
           options={{
-            title: 'What Claude Saw',
+            title: 'What AI Saw',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="memory"
+          options={{
+            title: 'Family Memory',
             presentation: 'modal',
           }}
         />

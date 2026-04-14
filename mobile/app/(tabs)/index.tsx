@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
-  getTodayBrief, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
+  getTodayBrief, getSynthesis, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
   type BriefEvent, type StreamCard,
 } from '../../lib/api';
 import { loadAuthState } from '../../lib/auth';
@@ -60,6 +60,9 @@ export default function TodayScreen() {
   const [error, setError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
 
+  const [synthesis, setSynthesis] = useState<string | null>(null);
+  const [synthesisLoading, setSynthesisLoading] = useState(true);
+
   const loadBrief = useCallback(async () => {
     const { data, error: err } = await getTodayBrief();
     if (err) {
@@ -74,8 +77,16 @@ export default function TodayScreen() {
     setLoading(false);
   }, []);
 
+  const loadSynthesis = useCallback(async () => {
+    setSynthesisLoading(true);
+    const { data } = await getSynthesis();
+    if (data?.synthesis) setSynthesis(data.synthesis);
+    setSynthesisLoading(false);
+  }, []);
+
   useEffect(() => {
     loadBrief();
+    loadSynthesis();
     loadAuthState().then(auth => {
       if (auth.displayName) setDisplayName(auth.displayName);
     });
@@ -83,9 +94,9 @@ export default function TodayScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadBrief();
+    await Promise.all([loadBrief(), loadSynthesis()]);
     setRefreshing(false);
-  }, [loadBrief]);
+  }, [loadBrief, loadSynthesis]);
 
   // Edit modal state
   const [editingCard, setEditingCard] = useState<StreamCard | null>(null);
@@ -152,18 +163,18 @@ export default function TodayScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTitleRow}>
-          {/* Memu 3-circle logo */}
-          <View style={styles.logoContainer}>
-            <View style={[styles.circle, styles.circleLeft]} />
-            <View style={[styles.circle, styles.circleRight]} />
-            <View style={[styles.circle, styles.circleTop]} />
-          </View>
-          <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
-        </View>
+      {/* Proactive Synthesis Banner */}
+      <View style={styles.synthesisContainer}>
+        <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
         <Text style={styles.date}>{formatDate()}</Text>
+        
+        <View style={styles.synthesisCard}>
+          {synthesisLoading ? (
+            <Text style={styles.synthesisLoading}>Memu is synthesizing your day...</Text>
+          ) : (
+            <Text style={styles.synthesisText}>{synthesis || "You are all caught up for today."}</Text>
+          )}
+        </View>
       </View>
 
       {/* Connection status */}
@@ -217,10 +228,7 @@ export default function TodayScreen() {
           </View>
         ) : (
           cards.map(card => (
-            <View
-              key={card.id}
-              style={[styles.streamCard, { borderLeftColor: getSourceColor(card.source) }]}
-            >
+            <View key={card.id} style={styles.streamCard}>
               <View style={styles.streamCardHeader}>
                 <View style={[styles.sourcePill, { backgroundColor: getSourceColor(card.source) + '18' }]}>
                   <View style={[styles.sourceDot, { backgroundColor: getSourceColor(card.source) }]} />
@@ -262,7 +270,8 @@ export default function TodayScreen() {
                 </Pressable>
               </View>
             </View>
-          ))}
+          ))
+        )}
       </View>
 
       {/* Shopping summary */}
@@ -339,38 +348,18 @@ const styles = StyleSheet.create({
   loadingText: { color: colors.textMuted, fontSize: typography.sizes.body },
 
   header: { marginBottom: spacing.lg },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
-  
-  logoContainer: {
-    width: 32,
-    height: 32,
-    marginRight: spacing.sm,
-    position: 'relative'
+  synthesisContainer: { marginBottom: spacing.lg },
+  synthesisCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    marginTop: spacing.md,
+    ...shadows.md,
   },
-  circle: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-  },
-  circleLeft: {
-    borderColor: '#6D28D9', // Deep Purple
-    bottom: 2,
-    left: 0,
-  },
-  circleRight: {
-    borderColor: '#A78BFA', // Light Purple
-    bottom: 2,
-    right: 0,
-  },
-  circleTop: {
-    borderColor: '#8B5CF6', // Mid Purple
-    top: 0,
-    left: 6,
-  },
+  synthesisText: { fontSize: typography.sizes.body, color: colors.text, lineHeight: 24 },
+  synthesisLoading: { fontSize: typography.sizes.body, color: colors.textMuted, fontStyle: 'italic' },
 
-  greeting: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold, color: colors.text },
+  greeting: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold, color: colors.text, fontFamily: 'Outfit_700Bold' },
   date: { fontSize: typography.sizes.body, color: colors.textSecondary },
 
   errorBanner: {
@@ -404,9 +393,11 @@ const styles = StyleSheet.create({
   eventTitle: { fontSize: typography.sizes.body, color: colors.text, flex: 1 },
 
   streamCard: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4,
-    marginBottom: spacing.sm, ...shadows.sm,
+    backgroundColor: '#ffffff',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
+    ...shadows.md,
   },
   streamCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
   sourcePill: {
