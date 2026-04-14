@@ -3,12 +3,15 @@ import 'dotenv/config'; // Load env variables immediately before other imports
 import Fastify from 'fastify';
 import pino from 'pino';
 import { testConnection, pool } from './db/connection';
+import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
-import { generateAndPushMorningBriefing, generateProactiveSynthesis } from './intelligence/briefing';
+import { generateAndPushMorningBriefing, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
+import { registerPushToken } from './channels/mobile';
 import { requireAuth, registerProfile } from './auth';
+import { verifyGoogleIdToken, signInWithGoogle } from './channels/auth/google-signin';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
@@ -82,16 +85,39 @@ server.post('/api/register', async (request, reply) => {
 
 server.addHook('preHandler', async (request, reply) => {
   const url = request.url;
-  // Skip auth for health, registration, OAuth callback, and static assets
+  // Skip auth for health, registration, Google sign-in, OAuth callback, and static assets
   if (
     url === '/health' ||
     url === '/api/register' ||
+    url === '/api/auth/google/signin' ||
     url.startsWith('/api/auth/google/callback') ||
     !url.startsWith('/api/')
   ) {
     return;
   }
   return requireAuth(request, reply);
+});
+
+// Google Sign-In — accepts a Google ID token from the mobile/web client,
+// verifies it server-side, and returns the primary profile's API key.
+server.post('/api/auth/google/signin', async (request, reply) => {
+  const body = request.body as { idToken?: string };
+  if (!body || !body.idToken) {
+    return reply.code(400).send({ error: 'idToken is required' });
+  }
+  try {
+    const identity = await verifyGoogleIdToken(body.idToken);
+    const profile = await signInWithGoogle(identity);
+    return {
+      id: profile.id,
+      displayName: profile.display_name,
+      email: profile.email,
+      apiKey: profile.api_key,
+    };
+  } catch (err: any) {
+    server.log.error({ err }, 'Google sign-in failed');
+    return reply.code(401).send({ error: 'Google sign-in failed', detail: err?.message });
+  }
 });
 
 // Manual Context Seeding — uses authenticated profile
@@ -172,11 +198,26 @@ server.post('/api/message', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
     const messageId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const responseText = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId);
+    const visibility = body.visibility === 'personal' ? 'personal' : 'family';
+    const responseText = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId, visibility);
     return { response: responseText };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Pipeline failed' });
+  }
+});
+
+// Register an Expo push token for the authenticated profile
+server.post('/api/push/register', async (request, reply) => {
+  const body = request.body as any;
+  if (!body?.token) return reply.code(400).send({ error: 'token required' });
+  try {
+    const profileId = (request as any).profileId;
+    await registerPushToken(profileId, body.token, body.platform);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(400).send({ error: err instanceof Error ? err.message : 'Registration failed' });
   }
 });
 
@@ -605,6 +646,39 @@ server.get('/api/export', async (request, reply) => {
   }
 });
 
+// Profile — update display name
+server.patch('/api/profile', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { displayName } = (request.body as { displayName?: string }) || {};
+    if (!displayName || !displayName.trim()) {
+      return reply.code(400).send({ error: 'displayName required' });
+    }
+    const trimmed = displayName.trim().slice(0, 80);
+    const res = await pool.query(
+      "UPDATE profiles SET display_name = $1 WHERE id = $2 RETURNING id, display_name, role",
+      [trimmed, profileId]
+    );
+    if (res.rows.length === 0) return reply.code(404).send({ error: 'Profile not found' });
+    return { success: true, profile: res.rows[0] };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to update profile' });
+  }
+});
+
+// Chat — clear conversation history for this profile
+server.post('/api/chat/clear', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    await pool.query("DELETE FROM messages WHERE profile_id = $1", [profileId]);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to clear chat' });
+  }
+});
+
 // DATA SOVEREIGNTY: Divorce / Household Detachment
 server.post('/api/family/detach', async (request, reply) => {
   try {
@@ -641,6 +715,7 @@ const start = async () => {
     
     // Initialize required external services
     await testConnection();
+    await runMigrations();
 
     // WhatsApp is OPTIONAL — mobile app is the primary channel
     try {
@@ -653,33 +728,49 @@ const start = async () => {
     await server.listen({ port: 3100, host: '0.0.0.0' });
     server.log.info(`PWA running at http://localhost:3100`);
 
-    // Slice 3: Schedule Morning Briefing for 7:00 AM Every Day
-    // Picks every adult/admin profile that has a linked WhatsApp channel.
-    // Runs them sequentially so one bad briefing can't take down the rest.
+    // Schedule morning briefings at 07:00 Europe/London every day.
+    // Mobile push is the primary delivery. WhatsApp is a legacy fallback for
+    // profiles that still have a linked channel.
     cron.schedule('0 7 * * *', async () => {
       server.log.info('Running daily morning briefings...');
-      const recipientsRes = await pool.query(`
+
+      // Mobile push path: any adult/admin with a registered Expo token.
+      const pushRes = await pool.query(`
+        SELECT DISTINCT p.id, p.display_name
+        FROM profiles p
+        INNER JOIN push_tokens pt ON pt.profile_id = p.id
+        WHERE p.role IN ('adult', 'admin')
+      `);
+      for (const row of pushRes.rows) {
+        try {
+          server.log.info(`Pushing mobile briefing to ${row.display_name} (${row.id})`);
+          await pushMorningBriefingToMobile(row.id);
+        } catch (err) {
+          server.log.error({ err, profileId: row.id }, 'Mobile briefing push failed');
+        }
+      }
+
+      // Legacy WhatsApp path.
+      const waRes = await pool.query(`
         SELECT p.id, p.display_name
         FROM profiles p
         INNER JOIN profile_channels pc
           ON pc.profile_id = p.id AND pc.channel = 'whatsapp'
         WHERE p.role IN ('adult', 'admin')
       `);
-
-      if (recipientsRes.rows.length === 0) {
-        server.log.warn('No adults with a linked WhatsApp channel — skipping briefings');
-        return;
-      }
-
-      for (const row of recipientsRes.rows) {
+      for (const row of waRes.rows) {
         try {
-          server.log.info(`Pushing briefing to ${row.display_name} (${row.id})`);
+          server.log.info(`Pushing WhatsApp briefing to ${row.display_name} (${row.id})`);
           await generateAndPushMorningBriefing(row.id);
         } catch (err) {
-          server.log.error({ err, profileId: row.id }, 'Briefing failed for profile');
+          server.log.error({ err, profileId: row.id }, 'WhatsApp briefing failed');
         }
       }
-    });
+
+      if (pushRes.rows.length === 0 && waRes.rows.length === 0) {
+        server.log.warn('No recipients registered for briefings — skipping');
+      }
+    }, { timezone: 'Europe/London' });
 
   } catch (err) {
     server.log.error(err);

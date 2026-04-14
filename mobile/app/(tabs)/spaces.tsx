@@ -1,23 +1,74 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, Modal, KeyboardAvoidingView, Platform, TextInput, Share } from 'react-native';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View, Text, StyleSheet, Pressable, Modal, ScrollView,
+  KeyboardAvoidingView, Platform, TextInput, Share,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import { getSpaces, updateSpace, type SynthesisPage } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import { stripMarkdown } from '../../lib/markdown';
 import ScreenHeader from '../../components/ScreenHeader';
+import ScreenContainer from '../../components/ScreenContainer';
+import Masthead from '../../components/Masthead';
+import GradientButton from '../../components/GradientButton';
+
+type Category = 'all' | 'person' | 'routine' | 'household' | 'commitment' | 'document';
+
+const CATEGORY_ORDER: { key: Category; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'person', label: 'People' },
+  { key: 'routine', label: 'Routines' },
+  { key: 'household', label: 'Household' },
+  { key: 'commitment', label: 'Commitments' },
+  { key: 'document', label: 'Documents' },
+];
+
+function categoryIcon(category: string): React.ComponentProps<typeof Ionicons>['name'] {
+  switch (category) {
+    case 'person': return 'person-outline';
+    case 'routine': return 'time-outline';
+    case 'household': return 'home-outline';
+    case 'commitment': return 'calendar-number-outline';
+    case 'document': return 'document-text-outline';
+    default: return 'folder-outline';
+  }
+}
 
 export default function SpacesScreen() {
   const [spaces, setSpaces] = useState<SynthesisPage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<Category>('all');
 
-  // Modal State
   const [selectedPage, setSelectedPage] = useState<SynthesisPage | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const loadSpaces = useCallback(async () => {
+    const { data } = await getSpaces();
+    if (data) setSpaces(data.spaces);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadSpaces();
+  }, [loadSpaces]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadSpaces();
+    setRefreshing(false);
+  }, [loadSpaces]);
+
+  const filteredSpaces = useMemo(() => {
+    if (filter === 'all') return spaces;
+    return spaces.filter(s => s.category === filter);
+  }, [spaces, filter]);
+
+  const [featured, ...rest] = filteredSpaces;
 
   const openEditor = () => {
     if (!selectedPage) return;
@@ -32,9 +83,8 @@ export default function SpacesScreen() {
     const { data } = await updateSpace(selectedPage.id, editTitle.trim(), editBody);
     setSaving(false);
     if (data?.space) {
-      const updated = data.space;
-      setSpaces(prev => prev.map(s => (s.id === updated.id ? updated : s)));
-      setSelectedPage(updated);
+      setSpaces(prev => prev.map(s => (s.id === data.space.id ? data.space : s)));
+      setSelectedPage(data.space);
       setIsEditing(false);
     }
   };
@@ -44,142 +94,149 @@ export default function SpacesScreen() {
     setSelectedPage(null);
   };
 
-  const loadSpaces = useCallback(async () => {
-    const { data } = await getSpaces();
-    if (data) {
-      setSpaces(data.spaces);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadSpaces();
-  }, [loadSpaces]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadSpaces();
-    setRefreshing(false);
-  }, [loadSpaces]);
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'person': return 'person-outline';
-      case 'routine': return 'time-outline';
-      case 'household': return 'home-outline';
-      case 'commitment': return 'calendar-number-outline';
-      case 'document': return 'document-text-outline';
-      default: return 'folder-outline';
-    }
+  const handleShare = () => {
+    if (!selectedPage) return;
+    Share.share({ title: selectedPage.title, message: selectedPage.body_markdown });
   };
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.loadingText}>Loading Spaces...</Text>
+        <Text style={styles.loadingText}>Reading your spaces…</Text>
       </View>
     );
   }
 
   return (
-    <>
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScreenHeader title="Spaces" />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-      >
-        <Text style={styles.viewSubtitle}>Living knowledge, compiled automatically.</Text>
-        
-        {spaces.length === 0 && (
+    <View style={styles.screen}>
+      <ScreenHeader title="Spaces" statusLabel="Curated" statusPulse={false} />
+
+      <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
+        <Masthead
+          eyebrow="Curated knowledge"
+          headline="Your Spaces, quietly alive."
+          accent="quietly alive"
+        />
+
+        {/* Category chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsRow}
+          style={styles.chipsScroll}
+        >
+          {CATEGORY_ORDER.map(c => {
+            const active = filter === c.key;
+            return (
+              <Pressable
+                key={c.key}
+                onPress={() => setFilter(c.key)}
+                style={[styles.chip, active && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{c.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {filteredSpaces.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="albums-outline" size={48} color={colors.border} />
-            <Text style={styles.emptyText}>No spaces exist yet.</Text>
-            <Text style={styles.emptyHint}>Chat with Memu — it creates topics automatically over time.</Text>
+            <View style={styles.emptyIconWrap}>
+              <View style={styles.emptyGlow} />
+              <Ionicons name="albums-outline" size={32} color={colors.tertiary} />
+            </View>
+            <Text style={styles.emptyTitle}>Nothing curated yet.</Text>
+            <Text style={styles.emptyHint}>
+              Chat with Memu — spaces compile themselves as your knowledge settles.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {/* Feature card (full-width) */}
+            {featured ? (
+              <Pressable style={styles.featureCard} onPress={() => setSelectedPage(featured)}>
+                <View style={styles.featureGlow} />
+                <View style={styles.featureHeader}>
+                  <View style={styles.featureIconChip}>
+                    <Ionicons name={categoryIcon(featured.category)} size={20} color={colors.tertiary} />
+                  </View>
+                  <Text style={styles.featureCategory}>{featured.category}</Text>
+                </View>
+                <Text style={styles.featureTitle}>{featured.title}</Text>
+                <Text style={styles.featurePreview} numberOfLines={4}>
+                  {stripMarkdown(featured.body_markdown)}
+                </Text>
+                <View style={styles.featureFooter}>
+                  <Text style={styles.featureFooterText}>Open space</Text>
+                  <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                </View>
+              </Pressable>
+            ) : null}
+
+            {/* 2-column grid for remaining */}
+            {rest.length > 0 ? (
+              <View style={styles.gridRow}>
+                {rest.map(page => (
+                  <Pressable
+                    key={page.id}
+                    style={styles.gridCard}
+                    onPress={() => setSelectedPage(page)}
+                  >
+                    <View style={styles.gridCardHeader}>
+                      <Ionicons name={categoryIcon(page.category)} size={16} color={colors.tertiary} />
+                      <Text style={styles.gridCategory}>{page.category}</Text>
+                    </View>
+                    <Text style={styles.gridTitle} numberOfLines={2}>{page.title}</Text>
+                    <Text style={styles.gridPreview} numberOfLines={3}>
+                      {stripMarkdown(page.body_markdown)}
+                    </Text>
+                  </Pressable>
+                ))}
+                {rest.length % 2 === 1 ? <View style={styles.gridCardSpacer} /> : null}
+              </View>
+            ) : null}
           </View>
         )}
+      </ScreenContainer>
 
-        <View style={styles.grid}>
-          {spaces.map(page => (
-            <Pressable key={page.id} style={styles.card} onPress={() => setSelectedPage(page)}>
-              <View style={styles.cardHeader}>
-                <Ionicons name={getCategoryIcon(page.category)} size={20} color={colors.accent} />
-                <Text style={styles.categoryText}>{page.category}</Text>
-              </View>
-              <Text style={styles.cardTitle}>{page.title}</Text>
-              <Text style={styles.cardPreview} numberOfLines={3}>{stripMarkdown(page.body_markdown)}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
-      </View>
-
-      {/* Detail Modal */}
-      <Modal visible={!!selectedPage} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {/* Detail modal */}
+      <Modal visible={!!selectedPage} animationType="slide" transparent onRequestClose={closeModal}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+
             <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderTop}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 }}>
-                  <Ionicons name={getCategoryIcon(selectedPage?.category || '')} size={24} color={colors.accent} />
-                  {isEditing ? (
-                    <TextInput
-                      style={styles.editTitleInput}
-                      value={editTitle}
-                      onChangeText={setEditTitle}
-                      placeholder="Space title"
-                      placeholderTextColor={colors.textMuted}
-                    />
-                  ) : (
-                    <Text style={styles.modalTitle}>{selectedPage?.title}</Text>
-                  )}
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalIconChip}>
+                  <Ionicons
+                    name={categoryIcon(selectedPage?.category || '')}
+                    size={20}
+                    color={colors.tertiary}
+                  />
                 </View>
-                <Pressable onPress={closeModal}>
-                  <Ionicons name="close-circle" size={28} color={colors.textMuted} />
+                {isEditing ? (
+                  <TextInput
+                    style={styles.editTitleInput}
+                    value={editTitle}
+                    onChangeText={setEditTitle}
+                    placeholder="Space title"
+                    placeholderTextColor={colors.outline}
+                  />
+                ) : (
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalCategory}>{selectedPage?.category}</Text>
+                    <Text style={styles.modalTitle}>{selectedPage?.title}</Text>
+                  </View>
+                )}
+                <Pressable onPress={closeModal} hitSlop={12}>
+                  <Ionicons name="close" size={22} color={colors.outline} />
                 </Pressable>
               </View>
-              {/* Action Bar */}
-              <View style={styles.modalActions}>
-                {isEditing ? (
-                  <>
-                    <Pressable
-                      style={[styles.actionButton, saving && { opacity: 0.6 }]}
-                      onPress={handleSave}
-                      disabled={saving}
-                    >
-                      <Ionicons name="checkmark-outline" size={16} color={colors.accent} />
-                      <Text style={styles.actionText}>{saving ? 'Saving…' : 'Save'}</Text>
-                    </Pressable>
-                    <Pressable style={styles.actionButton} onPress={() => setIsEditing(false)}>
-                      <Ionicons name="close-outline" size={16} color={colors.textSecondary} />
-                      <Text style={[styles.actionText, { color: colors.textSecondary }]}>Cancel</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <>
-                    <Pressable style={styles.actionButton} onPress={openEditor}>
-                      <Ionicons name="create-outline" size={16} color={colors.accent} />
-                      <Text style={styles.actionText}>Edit</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.actionButton}
-                      onPress={() => {
-                        if (selectedPage) {
-                          Share.share({
-                            title: selectedPage.title,
-                            message: selectedPage.body_markdown,
-                          });
-                        }
-                      }}
-                    >
-                      <Ionicons name="share-outline" size={16} color={colors.accent} />
-                      <Text style={styles.actionText}>Share</Text>
-                    </Pressable>
-                  </>
-                )}
-              </View>
             </View>
+
             {isEditing ? (
               <TextInput
                 style={styles.editBodyInput}
@@ -188,83 +245,318 @@ export default function SpacesScreen() {
                 multiline
                 textAlignVertical="top"
                 placeholder="Markdown content…"
-                placeholderTextColor={colors.textMuted}
+                placeholderTextColor={colors.outline}
               />
             ) : (
-              <ScrollView style={styles.modalScroll}>
+              <ScrollView style={styles.modalScroll} contentContainerStyle={{ paddingBottom: spacing.xl }}>
                 <Markdown style={markdownStyles}>
                   {selectedPage?.body_markdown || ''}
                 </Markdown>
               </ScrollView>
             )}
+
+            <View style={styles.modalActions}>
+              {isEditing ? (
+                <>
+                  <GradientButton label="Cancel" variant="ghost" onPress={() => setIsEditing(false)} />
+                  <GradientButton
+                    label={saving ? 'Saving…' : 'Save'}
+                    onPress={handleSave}
+                    loading={saving}
+                  />
+                </>
+              ) : (
+                <>
+                  <GradientButton label="Share" variant="ghost" icon="share-outline" onPress={handleShare} />
+                  <GradientButton label="Edit" icon="create-outline" onPress={openEditor} />
+                </>
+              )}
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
-  loadingText: { color: colors.textMuted, fontSize: typography.sizes.body },
-  
-  viewTitle: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.xs },
-  viewSubtitle: { fontSize: typography.sizes.body, color: colors.textSecondary, marginBottom: spacing.lg },
-
-  empty: { alignItems: 'center', paddingVertical: spacing.xl * 2, gap: spacing.md },
-  emptyText: { color: colors.text, fontSize: typography.sizes.body, fontWeight: '500' },
-  emptyHint: { color: colors.textSecondary, fontSize: typography.sizes.sm, textAlign: 'center', paddingHorizontal: spacing.xl },
-
-  grid: { gap: spacing.md },
-  card: {
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    ...shadows.md,
+  screen: { flex: 1, backgroundColor: colors.surface },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface },
+  loadingText: {
+    color: colors.onSurfaceVariant,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
-  categoryText: { fontSize: typography.sizes.xs, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  cardTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.xs },
-  cardPreview: { fontSize: typography.sizes.sm, color: colors.textSecondary, lineHeight: 20 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // Category chips
+  chipsScroll: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  chipsRow: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  chip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  chipActive: {
+    backgroundColor: colors.tertiaryContainer,
+  },
+  chipLabel: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+  chipLabelActive: {
+    color: colors.onTertiaryContainer,
+  },
+
+  // Empty state
+  empty: {
+    alignItems: 'center',
+    paddingVertical: spacing['2xl'],
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  emptyGlow: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.tertiaryContainer,
+    opacity: 0.5,
+  },
+  emptyTitle: {
+    fontSize: typography.sizes.lg,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+  },
+  emptyHint: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // Grid
+  grid: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
+  },
+  featureCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    position: 'relative',
+    overflow: 'hidden',
+    ...shadows.medium,
+  },
+  featureGlow: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: colors.tertiaryContainer,
+    opacity: 0.35,
+  },
+  featureHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  featureIconChip: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureCategory: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+  },
+  featureTitle: {
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+    marginBottom: spacing.sm,
+    lineHeight: 28,
+  },
+  featurePreview: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 22,
+    marginBottom: spacing.md,
+  },
+  featureFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  featureFooterText: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+    letterSpacing: typography.tracking.wide,
+    textTransform: 'uppercase',
+  },
+
+  // Grid secondary cards
+  gridRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  gridCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    minHeight: 140,
+    ...shadows.low,
+  },
+  gridCardSpacer: {
+    flexBasis: '48%',
+    flexGrow: 1,
+  },
+  gridCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  gridCategory: {
+    fontSize: 9,
+    fontFamily: typography.families.label,
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+  },
+  gridTitle: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyBold,
+    color: colors.onSurface,
+    marginBottom: spacing.xs + 2,
+    lineHeight: 20,
+  },
+  gridPreview: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 17,
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(12,14,16,0.5)',
+    justifyContent: 'flex-end',
+  },
   modalCard: {
-    backgroundColor: colors.bg,
+    backgroundColor: colors.surfaceContainerLowest,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
-    height: '85%',
-    padding: spacing.lg,
-    ...shadows.md,
+    height: '88%',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+    ...shadows.high,
   },
-  modalHeader: { marginBottom: spacing.lg },
-  modalHeaderTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  modalTitle: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold, color: colors.text },
-  modalActions: { flexDirection: 'row', gap: spacing.md },
-  actionButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.surfaceHover, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill },
-  actionText: { color: colors.accent, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  modalScroll: { flex: 1 },
+  modalHandle: {
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.outlineVariant,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+    opacity: 0.5,
+  },
+  modalHeader: {
+    marginBottom: spacing.md,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  modalIconChip: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  modalCategory: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+    marginBottom: 2,
+  },
+  modalTitle: {
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+    lineHeight: 28,
+  },
   editTitleInput: {
     flex: 1,
     fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surfaceHover,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.sm,
+  },
+  modalScroll: {
+    flex: 1,
   },
   editBodyInput: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.md,
     padding: spacing.md,
     fontSize: typography.sizes.body,
-    color: colors.text,
-    fontFamily: 'Outfit_400Regular',
-    lineHeight: 24,
-    ...shadows.sm,
+    color: colors.onSurface,
+    fontFamily: typography.families.body,
+    lineHeight: 22,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
 });
 
@@ -272,35 +564,51 @@ const markdownStyles = StyleSheet.create({
   body: {
     fontSize: typography.sizes.body,
     lineHeight: 24,
-    color: colors.text,
-    fontFamily: 'Outfit_400Regular',
+    color: colors.onSurface,
+    fontFamily: typography.families.body,
   },
   heading1: {
     fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginTop: spacing.md,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
-    fontFamily: 'Outfit_700Bold',
+    letterSpacing: typography.tracking.tight,
   },
   heading2: {
     fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.text,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
     marginTop: spacing.md,
-    marginBottom: spacing.xs,
-    fontFamily: 'Outfit_700Bold',
+    marginBottom: spacing.sm,
+    letterSpacing: typography.tracking.tight,
   },
   heading3: {
     fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    color: colors.textSecondary,
-    fontFamily: 'Outfit_600SemiBold',
+    fontFamily: typography.families.bodyBold,
+    color: colors.onSurfaceVariant,
+    marginTop: spacing.sm,
   },
   paragraph: {
     marginBottom: spacing.sm,
   },
   listItem: {
     marginBottom: spacing.xs,
+  },
+  link: {
+    color: colors.primary,
+  },
+  code_inline: {
+    backgroundColor: colors.surfaceContainerLow,
+    color: colors.tertiary,
+    paddingHorizontal: 4,
+    borderRadius: radius.sm,
+    fontFamily: typography.families.body,
+  },
+  blockquote: {
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.sm,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.sm,
   },
 });

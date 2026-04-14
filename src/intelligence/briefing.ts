@@ -3,6 +3,7 @@ import { fetchUpcomingEvents } from '../channels/calendar/google';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { generateResponse } from './provider';
 import { sock } from '../channels/whatsapp';
+import { getTokensForProfile, sendPush } from '../channels/mobile';
 
 export async function generateProactiveSynthesis(profileId: string): Promise<string | null> {
   try {
@@ -141,6 +142,43 @@ ${anonState}`;
     return realResponse;
   } catch(err) {
     console.error('[BRIEFING ENGINE ERROR]:', err);
+    return null;
+  }
+}
+
+// Mobile-first briefing: generate the same synthesis and deliver it as
+// an Expo push notification that deep-links to the Today tab.
+export async function pushMorningBriefingToMobile(profileId: string): Promise<string | null> {
+  try {
+    const tokens = await getTokensForProfile(profileId);
+    if (tokens.length === 0) {
+      console.log(`[BRIEFING PUSH] No push tokens for ${profileId}. Skipping.`);
+      return null;
+    }
+
+    const briefing = await generateProactiveSynthesis(profileId);
+    if (!briefing) {
+      console.log(`[BRIEFING PUSH] No briefing content for ${profileId}.`);
+      return null;
+    }
+
+    // Push notifications have tight body limits — first sentence leads, full
+    // text opens in-app via the Today tab.
+    const firstSentence = briefing.split(/(?<=[.!?])\s/)[0] || briefing;
+    const body = firstSentence.length > 180
+      ? `${firstSentence.slice(0, 177)}…`
+      : firstSentence;
+
+    await sendPush(tokens, {
+      title: 'Good morning',
+      body,
+      data: { screen: 'today', kind: 'briefing' },
+    });
+
+    console.log(`[BRIEFING PUSH] Delivered to ${tokens.length} device(s) for ${profileId}.`);
+    return briefing;
+  } catch (err) {
+    console.error('[BRIEFING PUSH ERROR]:', err);
     return null;
   }
 }

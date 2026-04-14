@@ -95,6 +95,15 @@ export async function saveAuthState(data: {
   }
 }
 
+export async function saveDisplayName(displayName: string): Promise<void> {
+  const store = await getStore();
+  if (store) {
+    await store.setItemAsync(KEYS.displayName, displayName);
+  } else {
+    webStore.set(KEYS.displayName, displayName);
+  }
+}
+
 export async function clearAuthState(): Promise<void> {
   const store = await getStore();
 

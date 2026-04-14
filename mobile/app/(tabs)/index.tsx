@@ -1,77 +1,82 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, Pressable,
+  View, Text, StyleSheet, Pressable,
   Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
   getTodayBrief, getSynthesis, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
-  type BriefEvent, type StreamCard,
+  type BriefEvent, type StreamCard as StreamCardData,
 } from '../../lib/api';
 import { loadAuthState } from '../../lib/auth';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
+import ScreenContainer from '../../components/ScreenContainer';
+import Masthead from '../../components/Masthead';
+import AIInsightCard from '../../components/AIInsightCard';
+import StreamCard from '../../components/StreamCard';
+import GradientButton from '../../components/GradientButton';
 
 function formatTime(isoString: string | null): string {
   if (!isoString) return '';
   try {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }
 }
 
-function getSourceColor(source: string): string {
-  const map: Record<string, string> = {
-    whatsapp_group: colors.sourceChat,
-    calendar: colors.sourceCalendar,
-    email: colors.sourceEmail,
-    document: colors.sourceDocument,
-    manual: colors.sourceManual,
-    proactive: colors.accent,
-  };
-  return map[source] || colors.sourceManual;
-}
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function formatDate(): string {
-  return new Date().toLocaleDateString('en-GB', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+function useMasthead(displayName: string) {
+  return useMemo(() => {
+    const hour = new Date().getHours();
+    const date = new Date().toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long',
+    });
+    if (hour < 12) {
+      return {
+        eyebrow: `Morning, ${displayName || 'friend'} — ${date}`,
+        headline: 'The morning is yours to shape.',
+        accent: 'yours',
+      };
+    }
+    if (hour < 17) {
+      return {
+        eyebrow: `Afternoon — ${date}`,
+        headline: 'Your day is in full bloom.',
+        accent: 'full bloom',
+      };
+    }
+    return {
+      eyebrow: `Evening — ${date}`,
+      headline: 'Quiet hours await your reflection.',
+      accent: 'reflection',
+    };
+  }, [displayName]);
 }
 
 export default function TodayScreen() {
   const router = useRouter();
   const [events, setEvents] = useState<BriefEvent[]>([]);
-  const [cards, setCards] = useState<StreamCard[]>([]);
+  const [cards, setCards] = useState<StreamCardData[]>([]);
   const [shoppingCount, setShoppingCount] = useState(0);
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
-
   const [synthesis, setSynthesis] = useState<string | null>(null);
-  const [synthesisLoading, setSynthesisLoading] = useState(true);
+
+  const masthead = useMasthead(displayName);
 
   const loadBrief = useCallback(async () => {
     const { data, error: err } = await getTodayBrief();
     if (err) {
       setError(err);
     } else if (data) {
-      setEvents(data.events);
-      setCards(data.streamCards);
-      setShoppingCount(data.shoppingItems.length);
+      setEvents(data.todayEvents || data.events || []);
+      setCards(data.streamCards || []);
+      setShoppingCount((data.shoppingItems || []).length);
       setCalendarConnected(data.isCalendarConnected);
       setError(null);
     }
@@ -79,10 +84,8 @@ export default function TodayScreen() {
   }, []);
 
   const loadSynthesis = useCallback(async () => {
-    setSynthesisLoading(true);
     const { data } = await getSynthesis();
     if (data?.synthesis) setSynthesis(data.synthesis);
-    setSynthesisLoading(false);
   }, []);
 
   useEffect(() => {
@@ -91,7 +94,7 @@ export default function TodayScreen() {
     loadAuthState().then(auth => {
       if (auth.displayName) setDisplayName(auth.displayName);
     });
-  }, [loadBrief]);
+  }, [loadBrief, loadSynthesis]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -100,7 +103,7 @@ export default function TodayScreen() {
   }, [loadBrief, loadSynthesis]);
 
   // Edit modal state
-  const [editingCard, setEditingCard] = useState<StreamCard | null>(null);
+  const [editingCard, setEditingCard] = useState<StreamCardData | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
   const [saving, setSaving] = useState(false);
@@ -117,19 +120,15 @@ export default function TodayScreen() {
 
   const handleAddToCalendar = useCallback(async (cardId: string) => {
     const { error: err } = await addToCalendar(cardId);
-    if (!err) {
-      setCards(prev => prev.filter(c => c.id !== cardId));
-    }
+    if (!err) setCards(prev => prev.filter(c => c.id !== cardId));
   }, []);
 
   const handleAddToShopping = useCallback(async (cardId: string) => {
     const { error: err } = await cardToShopping(cardId);
-    if (!err) {
-      setCards(prev => prev.filter(c => c.id !== cardId));
-    }
+    if (!err) setCards(prev => prev.filter(c => c.id !== cardId));
   }, []);
 
-  const openEdit = useCallback((card: StreamCard) => {
+  const openEdit = useCallback((card: StreamCardData) => {
     setEditingCard(card);
     setEditTitle(card.title);
     setEditBody(card.body);
@@ -143,8 +142,7 @@ export default function TodayScreen() {
     if (data?.card) {
       setCards(prev => prev.map(c => c.id === editingCard.id
         ? { ...c, title: editTitle.trim(), body: editBody.trim() }
-        : c
-      ));
+        : c));
     }
     setEditingCard(null);
   }, [editingCard, editTitle, editBody]);
@@ -152,320 +150,350 @@ export default function TodayScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.loadingText}>Loading your day...</Text>
+        <Text style={styles.loadingText}>Loading your day…</Text>
       </View>
     );
   }
 
   return (
-    <>
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-    <ScreenHeader showWordmark />
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-    >
-      {/* Proactive Synthesis Banner */}
-      <View style={styles.synthesisContainer}>
-        <Text style={styles.greeting}>{getGreeting()}{displayName ? `, ${displayName}` : ''}</Text>
-        <Text style={styles.date}>{formatDate()}</Text>
+    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+      <ScreenHeader
+        showWordmark
+        statusLabel={error ? 'Offline' : 'Node Syncing'}
+        statusPulse={!error}
+      />
+      <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
+        <Masthead
+          eyebrow={masthead.eyebrow}
+          headline={masthead.headline}
+          accent={masthead.accent}
+        />
 
-        <View style={styles.synthesisCard}>
-          {synthesisLoading ? (
-            <Text style={styles.synthesisLoading}>Memu is synthesizing your day...</Text>
+        {/* Hero: AI synthesis */}
+        <View style={styles.heroSlot}>
+          <AIInsightCard
+            label="Memu Insight"
+            icon="sparkles"
+            title={synthesis || "You're all caught up for today."}
+            body={
+              error
+                ? "Can't reach your home server. Pull to retry."
+                : cards.length > 0
+                  ? `${cards.length} item${cards.length === 1 ? '' : 's'} await your attention below.`
+                  : 'Your stream is quiet. Memu is listening in the background.'
+            }
+            ctaLabel={cards.length > 0 ? 'Review stream' : undefined}
+            onCta={cards.length > 0 ? undefined : undefined}
+          />
+        </View>
+
+        {/* Calendar strip */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Today's schedule</Text>
+          {!calendarConnected ? (
+            <Pressable style={styles.tonalCard} onPress={() => router.push('/(tabs)/calendar')}>
+              <Ionicons name="calendar-outline" size={18} color={colors.tertiary} />
+              <Text style={styles.tonalCardText}>Connect Google Calendar to see your day.</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.outline} />
+            </Pressable>
+          ) : events.length === 0 ? (
+            <View style={styles.tonalCard}>
+              <Ionicons name="sunny-outline" size={18} color={colors.tertiary} />
+              <Text style={styles.tonalCardText}>No events today — your day is wide open.</Text>
+            </View>
           ) : (
-            <Text style={styles.synthesisText}>{synthesis || "You are all caught up for today."}</Text>
+            <View style={styles.eventStack}>
+              {events.slice(0, 4).map((event, i) => (
+                <View key={i} style={styles.eventRow}>
+                  <View style={styles.eventTimeChip}>
+                    <Text style={styles.eventTimeText}>{formatTime(event.startTime) || '—'}</Text>
+                  </View>
+                  <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
+                </View>
+              ))}
+              {events.length > 4 ? (
+                <Pressable onPress={() => router.push('/(tabs)/calendar')} style={styles.eventMore}>
+                  <Text style={styles.eventMoreText}>+{events.length - 4} more · see calendar</Text>
+                </Pressable>
+              ) : null}
+            </View>
           )}
         </View>
-      </View>
 
-      {/* Connection status */}
-      {error && (
-        <View style={styles.errorBanner}>
-          <Ionicons name="cloud-offline-outline" size={16} color={colors.error} />
-          <Text style={styles.errorText}>Can't reach Memu. Check your connection.</Text>
-        </View>
-      )}
-
-      {/* Calendar */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
-          <Text style={styles.sectionTitle}>Today's Schedule</Text>
-        </View>
-        {!calendarConnected ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Calendar not connected yet.</Text>
-            <Text style={styles.emptyHint}>Tap the Calendar tab to connect.</Text>
+        {/* Stream */}
+        {cards.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Stream</Text>
+            {cards.map(card => (
+              <StreamCard
+                key={card.id}
+                id={card.id}
+                cardType={card.card_type}
+                title={card.title}
+                body={card.body}
+                source={card.source}
+                onDismiss={() => handleDismiss(card.id)}
+                onEdit={() => openEdit(card)}
+                actions={[
+                  card.card_type !== 'shopping' ? {
+                    label: 'Calendar',
+                    icon: 'calendar-outline' as const,
+                    variant: 'secondary' as const,
+                    onPress: () => handleAddToCalendar(card.id),
+                  } : null,
+                  card.card_type !== 'shopping' ? {
+                    label: 'List',
+                    icon: 'basket-outline' as const,
+                    variant: 'secondary' as const,
+                    onPress: () => handleAddToShopping(card.id),
+                  } : null,
+                  {
+                    label: 'Done',
+                    icon: 'checkmark' as const,
+                    variant: 'primary' as const,
+                    onPress: () => handleResolve(card.id),
+                  },
+                ].filter(Boolean) as NonNullable<React.ComponentProps<typeof StreamCard>['actions']>}
+              />
+            ))}
           </View>
-        ) : events.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="sunny-outline" size={20} color={colors.textMuted} style={{ marginBottom: spacing.xs }} />
-            <Text style={styles.emptyText}>No events today — your day is wide open.</Text>
-          </View>
-        ) : (
-          events.map((event, i) => (
-            <View key={i} style={styles.eventCard}>
-              <View style={styles.eventTime}>
-                <Text style={styles.eventTimeText}>{formatTime(event.startTime)}</Text>
-              </View>
-              <Text style={styles.eventTitle}>{event.title}</Text>
-            </View>
-          ))
-        )}
-      </View>
+        ) : null}
 
-      {/* Stream Cards */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="bulb-outline" size={18} color={colors.textSecondary} />
-          <Text style={styles.sectionTitle}>Intelligence</Text>
-        </View>
+        {/* Shopping footer */}
+        {shoppingCount > 0 ? (
+          <Pressable style={styles.listSummary} onPress={() => router.push('/(tabs)/lists')}>
+            <Ionicons name="basket-outline" size={18} color={colors.primary} />
+            <Text style={styles.listSummaryText}>
+              {shoppingCount} item{shoppingCount === 1 ? '' : 's'} on the shopping list
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.outline} />
+          </Pressable>
+        ) : null}
 
-        {cards.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="sparkles-outline" size={20} color={colors.textMuted} style={{ marginBottom: spacing.xs }} />
-            <Text style={styles.emptyText}>No new intelligence.</Text>
-            <Text style={styles.emptyHint}>Memu is listening in the background.</Text>
-          </View>
-        ) : (
-          cards.map(card => (
-            <View key={card.id} style={styles.streamCard}>
-              <View style={styles.streamCardHeader}>
-                <View style={[styles.sourcePill, { backgroundColor: getSourceColor(card.source) + '18' }]}>
-                  <View style={[styles.sourceDot, { backgroundColor: getSourceColor(card.source) }]} />
-                  <Text style={[styles.sourcePillText, { color: getSourceColor(card.source) }]}>{card.source.replace('_', ' ')}</Text>
-                </View>
-                <Text style={styles.streamCardType}>{card.card_type.replace('_', ' ')}</Text>
-              </View>
-              <Text style={styles.streamCardTitle}>{card.title}</Text>
-              <Text style={styles.streamCardBody}>{card.body}</Text>
-
-              {/* Action bar: contextual actions + confirm + edit + dismiss */}
-              <View style={styles.streamCardActions}>
-                {/* Contextual: calendar for events, shopping for extraction */}
-                {card.card_type !== 'shopping' && (
-                  <Pressable style={styles.actionButton} onPress={() => handleAddToCalendar(card.id)}>
-                    <Ionicons name="calendar-outline" size={14} color={colors.accent} />
-                    <Text style={styles.actionText}>Calendar</Text>
-                  </Pressable>
-                )}
-                {card.card_type !== 'shopping' && (
-                  <Pressable style={styles.actionButton} onPress={() => handleAddToShopping(card.id)}>
-                    <Ionicons name="cart-outline" size={14} color={colors.accent} />
-                    <Text style={styles.actionText}>List</Text>
-                  </Pressable>
-                )}
-
-                {/* Core three: Edit, Confirm, Dismiss */}
-                <Pressable style={styles.actionButton} onPress={() => openEdit(card)}>
-                  <Ionicons name="create-outline" size={14} color={colors.textSecondary} />
-                  <Text style={[styles.actionText, { color: colors.textSecondary }]}>Edit</Text>
-                </Pressable>
-                <Pressable style={styles.actionButton} onPress={() => handleResolve(card.id)}>
-                  <Ionicons name="checkmark-circle-outline" size={14} color={colors.success} />
-                  <Text style={[styles.actionText, { color: colors.success }]}>Done</Text>
-                </Pressable>
-                <Pressable style={styles.actionButton} onPress={() => handleDismiss(card.id)}>
-                  <Ionicons name="close-circle-outline" size={14} color={colors.textMuted} />
-                  <Text style={[styles.actionText, { color: colors.textMuted }]}>Dismiss</Text>
-                </Pressable>
-              </View>
-            </View>
-          ))
-        )}
-      </View>
-
-      {/* Shopping summary */}
-      {shoppingCount > 0 && (
-        <Pressable style={styles.shoppingSummary} onPress={() => router.push('/(tabs)/lists')}>
-          <Ionicons name="cart-outline" size={18} color={colors.accent} />
-          <Text style={styles.shoppingText}>
-            {shoppingCount} item{shoppingCount !== 1 ? 's' : ''} on the shopping list
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        {/* Privacy footer */}
+        <Pressable style={styles.privacyFooter} onPress={() => router.push('/ledger')}>
+          <Ionicons name="shield-checkmark-outline" size={14} color={colors.tertiary} />
+          <Text style={styles.privacyText}>Every query anonymised via Digital Twin.</Text>
+          <Text style={styles.privacyLink}>See the ledger →</Text>
         </Pressable>
-      )}
+      </ScreenContainer>
 
-      {/* Privacy footer */}
-      <Pressable style={styles.privacyFooter} onPress={() => router.push('/ledger')}>
-        <Ionicons name="eye-outline" size={14} color={colors.textMuted} />
-        <Text style={styles.privacyText}>All queries anonymised via Digital Twin</Text>
-        <Text style={styles.privacyLink}>See what Cloud AI saw</Text>
-      </Pressable>
-    </ScrollView>
-    </View>
-
-    {/* Edit Modal */}
-    <Modal visible={!!editingCard} animationType="slide" transparent>
-      <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Edit Card</Text>
-          <Text style={styles.modalLabel}>Title</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={editTitle}
-            onChangeText={setEditTitle}
-            placeholder="Card title"
-            placeholderTextColor={colors.textMuted}
-          />
-          <Text style={styles.modalLabel}>Details</Text>
-          <TextInput
-            style={[styles.modalInput, styles.modalInputMultiline]}
-            value={editBody}
-            onChangeText={setEditBody}
-            placeholder="Card details"
-            placeholderTextColor={colors.textMuted}
-            multiline
-            numberOfLines={4}
-          />
-          <View style={styles.modalActions}>
-            <Pressable
-              style={styles.modalCancelButton}
-              onPress={() => setEditingCard(null)}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.modalSaveButton, saving && { opacity: 0.6 }]}
-              onPress={handleSaveEdit}
-              disabled={saving}
-            >
-              <Text style={styles.modalSaveText}>{saving ? 'Saving...' : 'Save'}</Text>
-            </Pressable>
+      {/* Edit Modal */}
+      <Modal visible={!!editingCard} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit card</Text>
+            <Text style={styles.modalLabel}>Title</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="Card title"
+              placeholderTextColor={colors.outline}
+            />
+            <Text style={styles.modalLabel}>Details</Text>
+            <TextInput
+              style={[styles.modalInput, styles.modalInputMultiline]}
+              value={editBody}
+              onChangeText={setEditBody}
+              placeholder="Card details"
+              placeholderTextColor={colors.outline}
+              multiline
+              numberOfLines={4}
+            />
+            <View style={styles.modalActions}>
+              <GradientButton
+                label="Cancel"
+                onPress={() => setEditingCard(null)}
+                variant="ghost"
+              />
+              <GradientButton
+                label={saving ? 'Saving…' : 'Save'}
+                onPress={handleSaveEdit}
+                loading={saving}
+              />
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-    </>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.md, paddingBottom: spacing.xl * 2 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
-  loadingText: { color: colors.textMuted, fontSize: typography.sizes.body },
-
-  header: { marginBottom: spacing.lg },
-  synthesisContainer: { marginBottom: spacing.lg },
-  synthesisCard: {
+  centered: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    marginTop: spacing.md,
-    ...shadows.md,
   },
-  synthesisText: { fontSize: typography.sizes.body, color: colors.text, lineHeight: 24 },
-  synthesisLoading: { fontSize: typography.sizes.body, color: colors.textMuted, fontStyle: 'italic' },
-
-  greeting: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold, color: colors.text, fontFamily: 'Outfit_700Bold' },
-  date: { fontSize: typography.sizes.body, color: colors.textSecondary },
-
-  errorBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: '#fef2f2', borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md,
-    borderWidth: 1, borderColor: '#fecaca',
+  loadingText: {
+    color: colors.onSurfaceVariant, fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
   },
-  errorText: { color: colors.error, fontSize: typography.sizes.sm },
 
-  section: { marginBottom: spacing.lg },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  sectionTitle: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  emptyCard: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
-    ...shadows.sm,
+  heroSlot: {
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xl,
+    marginBottom: spacing.xl,
   },
-  emptyText: { color: colors.textSecondary, fontSize: typography.sizes.body },
-  emptyHint: { color: colors.textMuted, fontSize: typography.sizes.sm, marginTop: spacing.xs },
 
-  eventCard: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm,
-    ...shadows.sm,
+  section: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xl,
   },
-  eventTime: {
-    backgroundColor: colors.accentLight, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
-  },
-  eventTimeText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, color: colors.accent },
-  eventTitle: { fontSize: typography.sizes.body, color: colors.text, flex: 1 },
-
-  streamCard: {
-    backgroundColor: '#ffffff',
-    padding: spacing.md,
-    borderRadius: radius.lg,
+  sectionLabel: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
     marginBottom: spacing.md,
-    ...shadows.md,
   },
-  streamCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
-  sourcePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: spacing.sm, paddingVertical: 2,
-    borderRadius: radius.pill,
-  },
-  sourceDot: { width: 6, height: 6, borderRadius: 3 },
-  sourcePillText: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
-  streamCardType: { fontSize: typography.sizes.xs, color: colors.textMuted, textTransform: 'capitalize' },
-  streamCardTitle: { fontSize: typography.sizes.body, fontWeight: typography.weights.semibold, color: colors.text, marginBottom: spacing.xs },
-  streamCardBody: { fontSize: typography.sizes.sm, color: colors.textSecondary, lineHeight: 20 },
-  streamCardActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md, paddingTop: spacing.sm },
-  actionButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  actionText: { fontSize: typography.sizes.sm, color: colors.accent, fontWeight: typography.weights.medium },
 
-  shoppingSummary: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg,
-    ...shadows.sm,
+  tonalCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    ...shadows.low,
   },
-  shoppingText: { flex: 1, fontSize: typography.sizes.body, color: colors.text },
+  tonalCardText: {
+    flex: 1,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+
+  eventStack: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    ...shadows.low,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  eventTimeChip: {
+    backgroundColor: colors.secondaryContainer,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  eventTimeText: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSecondaryContainer,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+  eventTitle: {
+    flex: 1,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+  eventMore: {
+    paddingTop: spacing.sm,
+    paddingLeft: spacing.sm,
+  },
+  eventMoreText: {
+    fontSize: 11,
+    color: colors.tertiary,
+    fontFamily: typography.families.label,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+
+  listSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.lg,
+    ...shadows.low,
+  },
+  listSummaryText: {
+    flex: 1,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
 
   privacyFooter: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingVertical: spacing.md, justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  privacyText: { fontSize: typography.sizes.xs, color: colors.textMuted },
-  privacyLink: { fontSize: typography.sizes.xs, color: colors.accent, fontWeight: typography.weights.medium },
+  privacyText: {
+    fontSize: 11,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+  },
+  privacyLink: {
+    fontSize: 11,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+  },
 
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: spacing.lg,
+    flex: 1,
+    backgroundColor: 'rgba(12,14,16,0.5)',
+    justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
-    ...shadows.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.xl,
+    paddingBottom: spacing['2xl'],
+    ...shadows.high,
   },
   modalTitle: {
-    fontSize: typography.sizes.lg, fontWeight: typography.weights.bold, color: colors.text, marginBottom: spacing.md,
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    marginBottom: spacing.lg,
+    letterSpacing: typography.tracking.tight,
   },
   modalLabel: {
-    fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, color: colors.textSecondary, marginBottom: spacing.xs,
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurfaceVariant,
+    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
   },
   modalInput: {
-    backgroundColor: colors.bg, borderRadius: radius.md, padding: spacing.md,
-    fontSize: typography.sizes.body, color: colors.text, marginBottom: spacing.md,
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
   },
   modalInputMultiline: {
-    minHeight: 100, textAlignVertical: 'top',
+    minHeight: 120,
+    textAlignVertical: 'top',
   },
   modalActions: {
-    flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm,
-  },
-  modalCancelButton: {
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
-    borderRadius: radius.md, backgroundColor: colors.surfaceHover,
-  },
-  modalCancelText: {
-    fontSize: typography.sizes.body, color: colors.textSecondary, fontWeight: typography.weights.medium,
-  },
-  modalSaveButton: {
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg,
-    borderRadius: radius.md, backgroundColor: colors.accent,
-  },
-  modalSaveText: {
-    fontSize: typography.sizes.body, color: '#fff', fontWeight: typography.weights.semibold,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
 });

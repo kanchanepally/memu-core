@@ -1,7 +1,7 @@
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { generateResponse, ConversationMessage } from './provider';
-import { retrieveRelevantContext } from './context';
+import { retrieveRelevantContext, type Visibility } from './context';
 import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
@@ -91,14 +91,15 @@ export async function processIntelligencePipeline(
   profileId: string,
   content: string,
   channel: string,
-  messageId: string = 'unknown'
+  messageId: string = 'unknown',
+  visibility: Visibility = 'family',
 ): Promise<string> {
   // 1. Twin Translation (Real -> Anonymous)
   const anonymousMsg = await translateToAnonymous(content);
   console.log(`[IN -> Translated]: ${anonymousMsg}`);
 
-  // 2. Context Retrieval — scoped to this profile
-  const rawContexts = await retrieveRelevantContext(content, 3, profileId);
+  // 2. Context Retrieval — scoped to this profile and visibility layer
+  const rawContexts = await retrieveRelevantContext(content, 3, profileId, visibility);
 
   const anonymousContexts = [];
   for (const ctx of rawContexts) {
@@ -125,7 +126,7 @@ export async function processIntelligencePipeline(
   await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
 
   // 7. Auto-learning: extract durable facts in the background (fire-and-forget)
-  extractAndStoreFacts(profileId, anonymousMsg, claudeResponse).catch(err => {
+  extractAndStoreFacts(profileId, anonymousMsg, claudeResponse, visibility).catch(err => {
     console.error('[AUTO-LEARN] Background extraction failed:', err);
   });
 

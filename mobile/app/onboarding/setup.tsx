@@ -6,8 +6,9 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../lib/tokens';
-import { checkServerHealth, register } from '../../lib/api';
+import { checkServerHealth, register, signInWithGoogle } from '../../lib/api';
 import { saveAuthState } from '../../lib/auth';
+import { useGoogleSignIn } from '../../lib/googleAuth';
 
 // Server URL baked in at build time via eas.json `env.EXPO_PUBLIC_API_URL`.
 // When present, the setup flow skips the "enter server address" step entirely
@@ -27,6 +28,9 @@ export default function SetupScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverVerified, setServerVerified] = useState(!!BAKED_SERVER_URL);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const { request: googleRequest, signIn: googleSignIn } = useGoogleSignIn();
 
   // If the URL is baked in, silently health-check it on mount so we fail fast
   // with a clear error ("can't reach home server — is Tailscale on?").
@@ -108,6 +112,40 @@ export default function SetupScreen() {
     router.replace('/onboarding/channels');
   };
 
+  const handleGoogleSignIn = async () => {
+    if (!serverVerified) {
+      setError('Connect to your server first');
+      return;
+    }
+    setGoogleLoading(true);
+    setError(null);
+    try {
+      const idToken = await googleSignIn();
+      if (!idToken) {
+        setGoogleLoading(false);
+        return; // user cancelled
+      }
+      const url = normalizeUrl(serverUrl);
+      const { data, error: err } = await signInWithGoogle(url, idToken);
+      if (err || !data) {
+        setError(err || 'Google sign-in failed. Try again.');
+        setGoogleLoading(false);
+        return;
+      }
+      await saveAuthState({
+        serverUrl: url,
+        apiKey: data.apiKey,
+        profileId: data.id,
+        displayName: data.displayName,
+      });
+      setGoogleLoading(false);
+      router.replace('/onboarding/channels');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Google sign-in failed');
+      setGoogleLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -178,6 +216,27 @@ export default function SetupScreen() {
               <Text style={styles.serverConfirmText}>
                 {BAKED_SERVER_URL ? 'Connected to your home server' : `Connected to ${serverUrl}`}
               </Text>
+            </View>
+
+            <Pressable
+              style={[styles.googleButton, (googleLoading || !googleRequest) && styles.buttonDisabled]}
+              onPress={handleGoogleSignIn}
+              disabled={googleLoading || !googleRequest}
+            >
+              {googleLoading ? (
+                <ActivityIndicator color={colors.text} size="small" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={18} color={colors.text} />
+                  <Text style={styles.googleButtonText}>Continue with Google</Text>
+                </>
+              )}
+            </Pressable>
+
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or set up manually</Text>
+              <View style={styles.dividerLine} />
             </View>
 
             <View style={styles.inputGroup}>
@@ -356,6 +415,43 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semibold,
   },
   buttonDisabled: { opacity: 0.6 },
+
+  googleButton: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  googleButtonText: {
+    color: colors.text,
+    fontSize: typography.sizes.body,
+    fontWeight: typography.weights.semibold,
+  },
+
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: typography.sizes.xs,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
   backLink: {
     flexDirection: 'row',

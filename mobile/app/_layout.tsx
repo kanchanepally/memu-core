@@ -2,9 +2,15 @@ import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from '@expo-google-fonts/outfit';
+import { useFonts } from 'expo-font';
+import { Manrope_300Light, Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
+import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import * as Notifications from 'expo-notifications';
 import { colors } from '../lib/tokens';
 import { loadAuthState } from '../lib/auth';
+import { registerForPushNotifications } from '../lib/push';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { ToastProvider } from '../components/Toast';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
@@ -14,10 +20,15 @@ export default function RootLayout() {
 
   // Load custom premium fonts
   const [fontsLoaded] = useFonts({
-    Outfit_400Regular,
-    Outfit_500Medium,
-    Outfit_600SemiBold,
-    Outfit_700Bold,
+    Manrope_300Light,
+    Manrope_500Medium,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+    Inter_300Light,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
 
   useEffect(() => {
@@ -46,6 +57,21 @@ export default function RootLayout() {
     }
   }, [isReady, isAuthenticated, segments, fontsLoaded]);
 
+  // Register for push notifications once the user is signed in.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    registerForPushNotifications().catch(() => {});
+  }, [isAuthenticated]);
+
+  // Deep-link when a notification is tapped.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as { screen?: string } | undefined;
+      if (data?.screen === 'today') router.push('/(tabs)');
+    });
+    return () => sub.remove();
+  }, [router]);
+
   if (!isReady || !fontsLoaded) {
     return (
       <View style={styles.loading}>
@@ -55,14 +81,15 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
+      <ToastProvider>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: '600', fontFamily: 'Outfit_600SemiBold' },
-          contentStyle: { backgroundColor: colors.bg },
+          headerTintColor: colors.onSurface,
+          headerTitleStyle: { fontFamily: 'Manrope_800ExtraBold' },
+          contentStyle: { backgroundColor: colors.surface },
         }}
       >
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
@@ -89,7 +116,8 @@ export default function RootLayout() {
           }}
         />
       </Stack>
-    </>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 

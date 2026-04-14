@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;600;700;800;900&amp;family=Inter:wght@100;300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "on-error-container": "#6e0523",
+                  "surface-variant": "#dfe3e7",
+                  "surface-container-lowest": "#ffffff",
+                  "tertiary-container": "#e4d7fd",
+                  "on-primary-container": "#080575",
+                  "on-error": "#fff7f7",
+                  "on-primary": "#fbf7ff",
+                  "secondary": "#5b5993",
+                  "primary-fixed-dim": "#8387eb",
+                  "surface-container-highest": "#dfe3e7",
+                  "primary": "#5054b5",
+                  "surface-container": "#eceef1",
+                  "surface-bright": "#f9f9fb",
+                  "on-primary-fixed": "#000000",
+                  "error-container": "#f97386",
+                  "primary-dim": "#4448a8",
+                  "error": "#a8364b",
+                  "on-tertiary-container": "#534968",
+                  "on-tertiary": "#fdf7ff",
+                  "tertiary-fixed-dim": "#d6c9ee",
+                  "secondary-fixed-dim": "#d3d0ff",
+                  "on-tertiary-fixed-variant": "#5d5372",
+                  "outline": "#777b7f",
+                  "inverse-on-surface": "#9c9d9f",
+                  "on-secondary-fixed-variant": "#57558f",
+                  "on-background": "#2e3336",
+                  "on-secondary": "#fbf7ff",
+                  "tertiary-fixed": "#e4d7fd",
+                  "error-dim": "#6b0221",
+                  "inverse-surface": "#0c0e10",
+                  "outline-variant": "#aeb2b6",
+                  "on-tertiary-fixed": "#403755",
+                  "surface": "#f9f9fb",
+                  "secondary-fixed": "#e2dfff",
+                  "on-primary-fixed-variant": "#16177e",
+                  "surface-tint": "#5054b5",
+                  "surface-container-high": "#e6e8ec",
+                  "primary-container": "#9094fa",
+                  "tertiary": "#645a7a",
+                  "on-secondary-fixed": "#3a3971",
+                  "surface-dim": "#d7dadf",
+                  "on-surface": "#2e3336",
+                  "secondary-dim": "#4e4d86",
+                  "on-secondary-container": "#4d4b85",
+                  "surface-container-low": "#f2f4f6",
+                  "inverse-primary": "#9094fa",
+                  "background": "#f9f9fb",
+                  "on-surface-variant": "#5b6063",
+                  "tertiary-dim": "#584e6d",
+                  "primary-fixed": "#9094fa",
+                  "secondary-container": "#e2dfff"
+          },
+          "borderRadius": {
+                  "DEFAULT": "1rem",
+                  "lg": "2rem",
+                  "xl": "3rem",
+                  "full": "9999px"
+          },
+          "fontFamily": {
+                  "headline": ["Manrope"],
+                  "body": ["Inter"],
+                  "label": ["Inter"]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    }
+    .skeleton-breath {
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+    .asymmetric-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 48px;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface">
+<!-- Navigation Drawer (SideNav) -->
+<aside class="fixed left-0 top-0 h-screen z-50 p-8 flex flex-col gap-8 bg-white/80 dark:bg-[#0C0E10]/80 backdrop-blur-xl rounded-r-[3rem] h-full w-80 shadow-[0_20px_40px_rgba(80,84,181,0.08)]">
+<div class="flex flex-col gap-2 items-start">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container">security</span>
+</div>
+<div>
+<h2 class="font-headline font-extrabold text-[#5054B5] text-xl">Memu Sanctuary</h2>
+<p class="text-xs font-label tracking-widest uppercase text-slate-400">The Digital Atelier</p>
+</div>
+</div>
+</div>
+<nav class="flex flex-col gap-2">
+<a class="text-slate-500 hover:translate-x-2 transition-all duration-300 px-6 py-3 flex items-center gap-4" href="#">
+<span class="material-symbols-outlined">home_work</span>
+<span class="font-label font-light tracking-wide text-lg">Spaces</span>
+</a>
+<a class="text-slate-500 hover:translate-x-2 transition-all duration-300 px-6 py-3 flex items-center gap-4" href="#">
+<span class="material-symbols-outlined">format_list_bulleted</span>
+<span class="font-label font-light tracking-wide text-lg">Lists</span>
+</a>
+<a class="text-slate-500 hover:translate-x-2 transition-all duration-300 px-6 py-3 flex items-center gap-4" href="#">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="font-label font-light tracking-wide text-lg">Calendar</span>
+</a>
+<a class="text-[#5054B5] font-semibold bg-indigo-50/50 rounded-full px-6 py-3 flex items-center gap-4 active:scale-[0.97] ease-in-out" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label tracking-wide text-lg">Settings</span>
+</a>
+</nav>
+<div class="mt-auto p-6 bg-surface-container-low rounded-lg">
+<p class="text-[10px] text-slate-400 font-label tracking-widest uppercase mb-4">Meta</p>
+<div class="flex items-center justify-between">
+<span class="text-xs font-medium text-on-surface-variant">Slow UX v1.0</span>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+</div>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="ml-80 min-h-screen pb-24">
+<!-- Top Bar -->
+<header class="flex justify-between items-center px-12 py-12 w-full max-w-screen-2xl mx-auto bg-surface no-border shadow-none">
+<div class="flex flex-col">
+<span class="text-xs font-label font-bold tracking-[0.2em] text-primary uppercase mb-2">Vault Administration</span>
+<h1 class="font-headline text-5xl font-extrabold tracking-tight uppercase text-[#5054B5]">The Privacy Ledger</h1>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="text-sm font-semibold text-on-surface">Admin Session</span>
+<span class="text-xs text-on-surface-variant">Encrypted Tunnel Active</span>
+</div>
+<img alt="User Profile" class="w-14 h-14 rounded-full border-4 border-white shadow-lg" data-alt="close-up portrait of a professional woman with a calm expression, soft studio lighting, high-end editorial photography style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAiaQSZ-nqApyqiGtCSuxRG_HCBUOyiiaWQqHeuspu8ZyZy97gqLLtKzWTd68wp3BgKRKCWgkmuG3WoCulfVWV5mZbC4QzQjIm4-mL9sBQQC62YNd6Jew1OYtVYwnnABsy3WgEOS-eR27lChuLLU9doR9KFwaf1C-ghvlsMJKxfQ6xmfF1u8u3sLif3S84CF9Qkw-bRK6u5-4H5zr_ABnYS1-mX_KUdjmn6qQBf_AGHfWtJw8Myt5Yi8N8cHSGW_VJdQOTU49b8-qM"/>
+</div>
+</header>
+<!-- Content Bento Grid -->
+<div class="px-12 max-w-screen-2xl mx-auto space-y-12">
+<!-- Hardware Status Section (Asymmetric) -->
+<section class="asymmetric-grid">
+<div class="bg-inverse-surface rounded-xl p-10 flex flex-col justify-between relative overflow-hidden text-white h-[320px]">
+<div class="absolute top-0 right-0 w-64 h-64 bg-primary/20 blur-[100px] rounded-full -mr-20 -mt-20"></div>
+<div class="relative z-10">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary-fixed">dns</span>
+<span class="text-xs font-label tracking-[0.3em] uppercase opacity-60">Physical Node</span>
+</div>
+<h3 class="font-headline text-3xl font-bold mb-2">Memu Home Server</h3>
+<p class="text-slate-400 font-light max-w-sm">Your data never leaves the sanctuary. All nodes are synchronized locally via end-to-end atomic swaps.</p>
+</div>
+<div class="relative z-10 flex items-center gap-8">
+<div class="flex flex-col">
+<span class="text-[10px] uppercase tracking-widest opacity-50 mb-1">Status</span>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-green-400"></div>
+<span class="font-semibold text-sm">Operational</span>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="text-[10px] uppercase tracking-widest opacity-50 mb-1">Uptime</span>
+<span class="font-semibold text-sm">142 Days</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[10px] uppercase tracking-widest opacity-50 mb-1">Storage</span>
+<span class="font-semibold text-sm">1.2TB / 4TB</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-highest rounded-xl p-10 flex flex-col justify-center items-center text-center border-outline-variant/10 border relative">
+<span class="material-symbols-outlined text-primary text-6xl mb-4" style="font-variation-settings: 'FILL' 1;">key</span>
+<h3 class="font-headline text-xl font-bold mb-2">Sanctuary Key</h3>
+<p class="text-on-surface-variant text-sm mb-6 px-4 text-balance">Hardware-level biometrics required for node modification.</p>
+<div class="px-6 py-2 bg-white rounded-full text-xs font-bold text-primary shadow-sm">
+            CONNECTED
+          </div>
+</div>
+</section>
+<!-- Data Nodes Audit -->
+<section class="space-y-8">
+<div class="flex items-baseline justify-between">
+<h2 class="font-headline text-3xl font-light">Data Node Audit</h2>
+<button class="text-sm font-bold text-primary flex items-center gap-2 hover:opacity-70 transition-opacity">
+<span class="material-symbols-outlined text-sm">refresh</span>
+            RE-SCAN NETWORK
+          </button>
+</div>
+<!-- Node Cards (Asymmetric Layout) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Node 1: School -->
+<div class="bg-surface-container-lowest rounded-lg p-8 shadow-sm hover:translate-y-[-4px] transition-transform duration-500">
+<div class="flex justify-between items-start mb-8">
+<div class="w-14 h-14 rounded-2xl bg-tertiary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary text-3xl">school</span>
+</div>
+<span class="px-3 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">ENCRYPTED</span>
+</div>
+<h4 class="font-headline text-2xl font-bold mb-2">School Records</h4>
+<p class="text-on-surface-variant text-sm mb-6 leading-relaxed">Local copy of transcripts, attendance, and faculty correspondence.</p>
+<div class="pt-6 border-t border-surface-variant flex justify-between items-center">
+<span class="text-xs text-slate-400">Last Sync: 2m ago</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer">more_vert</span>
+</div>
+</div>
+<!-- Node 2: Medical -->
+<div class="bg-surface-container-lowest rounded-lg p-8 shadow-sm hover:translate-y-[-4px] transition-transform duration-500">
+<div class="flex justify-between items-start mb-8">
+<div class="w-14 h-14 rounded-2xl bg-error-container/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-error text-3xl">health_and_safety</span>
+</div>
+<span class="px-3 py-1 bg-primary-container/20 text-primary text-[10px] font-bold rounded-full">LOCAL ONLY</span>
+</div>
+<h4 class="font-headline text-2xl font-bold mb-2">Health Data</h4>
+<p class="text-on-surface-variant text-sm mb-6 leading-relaxed">Medical history and biometric logs stored on the Memu Home hardware.</p>
+<div class="pt-6 border-t border-surface-variant flex justify-between items-center">
+<span class="text-xs text-slate-400">Last Sync: 1h ago</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer">more_vert</span>
+</div>
+</div>
+<!-- Node 3: Calendar (Skeleton Loading State) -->
+<div class="bg-surface-container-low rounded-lg p-8 relative overflow-hidden">
+<div class="flex justify-between items-start mb-8 skeleton-breath">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-highest"></div>
+<div class="w-20 h-6 bg-surface-container-highest rounded-full"></div>
+</div>
+<div class="h-8 w-3/4 bg-surface-container-highest rounded mb-4 skeleton-breath"></div>
+<div class="space-y-2 skeleton-breath">
+<div class="h-4 w-full bg-surface-container-highest rounded"></div>
+<div class="h-4 w-5/6 bg-surface-container-highest rounded"></div>
+</div>
+<div class="mt-12 pt-6 border-t border-surface-variant/30 flex justify-between items-center skeleton-breath">
+<div class="h-3 w-20 bg-surface-container-highest rounded"></div>
+<div class="h-6 w-6 bg-surface-container-highest rounded-full"></div>
+</div>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="text-[10px] font-bold tracking-[0.3em] text-primary uppercase bg-white/80 px-4 py-2 rounded-full shadow-sm">Hydrating Data...</span>
+</div>
+</div>
+</div>
+</section>
+<!-- AI Security Insights -->
+<section class="bg-tertiary-container/30 rounded-xl p-10 flex gap-10 items-center border border-white">
+<div class="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-lg flex-shrink-0">
+<span class="material-symbols-outlined text-tertiary text-4xl" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<div class="flex-grow">
+<span class="text-xs font-bold text-tertiary tracking-widest uppercase mb-1 block">Sanctuary Intelligence</span>
+<h3 class="font-headline text-2xl font-bold mb-2">Security Posture: Pristine</h3>
+<p class="text-on-tertiary-container text-sm font-light max-w-2xl leading-relaxed">Memu AI has analyzed your network traffic patterns. 100% of data remained within the physical perimeter. No external leak attempts detected in the last 30 days. Your sanctuary is secure.</p>
+</div>
+<button class="bg-primary text-white px-8 py-4 rounded-xl font-bold text-sm flex-shrink-0 active:scale-[0.98] transition-transform">
+          VIEW AUDIT LOGS
+        </button>
+</section>
+<!-- Visual Filler / Texture -->
+<div class="grid grid-cols-2 gap-12">
+<div class="rounded-lg overflow-hidden h-64 group relative">
+<img alt="Cyber Security" class="w-full h-full object-cover grayscale transition-all duration-700 group-hover:grayscale-0 group-hover:scale-105" data-alt="extreme close-up of high-end circuit board with glowing indigo neon paths, cinematic lighting, sleek tech aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIVwcRuSEj4V02VJHrP7qVCcLPpMlF2ny_nctGg7fM01FGIe2-H7ZJy1H84K38Lc8YfAyjOpo9TIab_LsofFTaFUEz4kvI3ovfkXoUqn0I2z1SJUKOep3nNJ1Z3hyNpQfQ3OuWuYLCcrEZEgcyMXTMxUEvlUdVIoS6egY0Hr7z-IHj37WoWDsxBdcMPl7-qGfASY6Plz7ifmaLOl5D-XaXRWzyuVUNme5tTrcztu6bjmOt9dbD8HVHjnaQeFGeUkAKPVjyH7hZgRk"/>
+<div class="absolute inset-0 bg-primary/20 mix-blend-multiply"></div>
+<div class="absolute bottom-8 left-8">
+<p class="text-white font-headline text-xl font-bold">Hard-Wired Confidentiality</p>
+</div>
+</div>
+<div class="rounded-lg bg-surface-container-low flex items-center justify-center p-12 border-2 border-dashed border-outline-variant/20">
+<div class="text-center">
+<span class="material-symbols-outlined text-slate-300 text-5xl mb-4">add_moderator</span>
+<p class="text-slate-400 font-label text-sm uppercase tracking-widest">Connect New Node</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Bar (Mobile Only) -->
+<footer class="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg px-8 py-6 flex justify-around items-center z-50">
+<span class="material-symbols-outlined text-slate-400">home_work</span>
+<span class="material-symbols-outlined text-slate-400">format_list_bulleted</span>
+<div class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white -mt-12 shadow-xl">
+<span class="material-symbols-outlined">security</span>
+</div>
+<span class="material-symbols-outlined text-slate-400">calendar_today</span>
+<span class="material-symbols-outlined text-primary font-bold">settings</span>
+</footer>
+</body></html>

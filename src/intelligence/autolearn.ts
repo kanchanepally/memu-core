@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { seedContext } from './context';
+import { seedContext, type Visibility } from './context';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -15,7 +15,8 @@ const anthropic = new Anthropic({
 export async function extractAndStoreFacts(
   profileId: string,
   userMessage: string,
-  assistantResponse: string
+  assistantResponse: string,
+  visibility: Visibility = 'family',
 ): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === 'your_anthropic_api_key_here') {
     return; // Skip in dummy mode
@@ -64,7 +65,7 @@ Examples of good extractions:
     // Store each fact with embedding, scoped to this profile
     for (const fact of facts) {
       if (typeof fact === 'string' && fact.trim().length > 5) {
-        await seedContext(fact.trim(), 'manual', profileId);
+        await seedContext(fact.trim(), 'manual', profileId, visibility);
         console.log(`[AUTO-LEARN] Stored: "${fact.trim().substring(0, 60)}..."`);
       }
     }

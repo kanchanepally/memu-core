@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;family=Inter:wght@300..700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-low": "#f2f4f6",
+                    "surface": "#f9f9fb",
+                    "on-error-container": "#6e0523",
+                    "inverse-surface": "#0c0e10",
+                    "on-tertiary-fixed": "#403755",
+                    "inverse-on-surface": "#9c9d9f",
+                    "surface-variant": "#dfe3e7",
+                    "surface-dim": "#d7dadf",
+                    "inverse-primary": "#9094fa",
+                    "error": "#a8364b",
+                    "surface-container-high": "#e6e8ec",
+                    "on-primary-fixed": "#000000",
+                    "tertiary": "#645a7a",
+                    "on-secondary-fixed": "#3a3971",
+                    "surface-bright": "#f9f9fb",
+                    "surface-container-highest": "#dfe3e7",
+                    "tertiary-fixed-dim": "#d6c9ee",
+                    "primary-fixed-dim": "#8387eb",
+                    "primary-fixed": "#9094fa",
+                    "secondary-container": "#e2dfff",
+                    "on-tertiary": "#fdf7ff",
+                    "surface-tint": "#5054b5",
+                    "secondary-dim": "#4e4d86",
+                    "outline-variant": "#aeb2b6",
+                    "on-surface-variant": "#5b6063",
+                    "on-primary-fixed-variant": "#16177e",
+                    "error-dim": "#6b0221",
+                    "on-surface": "#2e3336",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary-container": "#4d4b85",
+                    "secondary-fixed": "#e2dfff",
+                    "on-secondary": "#fbf7ff",
+                    "secondary-fixed-dim": "#d3d0ff",
+                    "on-error": "#fff7f7",
+                    "on-tertiary-fixed-variant": "#5d5372",
+                    "on-primary-container": "#080575",
+                    "surface-container": "#eceef1",
+                    "tertiary-fixed": "#e4d7fd",
+                    "on-background": "#2e3336",
+                    "secondary": "#5b5993",
+                    "primary": "#5054b5",
+                    "on-secondary-fixed-variant": "#57558f",
+                    "on-primary": "#fbf7ff",
+                    "primary-dim": "#4448a8",
+                    "tertiary-container": "#e4d7fd",
+                    "outline": "#777b7f",
+                    "background": "#f9f9fb",
+                    "primary-container": "#9094fa",
+                    "error-container": "#f97386",
+                    "tertiary-dim": "#584e6d",
+                    "on-tertiary-container": "#534968"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .perspective-text {
+            text-shadow: 0 4px 12px rgba(80, 84, 181, 0.1);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container">
+<!-- Top Navigation Shell -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 h-16 bg-[#fbf9f6]/70 backdrop-blur-3xl shadow-[0_8px_32px_rgba(27,28,26,0.06)]">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border border-outline-variant/10">
+<img class="w-full h-full object-cover" data-alt="close-up portrait of a thoughtful person in soft natural morning light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQ8FD72CN0pCAYrv4bJRA-Z9SIFCm5Klt4rvKzGoX05MwrqKAgmyY18Sry4Vhz1II6nylWLCbNsuv7uDSYmT4-JDjp3TFUZ-xPCzO0VWO254E3UMSy8L-4aJya9pLlnmogwIlYGb7nVJX1rl34r5d7euAnUhwMzRxjSgfSEEcZL53B3a2dkgtNiAmM-NznGlGF8qGxtKNplSQXnaE01zzmbbvK11Kj65AeKRrd84AHMhvgorF-OoJvvTI4lfVIriLN4omJa5l99Eo"/>
+</div>
+</div>
+<h1 class="text-2xl font-extrabold text-[#5d3288] font-headline tracking-tight">Memu</h1>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-low rounded-full">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-[10px] font-label font-bold uppercase tracking-widest text-on-surface-variant">Node Syncing</span>
+</div>
+<span class="material-symbols-outlined text-[#5d3288] hover:opacity-80 transition-opacity cursor-pointer" data-icon="group">group</span>
+</div>
+</header>
+<main class="pt-24 pb-32 px-6 max-w-7xl mx-auto">
+<!-- Masthead Section -->
+<section class="mb-12 ml-4">
+<span class="text-primary font-label text-sm font-bold uppercase tracking-[0.2em] mb-2 block">Today's Pulse</span>
+<h2 class="text-5xl font-headline font-extrabold text-on-surface tracking-tighter leading-tight max-w-2xl">
+                The garden of your <span class="text-primary italic">thoughts</span> is in full bloom.
+            </h2>
+</section>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+<!-- AI Insight Card: Large (3 columns height, 7 columns width) -->
+<div class="md:col-span-7 row-span-2 group relative overflow-hidden bg-surface-container-lowest rounded-xl p-10 shadow-[0_4px_12px_rgba(46,51,54,0.04)] border border-outline-variant/5">
+<!-- AI Gradient Glow -->
+<div class="absolute -top-24 -right-24 w-64 h-64 bg-tertiary-container/30 rounded-full blur-[80px]"></div>
+<div class="relative z-10">
+<div class="flex items-center gap-4 mb-8">
+<div class="w-12 h-12 rounded-xl bg-tertiary-fixed flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary" data-icon="auto_awesome" data-weight="fill" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<span class="font-headline font-bold text-lg text-tertiary">Memu Insight</span>
+</div>
+<h3 class="text-3xl font-headline font-bold text-on-surface mb-6 leading-snug">
+                        Your creative momentum typically peaks at 10 AM after reviewing "Spaces".
+                    </h3>
+<p class="text-on-surface-variant text-lg leading-relaxed mb-8 max-w-lg">
+                        Based on your reflection patterns from the last 7 days, you've shown 24% more clarity in your lists when starting with a brief meditation.
+                    </p>
+<div class="flex items-center gap-3">
+<button class="px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-xl font-bold text-sm tracking-wide active:scale-95 transition-all shadow-lg shadow-primary/20">
+                            Apply Rhythm
+                        </button>
+<button class="p-3 text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Subtle Texture Placeholder -->
+<div class="absolute bottom-0 right-0 w-1/2 opacity-10 pointer-events-none">
+<img class="w-full object-cover rounded-tl-full" data-alt="abstract flowing 3D waves with soft lavender and indigo gradients and grainy texture" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD4WBEbqa3XzwtWb_hsvxAhXq1d2LrbUpZE8XoP5Hfv1FYzoaXRZeVsICojrpZyk8CdmRMbDGDtDzoP-TXBGQyqeD7r98KOMZNdC4BdzjV5Kd652X-s0PhClDODMFzuyvn3QFaGQu3QEBr_wnSFygZVvJ9LENvuubmEt8d_dtJrvXBF7ApGGJoEk_LI_op2Zqgty1epR7uEUDduY2X5ROEA1aWI-tHD5a8vPQSvYu-rIlpOFUynlaICLAvk_EVK884_SgvpLSsODwc"/>
+</div>
+</div>
+<!-- Focus Item: Medium (5 columns width) -->
+<div class="md:col-span-5 bg-surface-container-high rounded-lg p-8 flex flex-col justify-between min-h-[320px]">
+<div>
+<span class="material-symbols-outlined text-primary-dim mb-4" data-icon="lightbulb">lightbulb</span>
+<h4 class="text-xl font-headline font-bold text-on-surface mb-2">Deep Work Session</h4>
+<p class="text-on-surface-variant text-sm">Priority: High • 2 hours</p>
+</div>
+<div class="mt-8">
+<div class="flex -space-x-3 mb-4">
+<div class="w-10 h-10 rounded-full border-2 border-surface-container-high bg-surface overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="headshot of a man with spectacles in a bright studio environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYzAmUSDImcNlVgydWyIszD0bhM6GQlRGdQUc17kqsMu5sE06b31eyGgVlXV1iZ4omUVCyTx4VWP-dc1X9TRGVNSbq-BeLIBXxuarCqo0YjFoFC0nIlu5-jbJtktefZJKn1XsAJvhd98xPV7WxXv407rnKHmovEfd5asAOkhXF-Zu2I4i9EfqbLLmNO3miBhSVjonDkk3_vg8urrjWoNMVb3r0AuyQW4WQnAdqH41_2vfGNAEViacqStcFEBON_uWKBHFlvzbUYBI"/>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface-container-high bg-surface overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="smiling woman with wavy hair in soft natural light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD71u1fz1lTFzAGEm8SwfEXWuD1nugyk22YShz2d7XE-mkEibJgg5avlUj_M3Z5vn8w1R6SUYLwvw1jkPa7_m0ECHDgQxQLPb25G6IVoE9DfWAj0V-SrmmozVqwyMTFJNcjCypH6LpaLBDJd3NO9f26oyyJsAsETt1aPIL_TdKyj4sS8r9xJprC1xo7mKQKYmBdEsbrHlcUs1-ebbIXNx7ogy5n0cuGKkwV2RzF-Xu_igrW6sDcXiGRqNK-9Mj1trUocemNEiA81tM"/>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface-container-high bg-primary-container flex items-center justify-center text-[10px] font-bold text-on-primary-container">
+                            +4
+                        </div>
+</div>
+<button class="w-full py-4 bg-surface-container-lowest text-primary rounded-lg font-bold text-xs uppercase tracking-widest border border-outline-variant/10 active:scale-[0.98] transition-transform">
+                        Join Space
+                    </button>
+</div>
+</div>
+<!-- Reflection Feed Item 1: Small (5 columns width) -->
+<div class="md:col-span-5 bg-surface-container-low rounded-lg p-6 border border-outline-variant/5">
+<div class="flex items-start justify-between mb-4">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-white rounded-lg shadow-sm">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="today">today</span>
+</div>
+<div>
+<h5 class="font-headline font-bold text-on-surface">Daily Intent</h5>
+<p class="text-[10px] text-outline uppercase tracking-wider">08:30 AM</p>
+</div>
+</div>
+</div>
+<p class="text-on-surface-variant leading-relaxed">"Focus on completion, not perfection." Recorded during morning walk.</p>
+</div>
+<!-- Dynamic List Card: (7 columns width) -->
+<div class="md:col-span-7 bg-surface-container-lowest rounded-xl p-8 shadow-[0_4px_12px_rgba(46,51,54,0.04)] border border-outline-variant/5">
+<div class="flex items-center justify-between mb-8">
+<h4 class="font-headline font-bold text-xl">Recent Lists</h4>
+<span class="material-symbols-outlined text-outline cursor-pointer" data-icon="arrow_forward_ios">arrow_forward_ios</span>
+</div>
+<div class="space-y-4">
+<div class="flex items-center gap-4 p-4 rounded-lg hover:bg-surface-container-low transition-colors group">
+<div class="w-12 h-12 rounded-lg bg-secondary-container flex items-center justify-center text-secondary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="palette">palette</span>
+</div>
+<div class="flex-1">
+<div class="text-on-surface font-bold">Studio Redesign</div>
+<div class="text-xs text-outline italic">4 items pending sync</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant" data-icon="drag_handle">drag_handle</span>
+</div>
+<div class="flex items-center gap-4 p-4 rounded-lg hover:bg-surface-container-low transition-colors group">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface-variant group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+</div>
+<div class="flex-1">
+<div class="text-on-surface font-bold">Archived Reflections</div>
+<div class="text-xs text-outline italic">Synced yesterday</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant" data-icon="lock">lock</span>
+</div>
+</div>
+</div>
+<!-- Floating Image / Content card -->
+<div class="md:col-span-12 lg:col-span-4 bg-inverse-surface rounded-xl p-8 text-on-primary-fixed overflow-hidden relative">
+<div class="relative z-10 h-full flex flex-col justify-between min-h-[280px]">
+<div class="bg-primary/20 backdrop-blur-md w-fit px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest text-primary-fixed">Pro Feature</div>
+<div>
+<h4 class="text-3xl font-headline font-bold mb-4 leading-tight text-white">Unlock Semantic Search</h4>
+<p class="text-white/70 mb-6">Find memories by feeling, not just keywords.</p>
+<button class="px-6 py-3 bg-white text-inverse-surface rounded-xl font-bold text-sm hover:opacity-90 transition-opacity">Upgrade Now</button>
+</div>
+</div>
+<img class="absolute inset-0 w-full h-full object-cover opacity-30 mix-blend-overlay" data-alt="minimalist aesthetic background with organic floating shapes in deep charcoal and indigo tones" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAC8YKGVd34hCA2thSLYM7jCvqB4JzmDz5LcAA3RW52sJBqr-2s8GKrMZ69kcxe6lFlChDytBsa8njteP2mCSQLZo77HmAhN57JPyVN5kGQok1WKciSHrC1OjBKiiW0qDB7e2jYug3Vv_cr6tbMq2Gem0rQmY5L37NVYMgriYGVALW51Wsv59Wdg7nquo_X1TLSP7qvbYxkiDmNzFVJ3cLnSeZu9llye7xMuNF8xG3A5YWRCXD-c2afUNMhwzMpi-wlS-pSKH0NLJY"/>
+</div>
+<!-- Extra Info Card -->
+<div class="md:col-span-12 lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="bg-surface-container-low rounded-lg p-6 flex items-center gap-6">
+<div class="w-20 h-20 rounded-full border-4 border-white shadow-sm flex-shrink-0 flex items-center justify-center text-primary font-headline font-bold text-2xl bg-white">
+                        82%
+                    </div>
+<div>
+<h5 class="font-bold text-on-surface">Consistency Score</h5>
+<p class="text-xs text-on-surface-variant">You are in the top 5% of mindful reflectors this week.</p>
+</div>
+</div>
+<div class="bg-tertiary-container rounded-lg p-6 relative overflow-hidden">
+<div class="relative z-10">
+<h5 class="font-bold text-on-tertiary-container">Space Insight</h5>
+<p class="text-xs text-on-tertiary-container/80 mt-1">Your 'Design' space has been quiet. Take 5 mins to sync nodes.</p>
+</div>
+<span class="material-symbols-outlined absolute -bottom-4 -right-4 text-8xl text-tertiary-dim/10 rotate-12" data-icon="diversity_3">diversity_3</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Chat Button -->
+<button class="fixed bottom-28 right-8 w-16 h-16 rounded-full bg-[#5d3288] text-white shadow-[0_20px_40px_rgba(93,50,136,0.25)] flex items-center justify-center group active:scale-90 transition-transform z-[60]">
+<span class="material-symbols-outlined text-3xl group-hover:rotate-12 transition-transform" data-icon="chat_bubble">chat_bubble</span>
+</button>
+<!-- Bottom Navigation Shell -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-[#fbf9f6]/70 backdrop-blur-3xl rounded-t-[24px] shadow-[0_-8px_32px_rgba(27,28,26,0.04)]">
+<!-- Today (Active) -->
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#5d3288] to-[#764ba2] text-white rounded-full px-5 py-2 active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-0.5" data-icon="today" style="font-variation-settings: 'FILL' 1;">today</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Today</span>
+</a>
+<!-- Chat -->
+<a class="flex flex-col items-center justify-center text-[#1b1c1a]/50 px-5 py-2 hover:text-[#5d3288] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-0.5" data-icon="chat_bubble">chat_bubble</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Chat</span>
+</a>
+<!-- Spaces -->
+<a class="flex flex-col items-center justify-center text-[#1b1c1a]/50 px-5 py-2 hover:text-[#5d3288] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-0.5" data-icon="diversity_3">diversity_3</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Spaces</span>
+</a>
+<!-- Lists -->
+<a class="flex flex-col items-center justify-center text-[#1b1c1a]/50 px-5 py-2 hover:text-[#5d3288] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-0.5" data-icon="format_list_bulleted">format_list_bulleted</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Lists</span>
+</a>
+</nav>
+</body></html>

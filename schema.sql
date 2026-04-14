@@ -134,6 +134,9 @@ CREATE TABLE context_entries (
   occurred_at TIMESTAMPTZ,  -- when the event/message happened
   metadata JSONB DEFAULT '{}',
   embedding vector(384),  -- pgvector for semantic search
+  visibility TEXT NOT NULL DEFAULT 'family'
+    CHECK (visibility IN ('personal', 'family')),
+  owner_profile_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -141,6 +144,7 @@ CREATE INDEX idx_context_embedding ON context_entries
   USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 CREATE INDEX idx_context_source ON context_entries(source);
 CREATE INDEX idx_context_occurred ON context_entries(occurred_at DESC);
+CREATE INDEX idx_context_visibility ON context_entries(visibility, owner_profile_id);
 
 -- ============================================================
 -- SLICE 5: COMPILED SYNTHESIS (ARCHITECTURE V2)

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Memu - Family Twin</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;400;600;700;800&amp;family=Inter:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-low": "#f2f4f6",
+                        "surface": "#f9f9fb",
+                        "on-error-container": "#6e0523",
+                        "inverse-surface": "#0c0e10",
+                        "on-tertiary-fixed": "#403755",
+                        "inverse-on-surface": "#9c9d9f",
+                        "surface-variant": "#dfe3e7",
+                        "surface-dim": "#d7dadf",
+                        "inverse-primary": "#9094fa",
+                        "error": "#a8364b",
+                        "surface-container-high": "#e6e8ec",
+                        "on-primary-fixed": "#000000",
+                        "tertiary": "#645a7a",
+                        "on-secondary-fixed": "#3a3971",
+                        "surface-bright": "#f9f9fb",
+                        "surface-container-highest": "#dfe3e7",
+                        "tertiary-fixed-dim": "#d6c9ee",
+                        "primary-fixed-dim": "#8387eb",
+                        "primary-fixed": "#9094fa",
+                        "secondary-container": "#e2dfff",
+                        "on-tertiary": "#fdf7ff",
+                        "surface-tint": "#5054b5",
+                        "secondary-dim": "#4e4d86",
+                        "outline-variant": "#aeb2b6",
+                        "on-surface-variant": "#5b6063",
+                        "on-primary-fixed-variant": "#16177e",
+                        "error-dim": "#6b0221",
+                        "on-surface": "#2e3336",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#4d4b85",
+                        "secondary-fixed": "#e2dfff",
+                        "on-secondary": "#fbf7ff",
+                        "secondary-fixed-dim": "#d3d0ff",
+                        "on-error": "#fff7f7",
+                        "on-tertiary-fixed-variant": "#5d5372",
+                        "on-primary-container": "#080575",
+                        "surface-container": "#eceef1",
+                        "tertiary-fixed": "#e4d7fd",
+                        "on-background": "#2e3336",
+                        "secondary": "#5b5993",
+                        "primary": "#5054b5",
+                        "on-secondary-fixed-variant": "#57558f",
+                        "on-primary": "#fbf7ff",
+                        "primary-dim": "#4448a8",
+                        "tertiary-container": "#e4d7fd",
+                        "outline": "#777b7f",
+                        "background": "#f9f9fb",
+                        "primary-container": "#9094fa",
+                        "error-container": "#f97386",
+                        "tertiary-dim": "#584e6d",
+                        "on-tertiary-container": "#534968"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-manrope { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .glass-panel { backdrop-filter: blur(24px); }
+        .asymmetric-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 24px; }
+        @media (max-width: 768px) { .asymmetric-grid { grid-template-columns: 1fr; } }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 h-16 bg-[#fbf9f6]/70 backdrop-blur-3xl shadow-[0_8px_32px_rgba(27,28,26,0.06)]">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high">
+<img alt="Profile" class="w-full h-full object-cover" data-alt="Portrait of a professional woman in a serene home office setting, warm afternoon light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpw8dJLvnAPjZ76GI0zeelipzsR6HW7gD7sfsqCLfXyXfWzLC60fWM93RIUCmaOefJhoBwxdtXvY3Xdc8wmLbVV74Qe94a_Ftk1aBYLomlAqBcGJAc3Qtv3h-RzpJs7KyM9ssSbJ47uRMNURpWFv_mps624HD9q6sq1dUqW040gOdL0Q4D5RkBav5dMO5ndS06tbREnBWp3Mfpz8TJk8GP8scA_MmUUju22EJn1OVTIAA6lbf8OtLNZRSWXoaFYQQlvkBLOm5seZw"/>
+</div>
+<span class="font-manrope font-bold tracking-tight text-[#5d3288] text-2xl">Memu</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-[#1b1c1a]/60 hover:opacity-80 transition-opacity">group</button>
+</div>
+</header>
+<main class="pt-24 pb-32 px-6 max-w-6xl mx-auto">
+<!-- Contextual Header -->
+<div class="mb-12">
+<p class="font-label text-xs uppercase tracking-[0.2em] text-outline mb-2">Command Center</p>
+<h1 class="font-manrope text-4xl font-extrabold tracking-tight text-on-surface">Family Twin Synthesis</h1>
+</div>
+<!-- Synthesizing State / Connection Graph -->
+<div class="mb-12 flex flex-col items-center justify-center p-8 bg-tertiary-container/30 rounded-xl relative overflow-hidden">
+<div class="absolute inset-0 opacity-10">
+<svg height="100%" viewbox="0 0 400 200" width="100%">
+<path class="text-tertiary" d="M50,100 C150,50 250,150 350,100" fill="none" stroke="currentColor" stroke-dasharray="8 4" stroke-width="2"></path>
+<circle class="text-tertiary" cx="50" cy="100" fill="currentColor" r="4"></circle>
+<circle class="text-tertiary" cx="350" cy="100" fill="currentColor" r="4"></circle>
+</svg>
+</div>
+<div class="z-10 flex items-center gap-6">
+<div class="flex flex-col items-center gap-2">
+<div class="w-12 h-12 bg-surface-container-lowest rounded-lg shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary">calendar_month</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-widest opacity-60">School Calendar</span>
+</div>
+<div class="flex flex-col items-center gap-3">
+<div class="flex gap-1">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="w-2 h-2 rounded-full bg-primary/60 animate-pulse delay-150"></span>
+<span class="w-2 h-2 rounded-full bg-primary/30 animate-pulse delay-300"></span>
+</div>
+<span class="text-sm font-manrope font-semibold text-tertiary">Synthesizing...</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-12 h-12 bg-surface-container-lowest rounded-lg shadow-sm flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary">medical_services</span>
+</div>
+<span class="text-[10px] font-bold uppercase tracking-widest opacity-60">Doctor's Note</span>
+</div>
+</div>
+</div>
+<!-- The Compiled Synthesis: Asymmetric Grid -->
+<div class="asymmetric-grid">
+<!-- Primary Insight Card -->
+<div class="space-y-6">
+<section class="bg-surface-container-lowest p-10 rounded-xl shadow-[0_4px_12px_rgba(46,51,54,0.04)] border border-outline-variant/10">
+<div class="flex items-center gap-3 mb-6">
+<div class="bg-tertiary-container p-2 rounded-full">
+<span class="material-symbols-outlined text-tertiary" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<h2 class="font-manrope text-2xl font-bold">Actionable Summary</h2>
+</div>
+<div class="space-y-8">
+<div class="relative pl-6 border-l-2 border-primary/20">
+<h3 class="font-manrope text-lg font-bold text-primary mb-2">Conflict Resolved</h3>
+<p class="text-on-surface/80 leading-relaxed">
+                                The doctor’s appointment for <span class="font-bold">Leo</span> on Thursday at 2:00 PM conflicts with the <span class="italic">Early Dismissal</span> schedule. I've flagged this for your attention.
+                            </p>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-6 rounded-lg">
+<span class="text-[10px] font-bold uppercase tracking-[0.15em] text-outline block mb-3">Key Requirement</span>
+<p class="text-sm font-medium">Fast for 12 hours prior to 2PM appointment.</p>
+</div>
+<div class="bg-surface-container-low p-6 rounded-lg">
+<span class="text-[10px] font-bold uppercase tracking-[0.15em] text-outline block mb-3">Logistics</span>
+<p class="text-sm font-medium">Pickup at 12:30 PM due to early dismissal.</p>
+</div>
+</div>
+</div>
+<div class="mt-8 pt-8 border-t border-surface-variant flex gap-4">
+<button class="bg-primary text-on-primary px-8 py-3 rounded-xl font-manrope font-bold text-sm hover:scale-[0.98] transition-transform flex items-center gap-2">
+                            Update Calendar
+                        </button>
+<button class="bg-secondary-container text-on-secondary-container px-8 py-3 rounded-xl font-manrope font-bold text-sm hover:scale-[0.98] transition-transform">
+                            Notify School
+                        </button>
+</div>
+</section>
+<div class="bg-surface-container-high/50 p-8 rounded-xl">
+<p class="text-sm font-body text-on-surface-variant italic leading-relaxed">
+                        "Memu has analyzed 14 previous school notes and 3 medical records to determine the optimal pickup route avoiding the main road construction."
+                    </p>
+</div>
+</div>
+<!-- Side Cards / Metadata -->
+<div class="space-y-6">
+<div class="bg-tertiary-container/20 p-8 rounded-lg border-2 border-dashed border-tertiary/10">
+<h4 class="font-manrope font-bold text-tertiary mb-4">Linked Sources</h4>
+<ul class="space-y-3">
+<li class="flex items-center gap-3 p-3 bg-surface-container-lowest rounded-lg shadow-sm">
+<span class="material-symbols-outlined text-outline">description</span>
+<div class="flex-1">
+<p class="text-xs font-bold truncate">Fall_Sem_Calendar.pdf</p>
+<p class="text-[10px] text-outline">Shared 2 days ago</p>
+</div>
+</li>
+<li class="flex items-center gap-3 p-3 bg-surface-container-lowest rounded-lg shadow-sm">
+<span class="material-symbols-outlined text-outline">description</span>
+<div class="flex-1">
+<p class="text-xs font-bold truncate">Pediatric_Note_Leo.jpg</p>
+<p class="text-[10px] text-outline">Uploaded via Camera</p>
+</div>
+</li>
+</ul>
+</div>
+<!-- AI Insight Small -->
+<div class="bg-gradient-to-br from-surface-container-lowest to-surface-container-low p-8 rounded-xl shadow-lg border border-primary/5">
+<div class="flex items-center gap-2 mb-4 text-primary">
+<span class="material-symbols-outlined text-sm">lightbulb</span>
+<span class="text-xs font-bold uppercase tracking-widest">Memory Link</span>
+</div>
+<p class="text-sm leading-relaxed mb-4">
+                        Last year, Leo had a similar conflict during the winter break. You rescheduled for a Friday morning and it worked better for the commute.
+                    </p>
+<button class="text-primary font-bold text-xs flex items-center gap-1 hover:gap-2 transition-all">
+                        Try Friday instead? <span class="material-symbols-outlined text-xs">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Premium Voice-Input & Bottom Shell -->
+<div class="fixed bottom-0 left-0 w-full z-50">
+<!-- Floating Voice UI -->
+<div class="max-w-xl mx-auto px-6 pb-4">
+<div class="bg-[#fbf9f6]/95 backdrop-blur-3xl p-4 rounded-xl shadow-[0_-20px_40px_rgba(80,84,181,0.08)] border border-white/40">
+<div class="flex items-center gap-4">
+<button class="w-12 h-12 bg-surface-container-high rounded-full flex items-center justify-center text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<div class="flex-1 h-12 bg-surface-container-low rounded-xl px-4 flex items-center gap-3">
+<span class="w-1 h-4 bg-primary/30 rounded-full animate-pulse"></span>
+<span class="w-1 h-6 bg-primary/60 rounded-full animate-pulse delay-75"></span>
+<span class="w-1 h-3 bg-primary/20 rounded-full animate-pulse delay-150"></span>
+<span class="text-on-surface/40 font-manrope text-sm font-medium">Listening for instructions...</span>
+</div>
+<button class="w-14 h-14 bg-gradient-to-br from-[#5d3288] to-[#764ba2] rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-all">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">mic</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bottom Navigation Shell -->
+<nav class="flex justify-around items-center px-4 pb-6 pt-3 bg-[#fbf9f6]/70 backdrop-blur-3xl rounded-t-[24px]">
+<div class="flex flex-col items-center justify-center text-[#1b1c1a]/50 px-5 py-2 hover:text-[#5d3288] transition-colors">
+<span class="material-symbols-outlined mb-1">today</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Today</span>
+</div>
+<!-- Active State: Chat -->
+<div class="flex flex-col items-center justify-center bg-gradient-to-br from-[#5d3288] to-[#764ba2] text-white rounded-full px-5 py-2 scale-95">
+<span class="material-symbols-outlined mb-1">chat_bubble</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Chat</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#1b1c1a]/50 px-5 py-2 hover:text-[#5d3288] transition-colors">
+<span class="material-symbols-outlined mb-1">diversity_3</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Spaces</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#1b1c1a]/50 px-5 py-2 hover:text-[#5d3288] transition-colors">
+<span class="material-symbols-outlined mb-1">format_list_bulleted</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Lists</span>
+</div>
+</nav>
+</div>
+</body></html>

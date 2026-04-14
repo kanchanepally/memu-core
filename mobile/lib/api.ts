@@ -91,6 +91,29 @@ export async function register(
   }
 }
 
+// Google Sign-In — exchange a Google ID token for a Memu profile + API key
+export async function signInWithGoogle(
+  serverUrl: string,
+  idToken: string
+): Promise<ApiResponse<RegisterResponse>> {
+  try {
+    const res = await fetch(`${serverUrl}/api/auth/google/signin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: 'Sign-in failed' }));
+      return { error: body.error || `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return { data };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Network error';
+    return { error: message };
+  }
+}
+
 // Health check (no auth needed)
 export async function checkServerHealth(serverUrl: string): Promise<ApiResponse<{ status: string }>> {
   try {
@@ -115,10 +138,15 @@ export interface ChatResponse {
   response: string;
 }
 
-export async function sendMessage(content: string): Promise<ApiResponse<ChatResponse>> {
+export type Visibility = 'personal' | 'family';
+
+export async function sendMessage(
+  content: string,
+  visibility: Visibility = 'family',
+): Promise<ApiResponse<ChatResponse>> {
   return request<ChatResponse>('/api/message', {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, visibility }),
   });
 }
 
@@ -264,4 +292,45 @@ export async function extractListCommand(content: string) {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
+}
+
+// Profile management
+export async function updateProfile(displayName: string) {
+  return request<{ success: boolean; profile: { id: string; display_name: string; role: string } }>(
+    '/api/profile',
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ displayName }),
+    },
+  );
+}
+
+export async function clearChatHistory() {
+  return request<{ success: boolean }>('/api/chat/clear', {
+    method: 'POST',
+  });
+}
+
+// Data export — returns JSON archive text
+export async function exportData(): Promise<ApiResponse<string>> {
+  try {
+    const { baseUrl, apiKey } = await (async () => {
+      const auth = await loadAuthState();
+      return {
+        baseUrl: auth.serverUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3100',
+        apiKey: auth.apiKey,
+      };
+    })();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+    const res = await fetch(`${baseUrl}/api/export`, { headers });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    const text = await res.text();
+    return { data: text };
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
+  }
 }

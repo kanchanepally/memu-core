@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Memu | Living Knowledge Spaces</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-low": "#f2f4f6",
+                        "surface": "#f9f9fb",
+                        "on-error-container": "#6e0523",
+                        "inverse-surface": "#0c0e10",
+                        "on-tertiary-fixed": "#403755",
+                        "inverse-on-surface": "#9c9d9f",
+                        "surface-variant": "#dfe3e7",
+                        "surface-dim": "#d7dadf",
+                        "inverse-primary": "#9094fa",
+                        "error": "#a8364b",
+                        "surface-container-high": "#e6e8ec",
+                        "on-primary-fixed": "#000000",
+                        "tertiary": "#645a7a",
+                        "on-secondary-fixed": "#3a3971",
+                        "surface-bright": "#f9f9fb",
+                        "surface-container-highest": "#dfe3e7",
+                        "tertiary-fixed-dim": "#d6c9ee",
+                        "primary-fixed-dim": "#8387eb",
+                        "primary-fixed": "#9094fa",
+                        "secondary-container": "#e2dfff",
+                        "on-tertiary": "#fdf7ff",
+                        "surface-tint": "#5054b5",
+                        "secondary-dim": "#4e4d86",
+                        "outline-variant": "#aeb2b6",
+                        "on-surface-variant": "#5b6063",
+                        "on-primary-fixed-variant": "#16177e",
+                        "error-dim": "#6b0221",
+                        "on-surface": "#2e3336",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#4d4b85",
+                        "secondary-fixed": "#e2dfff",
+                        "on-secondary": "#fbf7ff",
+                        "secondary-fixed-dim": "#d3d0ff",
+                        "on-error": "#fff7f7",
+                        "on-tertiary-fixed-variant": "#5d5372",
+                        "on-primary-container": "#080575",
+                        "surface-container": "#eceef1",
+                        "tertiary-fixed": "#e4d7fd",
+                        "on-background": "#2e3336",
+                        "secondary": "#5b5993",
+                        "primary": "#5054b5",
+                        "on-secondary-fixed-variant": "#57558f",
+                        "on-primary": "#fbf7ff",
+                        "primary-dim": "#4448a8",
+                        "tertiary-container": "#e4d7fd",
+                        "outline": "#777b7f",
+                        "background": "#f9f9fb",
+                        "primary-container": "#9094fa",
+                        "error-container": "#f97386",
+                        "tertiary-dim": "#584e6d",
+                        "on-tertiary-container": "#534968"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .editorial-shadow {
+            box-shadow: 0 4px 12px rgba(46, 51, 54, 0.04);
+        }
+        .silk-gradient {
+            background: linear-gradient(135deg, #5054B5 0%, #9094FA 100%);
+        }
+        .ai-glow {
+            box-shadow: inset 0 0 4px #9094fa;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface antialiased">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 h-16 bg-[#fbf9f6]/70 dark:bg-[#1b1c1a]/70 backdrop-blur-3xl shadow-[0_8px_32px_rgba(27,28,26,0.06)]">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/15 active:scale-95 duration-200 transition-opacity hover:opacity-80">
+<img class="w-full h-full object-cover" data-alt="close up studio portrait of a woman with a thoughtful expression against a soft neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB2XoLa6yfctTI6P_32HMAEq8Tb0YBbFiBcs4DhRLFAYQMr8Of3tdyaU2Bt9FsQemlxR_hEF-4inVZOwM-LI3jXwggdvjc_W5xj5_AtfBI4BKIC3xDv3emY_QJLmVW4rovN-cmH9qDkMqlkDtINusQnLIBD8vy3aAdaxmSCfBTp-KGJOIGjS6ONHEJM4lwlLLL9SqmHXBibVmfRJFtUH34H2m58-eBa837olm1rB1tFultVM3gs9NEfN7LN9wNDFG2lhPgP9FZZG-g"/>
+</div>
+</div>
+<h1 class="text-2xl font-extrabold text-[#5d3288] dark:text-[#764ba2] font-headline tracking-tight">Memu</h1>
+<div class="flex items-center gap-2">
+<button class="material-symbols-outlined text-[#5d3288] dark:text-[#7991ff] active:scale-95 duration-200 transition-opacity hover:opacity-80">group</button>
+</div>
+</header>
+<!-- Side Navigation (Mobile Hidden, Web Visible) -->
+<aside class="hidden md:flex fixed left-0 top-16 h-[calc(100vh-4rem)] w-72 flex-col bg-surface-container-low border-r border-outline-variant/10 p-8 z-40">
+<nav class="flex flex-col gap-6">
+<div class="flex flex-col gap-1">
+<p class="text-[10px] font-bold uppercase tracking-[0.2em] text-outline ml-4 mb-2">Navigation</p>
+<a class="flex items-center gap-4 px-4 py-3 rounded-xl text-on-surface-variant hover:bg-surface-container-high transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">today</span>
+<span class="font-medium">Today</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-xl text-on-surface-variant hover:bg-surface-container-high transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">chat_bubble</span>
+<span class="font-medium">Chat</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-xl silk-gradient text-white shadow-lg shadow-primary/20 scale-105" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">diversity_3</span>
+<span class="font-bold">Spaces</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-xl text-on-surface-variant hover:bg-surface-container-high transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary">format_list_bulleted</span>
+<span class="font-medium">Lists</span>
+</a>
+</div>
+<div class="mt-8 flex flex-col gap-1">
+<p class="text-[10px] font-bold uppercase tracking-[0.2em] text-outline ml-4 mb-2">Favorites</p>
+<div class="px-4 py-2 flex items-center gap-3 text-sm text-on-surface-variant">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span>Garden Project</span>
+</div>
+<div class="px-4 py-2 flex items-center gap-3 text-sm text-on-surface-variant">
+<div class="w-2 h-2 rounded-full bg-tertiary"></div>
+<span>History Vault</span>
+</div>
+</div>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="pt-24 pb-32 md:pb-12 md:pl-80 pr-6 pl-6 min-h-screen">
+<!-- Header Section -->
+<header class="mb-16 max-w-5xl">
+<span class="text-[11px] font-bold uppercase tracking-[0.3em] text-primary block mb-3">Living Knowledge</span>
+<h2 class="text-5xl md:text-6xl font-extrabold font-headline text-on-surface leading-tight tracking-tighter">
+                Curated <br/> <span class="text-outline/30 italic">Spaces</span>
+</h2>
+<p class="mt-6 text-xl text-on-surface-variant font-light max-w-xl leading-relaxed">
+                Your family's collective intelligence, organized into living, breathing tactile archives.
+            </p>
+</header>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl">
+<!-- Featured Card: The Garden Project -->
+<section class="md:col-span-2 bg-surface-container-lowest rounded-xl p-10 editorial-shadow border border-outline-variant/10 flex flex-col md:flex-row gap-8 relative overflow-hidden group">
+<div class="flex-1 z-10">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary bg-primary-container/20 p-2 rounded-lg">potted_plant</span>
+<h3 class="text-2xl font-bold font-headline">The Garden Project</h3>
+</div>
+<p class="text-on-surface-variant leading-relaxed mb-8">
+                        Centralizing soil records, planting rotations, and growth guides for the South Terrace beds.
+                    </p>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-4 rounded-lg">
+<span class="block text-[10px] font-bold uppercase text-outline mb-1">Last Update</span>
+<span class="text-sm font-semibold">Today, 8:42 AM</span>
+</div>
+<div class="bg-surface-container-low p-4 rounded-lg">
+<span class="block text-[10px] font-bold uppercase text-outline mb-1">Active Seeds</span>
+<span class="text-sm font-semibold">14 Varieties</span>
+</div>
+</div>
+<button class="mt-8 px-8 py-3 bg-primary text-on-primary rounded-xl font-bold active:scale-95 transition-all silk-gradient">
+                        Open Archive
+                    </button>
+</div>
+<div class="flex-1 h-64 md:h-auto rounded-lg overflow-hidden relative grayscale hover:grayscale-0 transition-all duration-700">
+<img class="w-full h-full object-cover" data-alt="aerial view of an organized vegetable garden with wooden raised beds and lush greenery in soft morning light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAy0JP8DPVR52pvKVpFJJzSPikVWNDca4C1cdv3H4c6I0p_kijeCHFMIZZbmCm8Iofl2XFH6rMpnfO895qBt6O6R_2kiHvMtSTqIgehnd2dTxLzWxu4Q93t4f-4V-LHTBfP6XOnDParW_1zufjyiiAyW7kDZT6ONtxUOzfy_ipylxNLQL7AZOkkktnRlbpHEt4u9u6qhj3W-Yy5iR-TF4_Yqc5J50StTq-J_780b7nXKO7YahG6ESWqp3ImO8LUYcl0mhtw0CVJ91Y"/>
+</div>
+</section>
+<!-- Card: Family History -->
+<section class="bg-surface-container-lowest rounded-xl p-8 editorial-shadow border border-outline-variant/10 flex flex-col justify-between group">
+<div>
+<div class="w-12 h-12 bg-secondary-container rounded-full flex items-center justify-center mb-6 group-hover:rotate-12 transition-transform">
+<span class="material-symbols-outlined text-on-secondary-container">history_edu</span>
+</div>
+<h3 class="text-2xl font-bold font-headline mb-4">Family History</h3>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                        Digital vault of letters, genealogy charts, and oral recordings from the 1920s onwards.
+                    </p>
+</div>
+<div class="mt-8 flex -space-x-3 overflow-hidden">
+<img class="inline-block h-10 w-10 rounded-full ring-4 ring-surface-container-lowest object-cover" data-alt="vintage style black and white portrait of an elderly person with soft light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8iAmoVB_tDWmeZzgNkQwKrbGU0VzzoGgHXFY85sadpH7K8EsBbblpCOlUNBLOFo4-gOqW6KiU4KFB4mp_toCeIbGbQ4ffbx7lkNVVpdtL_dLMzwDsDojs6IPBIz1AgG8gX4xiyZ3k83N61_hIYbcJU_IkFakpnHjudzjw8P65Voeg-QstBUfAmts5eq5z3-qAhtVwH-iSIwC5tjiAmGLWNDBcJXOgS8SAbcE5oiC1lLfFph9akLQTgfeOZe5rKabmydNfekfS67A"/>
+<img class="inline-block h-10 w-10 rounded-full ring-4 ring-surface-container-lowest object-cover" data-alt="close up portrait of a middle aged man with gentle lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBznLn2L02QDcyVNWorLB6cKrnTzn3t8JDWBhm80BQPFz4NQQL6iIR8SE_pa9Q8yNzgh4zSmkTt2AoSYJGhDZAk9n6bs7_agm9nWcN4VUiwdldmWlFTbY0mBFGua8RUuihcZc9Rw0_26xRFSgMJRGQC8FjgvdYkaV2Jnr435hs640TYCK--ix1Mmd802iNruDJ7foksRe7rVmgAtgvIj4D8NeS-4OQekg4b3CcduKAJmBDFkZLNzH2-8K5VbvTeYq6rakvQNUqlOTM"/>
+<div class="h-10 w-10 rounded-full ring-4 ring-surface-container-lowest bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-outline">+4</div>
+</div>
+</section>
+<!-- Card: AI Insights (Special Treatment) -->
+<section class="bg-tertiary-container/30 rounded-xl p-8 editorial-shadow border border-outline-variant/15 ai-glow flex flex-col justify-between relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4">
+<span class="material-symbols-outlined text-tertiary opacity-30 text-5xl" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<div>
+<h3 class="text-xl font-bold font-headline text-on-tertiary-container mb-4">Lumina Insights</h3>
+<p class="text-sm text-on-tertiary-container/80 leading-relaxed">
+                        "Your garden records suggest the Heirloom Tomatoes are ready for nitrogen-rich mulch next week."
+                    </p>
+</div>
+<div class="mt-6 flex items-center gap-3">
+<div class="h-1 w-full bg-tertiary-fixed rounded-full overflow-hidden">
+<div class="h-full bg-tertiary w-3/4"></div>
+</div>
+<span class="text-[10px] font-bold text-tertiary">75%</span>
+</div>
+</section>
+<!-- Card: Kitchen Recipes -->
+<section class="bg-surface-container-lowest rounded-xl p-8 editorial-shadow border border-outline-variant/10 flex flex-col group h-full">
+<div class="mb-6 h-40 rounded-lg overflow-hidden">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="artisan ingredients like flour and fresh herbs scattered on a rustic wooden table with soft focus" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfZ-zdqxQdBxqrfr2-8C7gtGJ85EWNDmaAjHIwRVK0f-Y51WOhVQqtLLFMlqqvXaUUyHUAprumZu1ZTfJOnXp-XDUh45k_5bKIBTDqi1pl4bdfa69L700DsSyvo1iXRXDKB85-u6NXHpg7Lav55ngVBP2dK_08SLRZQeEq03wlmXT22_ayUq9VMuLcxbPvdfOILOZBV_9v7g0fr4csQMKDz0NIQTB3-kVOjH8TkSD1Iagbp5xlgjXAIaVGiCaqVnSbwWNJXjjNhM4"/>
+</div>
+<h3 class="text-xl font-bold font-headline mb-2">Shared Kitchen</h3>
+<p class="text-sm text-on-surface-variant flex-grow">A collective cookbook of heritage recipes and modern experiments.</p>
+<div class="mt-4 pt-4 border-t border-outline-variant/10 flex items-center justify-between">
+<span class="text-xs font-medium text-outline">124 Recipes</span>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</div>
+</section>
+<!-- Card: Travel Log -->
+<section class="bg-surface-container-lowest rounded-xl p-8 editorial-shadow border border-outline-variant/10 flex flex-col justify-between group">
+<div class="flex justify-between items-start">
+<div class="w-10 h-10 bg-primary-container/10 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">explore</span>
+</div>
+<div class="bg-surface-container-high px-3 py-1 rounded-full text-[10px] font-bold uppercase text-outline">New</div>
+</div>
+<div class="mt-6">
+<h3 class="text-xl font-bold font-headline mb-2">Expeditions</h3>
+<p class="text-sm text-on-surface-variant">Planning the 2024 reunion in Kyoto. Map pins and logistics.</p>
+</div>
+<div class="mt-6 h-24 bg-surface-container-low rounded-lg overflow-hidden border border-outline-variant/10">
+<!-- Map background logic -->
+<div class="w-full h-full bg-cover bg-center opacity-60" data-location="Kyoto" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAi-ST2TVF7CQRyFDThxDBXWVfpu0BcDIDkZKLtA7U0M_m0aY-vMnqwczA3Z6BB2lQVZeTTSsPi6hu0qL5-F2QoNKPSQ-zueLo94HcjNn0eSdApFIKWyueRZGHKSJ0YsTWgmiKYQQX9-VnV-RiceirYLzGRSe24SSwquZG5EVzYm8aCp8-XEBhMXQMLZ1O_6De8d5qNfeVrNEyBLxDkrSKqft6f_LweI_XTX6m5MeaCmAvdb6mB4j1JDRBZYx3ZE003VKOzKtTbaek')"></div>
+</div>
+</section>
+</div>
+<!-- Call to Action Section -->
+<div class="mt-24 p-12 rounded-xl bg-surface-container-low flex flex-col md:flex-row items-center justify-between gap-8 border border-outline-variant/10">
+<div>
+<h4 class="text-3xl font-extrabold font-headline mb-2">Start a new Space?</h4>
+<p class="text-on-surface-variant font-light">Collaborate on a project or archive a legacy.</p>
+</div>
+<button class="px-10 py-4 bg-inverse-surface text-surface rounded-full font-bold hover:opacity-90 active:scale-95 transition-all">
+                Create Space
+            </button>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-[#fbf9f6]/70 dark:bg-[#1b1c1a]/70 backdrop-blur-3xl rounded-t-[24px] shadow-[0_-8px_32px_rgba(27,28,26,0.04)]">
+<a class="flex flex-col items-center justify-center text-[#1b1c1a]/50 dark:text-[#fbf9f6]/50 px-5 py-2 hover:text-[#5d3288] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">today</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Today</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#1b1c1a]/50 dark:text-[#fbf9f6]/50 px-5 py-2 hover:text-[#5d3288] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">chat_bubble</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Chat</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#5d3288] to-[#764ba2] text-white rounded-full px-5 py-2 active:scale-90 duration-200 shadow-lg shadow-primary/30" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">diversity_3</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Spaces</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#1b1c1a]/50 dark:text-[#fbf9f6]/50 px-5 py-2 hover:text-[#5d3288] transition-colors active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">format_list_bulleted</span>
+<span class="font-manrope text-[11px] font-semibold uppercase tracking-wider">Lists</span>
+</a>
+</nav>
+</body></html>

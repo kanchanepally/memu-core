@@ -19,7 +19,9 @@
     "android": {
       "package": "digital.memu.app",
       "usesCleartextTraffic": true,
-      "permissions": ["INTERNET"],
+      "permissions": [
+        "INTERNET"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#667eea",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -33,7 +35,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ]
   }
 }
