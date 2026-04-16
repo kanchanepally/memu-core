@@ -274,6 +274,13 @@ export async function getSpaces(): Promise<ApiResponse<{ spaces: SynthesisPage[]
   return request<{ spaces: SynthesisPage[] }>('/api/dashboard/spaces');
 }
 
+export async function createSpace(title: string, category: string, body_markdown: string) {
+  return request<{ space: SynthesisPage }>('/api/spaces', {
+    method: 'POST',
+    body: JSON.stringify({ title, category, body_markdown }),
+  });
+}
+
 export async function updateSpace(id: string, title: string, body_markdown: string) {
   return request<{ space: SynthesisPage }>(`/api/spaces/${id}`, {
     method: 'PUT',
@@ -308,6 +315,82 @@ export async function updateProfile(displayName: string) {
 export async function clearChatHistory() {
   return request<{ success: boolean }>('/api/chat/clear', {
     method: 'POST',
+  });
+}
+
+// BYOK — bring-your-own-key for LLM providers
+export interface BYOKKeyStatus {
+  provider: 'anthropic' | 'gemini' | 'openai';
+  hasKey: boolean;
+  enabled: boolean;
+  keyHint?: string;
+  updatedAt?: string;
+}
+
+export async function getBYOKStatus() {
+  return request<{ keys: BYOKKeyStatus[]; reason?: string }>('/api/profile/byok');
+}
+
+export async function setBYOKKey(provider: 'anthropic' | 'gemini' | 'openai', apiKey: string) {
+  return request<{ success: boolean }>('/api/profile/byok', {
+    method: 'POST',
+    body: JSON.stringify({ provider, apiKey }),
+  });
+}
+
+export async function revokeBYOKKey(provider: 'anthropic' | 'gemini' | 'openai') {
+  return request<{ success: boolean }>(`/api/profile/byok?provider=${encodeURIComponent(provider)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function toggleBYOKKey(provider: 'anthropic' | 'gemini' | 'openai', enabled: boolean) {
+  return request<{ success: boolean }>('/api/profile/byok/toggle', {
+    method: 'POST',
+    body: JSON.stringify({ provider, enabled }),
+  });
+}
+
+// Twin registry — real↔anonymous entity mappings
+export interface TwinEntity {
+  id: string;
+  entity_type: string;
+  real_name: string;
+  anonymous_label: string;
+  detected_by: string;
+  confirmed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getTwinRegistry() {
+  return request<{ entities: TwinEntity[] }>('/api/twin/registry');
+}
+
+export async function addTwinEntity(params: {
+  entityType: string;
+  realName: string;
+  anonymousLabel: string;
+}) {
+  return request<{ success: boolean; entity: TwinEntity }>('/api/twin/registry', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function updateTwinEntity(
+  id: string,
+  updates: { realName?: string; anonymousLabel?: string; entityType?: string; confirmed?: boolean },
+) {
+  return request<{ success: boolean; entity: TwinEntity }>(`/api/twin/registry/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteTwinEntity(id: string) {
+  return request<{ success: boolean }>(`/api/twin/registry/${id}`, {
+    method: 'DELETE',
   });
 }
 

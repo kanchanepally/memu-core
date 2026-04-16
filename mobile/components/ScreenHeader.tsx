@@ -4,20 +4,23 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../lib/tokens';
-import Logo, { LogoMark } from './Logo';
-import StatusPill from './StatusPill';
+import { LogoMark } from './Logo';
+import { useDrawer } from '../lib/drawer';
 
 /**
  * Indigo Sanctuary top header.
- * Floats above the scroll with a 20px backdrop-blur, no hard border.
- * Left: avatar (LogoMark). Centre: "Memu" wordmark in Manrope ExtraBold.
- * Right: optional status pill + overflow.
+ * Left: avatar (LogoMark) — tap to open the side drawer.
+ * Centre: optional wordmark.
+ * Right: optional overflow / close button.
+ *
+ * `statusLabel` and `statusPulse` are accepted for back-compat but no longer
+ * rendered — they were obscuring the wordmark and added little signal.
  */
 interface Props {
   title?: string;
   showLogo?: boolean;
   showWordmark?: boolean;
-  statusLabel?: string;   // e.g. "Node Syncing", "Online"
+  statusLabel?: string;
   statusPulse?: boolean;
   onRightPress?: () => void;
   rightIcon?: React.ComponentProps<typeof Ionicons>['name'];
@@ -29,17 +32,26 @@ export default function ScreenHeader({
   title,
   showLogo = true,
   showWordmark = false,
-  statusLabel,
-  statusPulse = true,
   onRightPress,
-  rightIcon = 'ellipsis-horizontal',
+  rightIcon,
 }: Props) {
   const router = useRouter();
+  const { show: openDrawer } = useDrawer();
+
   return (
     <BlurView intensity={60} tint="light" style={styles.container}>
       <View style={styles.inner}>
         <View style={styles.left}>
-          {showLogo ? <LogoMark size={32} /> : null}
+          {showLogo ? (
+            <Pressable
+              onPress={openDrawer}
+              accessibilityLabel="Open menu"
+              hitSlop={12}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <LogoMark size={32} />
+            </Pressable>
+          ) : null}
           {title ? <Text style={styles.title}>{title}</Text> : null}
         </View>
 
@@ -48,15 +60,16 @@ export default function ScreenHeader({
         ) : <View />}
 
         <View style={styles.right}>
-          {statusLabel ? <StatusPill label={statusLabel} pulse={statusPulse} /> : null}
-          <Pressable
-            onPress={onRightPress ?? (() => router.push('/settings'))}
-            accessibilityLabel="Settings"
-            hitSlop={12}
-            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-          >
-            <Ionicons name={rightIcon} size={22} color={colors.onSurfaceVariant} />
-          </Pressable>
+          {rightIcon ? (
+            <Pressable
+              onPress={onRightPress ?? (() => router.back())}
+              accessibilityLabel="Close"
+              hitSlop={12}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <Ionicons name={rightIcon} size={22} color={colors.onSurfaceVariant} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </BlurView>

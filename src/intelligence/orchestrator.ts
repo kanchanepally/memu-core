@@ -1,6 +1,8 @@
 import { WASocket, proto, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { generateResponse, ConversationMessage } from './provider';
+import { detectAndRegisterNovelEntities } from '../twin/novel';
+import type { ConversationMessage } from './claude';
+import { dispatch } from '../skills/router';
 import { retrieveRelevantContext, type Visibility } from './context';
 import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
@@ -94,6 +96,12 @@ export async function processIntelligencePipeline(
   messageId: string = 'unknown',
   visibility: Visibility = 'family',
 ): Promise<string> {
+  // 0. Novel-entity detection — register any unseen proper nouns so step 1
+  // can anonymise them on the subsequent pass. Fire-and-forget safe: on
+  // failure the function logs + returns [], and the regex translator proceeds
+  // with whatever is already in the registry.
+  await detectAndRegisterNovelEntities(content);
+
   // 1. Twin Translation (Real -> Anonymous)
   const anonymousMsg = await translateToAnonymous(content);
   console.log(`[IN -> Translated]: ${anonymousMsg}`);
@@ -115,8 +123,20 @@ export async function processIntelligencePipeline(
     console.log(`[HISTORY -> Loaded]: ${history.length / 2} previous exchanges.`);
   }
 
-  // 4. LLM call (provider selected via MEMU_LLM_PROVIDER; Digital Twin guarantees anonymity regardless)
-  const claudeResponse = await generateResponse(anonymousMsg, anonymousContexts, history);
+  // 4. LLM call — routed through the model router per skill frontmatter.
+  // Digital Twin guarantees anonymity regardless of which provider handles the call.
+  const contextBlock = anonymousContexts.length === 0
+    ? ''
+    : `=== RELEVANT FAMILY CONTEXT ===\n${anonymousContexts.map((c, i) => `[${i + 1}] ${c}`).join('\n')}\n==============================`;
+  const { text: claudeResponse } = await dispatch({
+    skill: 'interactive_query',
+    templateVars: { context_block: contextBlock },
+    userMessage: anonymousMsg,
+    history,
+    profileId,
+    familyId: profileId,
+    useBYOK: true,
+  });
   console.log(`[LLM -> Raw]: ${claudeResponse}`);
 
   // 5. Reverse Translation (Anonymous -> Real)

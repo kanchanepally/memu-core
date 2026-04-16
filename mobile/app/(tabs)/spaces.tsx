@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
-import { getSpaces, updateSpace, type SynthesisPage } from '../../lib/api';
+import { getSpaces, updateSpace, createSpace, type SynthesisPage } from '../../lib/api';
+import { useToast } from '../../components/Toast';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import { stripMarkdown } from '../../lib/markdown';
 import ScreenHeader from '../../components/ScreenHeader';
@@ -46,6 +47,13 @@ export default function SpacesScreen() {
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [creating, setCreating] = useState(false);
+  const [newCategory, setNewCategory] = useState<'person' | 'routine' | 'household' | 'commitment' | 'document'>('person');
+  const [newTitle, setNewTitle] = useState('');
+  const [newBody, setNewBody] = useState('');
+  const [creatingSaving, setCreatingSaving] = useState(false);
+  const toast = useToast();
 
   const loadSpaces = useCallback(async () => {
     const { data } = await getSpaces();
@@ -92,6 +100,30 @@ export default function SpacesScreen() {
   const closeModal = () => {
     setIsEditing(false);
     setSelectedPage(null);
+  };
+
+  const openCreate = () => {
+    setNewCategory(filter !== 'all' ? (filter as typeof newCategory) : 'person');
+    setNewTitle('');
+    setNewBody('');
+    setCreating(true);
+  };
+
+  const handleCreate = async () => {
+    if (!newTitle.trim()) {
+      toast.show('Give the space a title first.', 'error');
+      return;
+    }
+    setCreatingSaving(true);
+    const { data, error } = await createSpace(newTitle.trim(), newCategory, newBody);
+    setCreatingSaving(false);
+    if (error || !data?.space) {
+      toast.show(error || 'Could not create the space.', 'error');
+      return;
+    }
+    setSpaces(prev => [data.space, ...prev.filter(s => s.id !== data.space.id)]);
+    setCreating(false);
+    toast.show('Space created.', 'info');
   };
 
   const handleShare = () => {
@@ -198,6 +230,92 @@ export default function SpacesScreen() {
           </View>
         )}
       </ScreenContainer>
+
+      {/* Create FAB */}
+      <Pressable style={styles.fab} onPress={openCreate} accessibilityLabel="Create new space">
+        <Ionicons name="add" size={26} color={colors.onPrimary} />
+      </Pressable>
+
+      {/* Create modal */}
+      <Modal visible={creating} animationType="slide" transparent onRequestClose={() => setCreating(false)}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalIconChip}>
+                  <Ionicons name="sparkles" size={20} color={colors.tertiary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCategory}>New space</Text>
+                  <Text style={styles.modalTitle}>Compile by hand</Text>
+                </View>
+                <Pressable onPress={() => setCreating(false)} hitSlop={12}>
+                  <Ionicons name="close" size={22} color={colors.outline} />
+                </Pressable>
+              </View>
+            </View>
+
+            <ScrollView style={styles.modalScroll} contentContainerStyle={{ paddingBottom: spacing.xl }}>
+              <Text style={styles.fieldLabel}>Category</Text>
+              <View style={styles.categoryRow}>
+                {(['person', 'routine', 'household', 'commitment', 'document'] as const).map(cat => {
+                  const active = newCategory === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      onPress={() => setNewCategory(cat)}
+                      style={[styles.categoryChip, active && styles.categoryChipActive]}
+                    >
+                      <Ionicons
+                        name={categoryIcon(cat)}
+                        size={14}
+                        color={active ? colors.onTertiaryContainer : colors.onSurfaceVariant}
+                      />
+                      <Text style={[styles.categoryChipLabel, active && styles.categoryChipLabelActive]}>
+                        {cat}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.fieldLabel}>Title</Text>
+              <TextInput
+                style={styles.editTitleInput}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                placeholder="e.g. Robin's school routine"
+                placeholderTextColor={colors.outline}
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>Content (markdown)</Text>
+              <TextInput
+                style={[styles.editBodyInput, { minHeight: 200 }]}
+                value={newBody}
+                onChangeText={setNewBody}
+                multiline
+                textAlignVertical="top"
+                placeholder="Write freely — headings, lists, whatever holds the thread."
+                placeholderTextColor={colors.outline}
+              />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <GradientButton label="Cancel" variant="ghost" onPress={() => setCreating(false)} />
+              <GradientButton
+                label={creatingSaving ? 'Saving…' : 'Create space'}
+                onPress={handleCreate}
+                loading={creatingSaving}
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Detail modal */}
       <Modal visible={!!selectedPage} animationType="slide" transparent onRequestClose={closeModal}>
@@ -557,6 +675,56 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: Platform.OS === 'ios' ? 110 : 96,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.high,
+  },
+
+  fieldLabel: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+    marginBottom: spacing.sm,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  categoryChipActive: {
+    backgroundColor: colors.tertiaryContainer,
+  },
+  categoryChipLabel: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+  categoryChipLabelActive: {
+    color: colors.onTertiaryContainer,
   },
 });
 

@@ -162,7 +162,7 @@ async function isAlreadyImported(sourceId: string): Promise<boolean> {
 // EXTRACTION (batch of messages → facts)
 // ==========================================
 
-import { generateResponse } from './provider';
+import { dispatch } from '../skills/router';
 
 /**
  * Extract durable facts from a batch of messages or a text chunk.
@@ -170,27 +170,13 @@ import { generateResponse } from './provider';
  */
 async function extractFactsFromChunk(content: string, contextLabel: string): Promise<string[]> {
   try {
-    const prompt = `You are a memory extraction system. Given text from ${contextLabel}, extract durable facts worth remembering about the people, their routines, preferences, relationships, commitments, plans, and interests.
-
-Extract ONLY facts that would be useful in future conversations:
-- Preferences and routines ("Alice does ballet on Tuesdays")
-- Relationships ("Bob is Alice's uncle")
-- Commitments and plans ("Planning to renovate the kitchen in spring")
-- Health details ("Child has a peanut allergy")
-- Interests ("Has been talking about composting")
-- Work context ("Works from home on Wednesdays")
-- Important dates ("Wedding anniversary is 15 March")
-- Recurring events ("School pickup is at 3:15pm")
-
-DO NOT extract: temporary states, jokes, greetings, logistics that have already passed, or generic conversation.
-
-Return a JSON array of strings. Each string is one self-contained fact.
-If there are no durable facts, return [].
-
-Text to extract from:
-${content}`;
-
-    const replyText = await generateResponse(prompt, [], []);
+    const { text: replyText } = await dispatch({
+      skill: 'import_extract',
+      templateVars: {
+        context_label: contextLabel,
+        content,
+      },
+    });
 
     const jsonMatch = replyText.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];

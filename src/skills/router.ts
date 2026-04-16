@@ -1,0 +1,446 @@
+import { pool } from '../db/connection';
+import { getSkill, renderTemplate, type Skill, type SkillModel, type SkillCostTier } from './loader';
+import { callClaude, type ClaudeCallInput, type ConversationMessage } from '../intelligence/claude';
+import { callGemini, toGeminiContents } from '../intelligence/gemini';
+import { resolveProviderKey, type BYOKProvider } from '../security/byok';
+import { enforceTwinInvariant, TwinViolationError } from '../twin/guard';
+
+export type ProviderName = 'claude' | 'gemini' | 'ollama';
+
+export interface DispatchPlan {
+  skillName: string;
+  requestedModel: SkillModel;
+  effectiveModel: SkillModel;
+  provider: ProviderName;
+  concreteModel: string;
+  costTier?: SkillCostTier;
+  requiresTwin: boolean;
+  downgraded: boolean;
+  overridden: boolean;
+}
+
+export interface DispatchImage {
+  mediaType: string;
+  base64Data: string;
+}
+
+export interface DispatchInput {
+  skill: string;
+  templateVars?: Record<string, string>;
+  userMessage?: string;
+  history?: ConversationMessage[];
+  images?: DispatchImage[];
+  context?: string[];
+
+  familyId?: string;
+  profileId?: string;
+  apiKey?: string;
+  keyIdentifier?: string;
+  /**
+   * If true and `profileId` is set, the router will attempt to use the user's
+   * BYOK key for the resolved provider. The deployment-level key is used as
+   * fallback when no BYOK key is configured or enabled. Default: false (family
+   * default key). Set true only when the call is on behalf of a single user
+   * (e.g. interactive_query, autolearn).
+   */
+  useBYOK?: boolean;
+
+  maxTokens?: number;
+  temperature?: number;
+
+  dryRun?: boolean;
+}
+
+export interface DispatchResult {
+  text: string;
+  plan: DispatchPlan;
+  tokensIn: number;
+  tokensOut: number;
+  latencyMs: number;
+  ledgerId?: string;
+  dummy: boolean;
+  dryRun: boolean;
+}
+
+// ----------------------------------------------------------------------------
+// Model alias → provider+concrete resolution
+// ----------------------------------------------------------------------------
+
+interface Resolution {
+  provider: ProviderName;
+  concreteModel: string;
+}
+
+const CLAUDE_HAIKU = process.env.MEMU_CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20251001';
+const CLAUDE_SONNET = process.env.MEMU_CLAUDE_SONNET_MODEL || 'claude-sonnet-4-6';
+const GEMINI_FLASH = process.env.MEMU_GEMINI_FLASH_MODEL || 'gemini-2.5-flash';
+const GEMINI_FLASH_LITE = process.env.MEMU_GEMINI_FLASH_LITE_MODEL || 'gemini-2.5-flash-lite';
+const OLLAMA_DEFAULT = process.env.MEMU_OLLAMA_MODEL || 'llama3.2';
+
+function resolveAlias(alias: SkillModel): Resolution {
+  switch (alias) {
+    case 'haiku':
+      return { provider: 'claude', concreteModel: CLAUDE_HAIKU };
+    case 'sonnet':
+      return { provider: 'claude', concreteModel: CLAUDE_SONNET };
+    case 'sonnet-vision':
+      // Sonnet 4.6 natively supports vision.
+      return { provider: 'claude', concreteModel: CLAUDE_SONNET };
+    case 'gemini-flash':
+      return { provider: 'gemini', concreteModel: GEMINI_FLASH };
+    case 'gemini-flash-lite':
+      return { provider: 'gemini', concreteModel: GEMINI_FLASH_LITE };
+    case 'local':
+      return { provider: 'ollama', concreteModel: OLLAMA_DEFAULT };
+    case 'auto':
+      // Auto currently favours Claude Haiku for cheap, Sonnet for anything else.
+      // Story 1.1 scope: simple default; smarter auto picks come later.
+      return { provider: 'claude', concreteModel: CLAUDE_HAIKU };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Env override and cost-tier downgrade
+// ----------------------------------------------------------------------------
+
+const VALID_ALIASES: SkillModel[] = [
+  'haiku',
+  'sonnet',
+  'sonnet-vision',
+  'gemini-flash',
+  'gemini-flash-lite',
+  'local',
+  'auto',
+];
+
+function applyEnvOverride(alias: SkillModel): { alias: SkillModel; overridden: boolean } {
+  const key = `MEMU_MODEL_OVERRIDE_${alias.toUpperCase().replace(/-/g, '_')}`;
+  const raw = process.env[key];
+  if (!raw) return { alias, overridden: false };
+  const normalised = raw.toLowerCase() as SkillModel;
+  if (!VALID_ALIASES.includes(normalised)) {
+    console.warn(`[ROUTER] Ignoring invalid ${key}=${raw}`);
+    return { alias, overridden: false };
+  }
+  return { alias: normalised, overridden: true };
+}
+
+function applyBudgetDowngrade(alias: SkillModel, costTier?: SkillCostTier): { alias: SkillModel; downgraded: boolean } {
+  if (process.env.MEMU_BUDGET_PRESSURE !== 'true') return { alias, downgraded: false };
+  if (!costTier) return { alias, downgraded: false };
+
+  // Premium → standard, standard → cheap.
+  if (costTier === 'premium') {
+    if (alias === 'sonnet-vision' || alias === 'sonnet') {
+      return { alias: 'haiku', downgraded: true };
+    }
+  }
+  if (costTier === 'standard') {
+    if (alias === 'sonnet') return { alias: 'haiku', downgraded: true };
+    if (alias === 'gemini-flash') return { alias: 'gemini-flash-lite', downgraded: true };
+  }
+  return { alias, downgraded: false };
+}
+
+// ----------------------------------------------------------------------------
+// Planning
+// ----------------------------------------------------------------------------
+
+export function planDispatch(skillName: string): DispatchPlan {
+  const skill: Skill = getSkill(skillName);
+  const requested = skill.frontmatter.model;
+  const costTier = skill.frontmatter.cost_tier;
+
+  const { alias: afterOverride, overridden } = applyEnvOverride(requested);
+  const { alias: effective, downgraded } = applyBudgetDowngrade(afterOverride, costTier);
+  const { provider, concreteModel } = resolveAlias(effective);
+
+  return {
+    skillName,
+    requestedModel: requested,
+    effectiveModel: effective,
+    provider,
+    concreteModel,
+    costTier,
+    requiresTwin: skill.frontmatter.requires_twin === true,
+    downgraded,
+    overridden,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Ledger write
+// ----------------------------------------------------------------------------
+
+async function writeLedger(
+  plan: DispatchPlan,
+  input: DispatchInput,
+  keyIdentifier: string,
+  outcome: {
+    tokensIn: number;
+    tokensOut: number;
+    latencyMs: number;
+    status: 'ok' | 'error' | 'dry_run' | 'dummy';
+    errorMessage?: string;
+    twinVerified?: boolean;
+    twinViolations?: string[];
+  },
+): Promise<string | undefined> {
+  try {
+    const res = await pool.query(
+      `INSERT INTO privacy_ledger (
+        family_id, profile_id, skill_name, requested_model, dispatched_model, provider,
+        cost_tier, requires_twin, twin_verified, key_identifier,
+        tokens_in, tokens_out, latency_ms, status, error_message, dry_run,
+        twin_violations
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      RETURNING id`,
+      [
+        input.familyId ?? null,
+        input.profileId ?? null,
+        plan.skillName,
+        plan.requestedModel,
+        plan.concreteModel,
+        plan.provider,
+        plan.costTier ?? null,
+        plan.requiresTwin,
+        outcome.twinVerified ?? false,
+        keyIdentifier,
+        outcome.tokensIn,
+        outcome.tokensOut,
+        outcome.latencyMs,
+        outcome.status,
+        outcome.errorMessage ?? null,
+        input.dryRun === true,
+        outcome.twinViolations && outcome.twinViolations.length > 0
+          ? JSON.stringify(outcome.twinViolations)
+          : null,
+      ],
+    );
+    return res.rows[0]?.id as string | undefined;
+  } catch (err) {
+    console.error('[ROUTER] Privacy ledger write failed:', err);
+    return undefined;
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Dispatch
+// ----------------------------------------------------------------------------
+
+function buildClaudeMessages(input: DispatchInput, userPrompt: string): ClaudeCallInput['messages'] {
+  const history = input.history ?? [];
+  if (input.images && input.images.length > 0) {
+    const contentBlocks: Array<
+      | { type: 'text'; text: string }
+      | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    > = input.images.map(img => ({
+      type: 'image' as const,
+      source: { type: 'base64' as const, media_type: img.mediaType, data: img.base64Data },
+    }));
+    contentBlocks.push({ type: 'text' as const, text: userPrompt });
+    return [
+      ...history.map(h => ({ role: h.role, content: h.content })),
+      { role: 'user' as const, content: contentBlocks },
+    ];
+  }
+  return [
+    ...history.map(h => ({ role: h.role, content: h.content })),
+    { role: 'user' as const, content: userPrompt },
+  ];
+}
+
+function resolveUserPrompt(skill: Skill, input: DispatchInput): { systemPrompt?: string; userPrompt: string } {
+  const body = input.templateVars
+    ? renderTemplate(skill.body, input.templateVars)
+    : skill.body;
+
+  // Skills are authored as either a system prompt or a user-prompt template.
+  // For the router we treat skill.body as the system prompt by default, and the
+  // caller's userMessage as the user prompt. For skills explicitly authored as
+  // a user-prompt template (no userMessage provided), we send body as the user
+  // prompt instead. This matches how extraction/vision/autolearn/interactive_query
+  // use skills as system prompts, while synthesis/briefing/import_extract
+  // render the full user prompt.
+  if (input.userMessage !== undefined) {
+    return { systemPrompt: body, userPrompt: input.userMessage };
+  }
+  return { userPrompt: body };
+}
+
+function providerToBYOKProvider(provider: ProviderName): BYOKProvider | null {
+  if (provider === 'claude') return 'anthropic';
+  if (provider === 'gemini') return 'gemini';
+  return null;
+}
+
+async function resolveCallKey(
+  input: DispatchInput,
+  provider: ProviderName,
+): Promise<{ apiKey?: string; keyIdentifier: string }> {
+  if (input.apiKey) {
+    return { apiKey: input.apiKey, keyIdentifier: input.keyIdentifier ?? 'explicit' };
+  }
+  if (input.useBYOK && input.profileId) {
+    const byokProvider = providerToBYOKProvider(provider);
+    if (byokProvider) {
+      const resolved = await resolveProviderKey(input.profileId, byokProvider);
+      if (resolved) return resolved;
+    }
+  }
+  return { keyIdentifier: 'family_default' };
+}
+
+export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
+  const plan = planDispatch(input.skill);
+  const skill = getSkill(input.skill);
+  const { systemPrompt, userPrompt } = resolveUserPrompt(skill, input);
+  const callKey = await resolveCallKey(input, plan.provider);
+
+  if (input.dryRun) {
+    const ledgerId = await writeLedger(plan, input, callKey.keyIdentifier, {
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs: 0,
+      status: 'dry_run',
+    });
+    return {
+      text: '',
+      plan,
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs: 0,
+      ledgerId,
+      dummy: false,
+      dryRun: true,
+    };
+  }
+
+  // Twin invariant — only for skills that declare requires_twin: true.
+  // This runs *after* callers have already (by convention) anonymised, and acts
+  // as the belt-and-braces guard that catches developer mistakes before the
+  // network request goes out. See src/twin/guard.ts.
+  let effectiveSystemPrompt = systemPrompt;
+  let effectiveUserPrompt = userPrompt;
+  let effectiveHistory = input.history;
+  let twinVerified = false;
+  let twinViolations: string[] = [];
+
+  if (plan.requiresTwin) {
+    try {
+      const enforcement = await enforceTwinInvariant(input.skill, {
+        systemPrompt,
+        userPrompt,
+        history: input.history,
+      });
+      twinVerified = enforcement.verified;
+      twinViolations = enforcement.violations;
+      effectiveSystemPrompt = enforcement.fields.systemPrompt;
+      effectiveUserPrompt = enforcement.fields.userPrompt;
+      if (enforcement.fields.history) {
+        effectiveHistory = enforcement.fields.history.map(h => ({
+          role: h.role as ConversationMessage['role'],
+          content: h.content,
+        }));
+      }
+      if (twinViolations.length > 0) {
+        console.warn(
+          `[TWIN-GUARD] Auto-anonymised ${twinViolations.length} leaking entit${twinViolations.length === 1 ? 'y' : 'ies'} in skill "${input.skill}" before dispatch.`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof TwinViolationError) {
+        await writeLedger(plan, input, callKey.keyIdentifier, {
+          tokensIn: 0,
+          tokensOut: 0,
+          latencyMs: 0,
+          status: 'error',
+          errorMessage: err.message,
+          twinVerified: false,
+          twinViolations: err.violations,
+        });
+      }
+      throw err;
+    }
+  }
+
+  try {
+    if (plan.provider === 'claude') {
+      const result = await callClaude({
+        model: plan.concreteModel,
+        system: effectiveSystemPrompt,
+        messages: buildClaudeMessages(
+          { ...input, history: effectiveHistory },
+          effectiveUserPrompt,
+        ),
+        maxTokens: input.maxTokens,
+        temperature: input.temperature,
+        apiKey: callKey.apiKey,
+      });
+      const ledgerId = await writeLedger(plan, input, callKey.keyIdentifier, {
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        status: result.dummy ? 'dummy' : 'ok',
+        twinVerified,
+        twinViolations,
+      });
+      return {
+        text: result.text,
+        plan,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        ledgerId,
+        dummy: result.dummy,
+        dryRun: false,
+      };
+    }
+
+    if (plan.provider === 'gemini') {
+      const contents = toGeminiContents(effectiveUserPrompt, effectiveHistory);
+      const result = await callGemini({
+        model: plan.concreteModel,
+        systemInstruction: effectiveSystemPrompt,
+        contents,
+        apiKey: callKey.apiKey,
+      });
+      const ledgerId = await writeLedger(plan, input, callKey.keyIdentifier, {
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        status: result.dummy ? 'dummy' : 'ok',
+        twinVerified,
+        twinViolations,
+      });
+      return {
+        text: result.text,
+        plan,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        ledgerId,
+        dummy: result.dummy,
+        dryRun: false,
+      };
+    }
+
+    // Ollama / local — not wired yet. Story 1.5 / Tier 3 work.
+    throw new Error(
+      `Local/Ollama dispatch is not yet implemented. Skill "${input.skill}" requested model "${plan.requestedModel}" which resolves to provider "${plan.provider}". ` +
+        `Set MEMU_MODEL_OVERRIDE_${plan.requestedModel.toUpperCase()} to a cloud alias as a temporary override.`,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await writeLedger(plan, input, callKey.keyIdentifier, {
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs: 0,
+      status: 'error',
+      errorMessage: message,
+      twinVerified,
+      twinViolations,
+    });
+    throw err;
+  }
+}

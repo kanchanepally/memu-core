@@ -1,7 +1,7 @@
 import { pool } from '../db/connection';
 import { fetchUpcomingEvents } from '../channels/calendar/google';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { generateResponse } from './provider';
+import { dispatch } from '../skills/router';
 import { sock } from '../channels/whatsapp';
 import { getTokensForProfile, sendPush } from '../channels/mobile';
 
@@ -39,17 +39,15 @@ export async function generateProactiveSynthesis(profileId: string): Promise<str
     const compiledState = `TODAY'S CALENDAR:\n${eventsStr || 'No events.'}\n\nACTIVE ITEMS/COLLISIONS:\n${streamStr || 'No pending items.'}`;
     const anonState = await translateToAnonymous(compiledState);
 
-    const prompt = `You are the family Chief of Staff. Write a short, highly empathetic morning briefing directly to the adult based on the context below. Focus on being proactively helpful.
-Your tone must be warm, casual, and highly competent. 
-DO NOT simply list the items. Synthesize them like a trusted human assistant would. 
-If there is a collision or tight overlap, flag it immediately.
-If there are pending items, gently mention 1 or 2 of them to keep things moving.
-Keep it firmly under 2 short paragraphs.
-
-HERE IS THE FAMILY STATE FOR TODAY:
-${anonState}`;
-
-    const claudeRaw = await generateResponse(prompt, []);
+    const { text: claudeRaw } = await dispatch({
+      skill: 'briefing',
+      templateVars: {
+        anon_state: anonState,
+        max_paragraphs: '2',
+        channel: 'push',
+      },
+      profileId,
+    });
     const realResponse = await translateToReal(claudeRaw);
     return realResponse;
   } catch(err) {
@@ -111,20 +109,17 @@ export async function generateAndPushMorningBriefing(profileId: string) {
     // 4. Translate out of Real Identity Scope
     const anonState = await translateToAnonymous(compiledState);
 
-    // 5. Synthesize Context via Sonnet
-    const prompt = `You are the family Chief of Staff. It is morning. Write a short, highly empathetic morning briefing directly to the parents based on the context below. Focus on being proactively helpful.
-Your tone must be warm, casual, and highly competent. 
-DO NOT simply list the items. Synthesize them like a trusted human assistant would. 
-If there is a collision or tight overlap, flag it immediately and gently ask how they want to handle it.
-If there are pending items, gently mention 1 or 2 of them to keep things moving.
-Do NOT use markdown bolding or asterisks (they break WhatsApp formatting sometimes). Keep spacing natural.
-Keep it firmly under 4 short paragraphs.
-
-HERE IS THE FAMILY STATE FOR TODAY:
-${anonState}`;
-
+    // 5. Synthesize Context via the router
     console.log(`[BRIEFING ENGINE] Dispatching context synthesis to Claude...`);
-    const claudeRaw = await generateResponse(prompt, []);
+    const { text: claudeRaw } = await dispatch({
+      skill: 'briefing',
+      templateVars: {
+        anon_state: anonState,
+        max_paragraphs: '4',
+        channel: 'whatsapp',
+      },
+      profileId,
+    });
 
     // 6. Translate response back into Real Identity
     const realResponse = await translateToReal(claudeRaw);

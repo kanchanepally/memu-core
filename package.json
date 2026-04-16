@@ -22,6 +22,7 @@
     "dotenv": "^16",
     "fastify": "^4",
     "googleapis": "^171.4.0",
+    "gray-matter": "^4.0.3",
     "imapflow": "^1",
     "node-cron": "^3.0.3",
     "pg": "^8",

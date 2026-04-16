@@ -11,6 +11,8 @@ import { loadAuthState, clearAuthState, saveDisplayName } from '../../lib/auth';
 import { loadPrefs, setAIMode, setBriefingEnabled, setBriefingTime, type AIMode, type Prefs } from '../../lib/prefs';
 import {
   updateProfile, clearChatHistory, exportData, getGoogleAuthUrl,
+  getBYOKStatus, setBYOKKey, revokeBYOKKey, toggleBYOKKey,
+  type BYOKKeyStatus,
 } from '../../lib/api';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
@@ -79,10 +81,26 @@ export default function SettingsScreen() {
   const [exporting, setExporting] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
 
+  // BYOK state
+  const [byokAnthropic, setByokAnthropic] = useState<BYOKKeyStatus | null>(null);
+  const [byokIsChild, setByokIsChild] = useState(false);
+  const [byokModal, setByokModal] = useState(false);
+  const [byokInput, setByokInput] = useState('');
+  const [byokSaving, setByokSaving] = useState(false);
+
   const refresh = useCallback(async () => {
-    const [authState, loadedPrefs] = await Promise.all([loadAuthState(), loadPrefs()]);
+    const [authState, loadedPrefs, byok] = await Promise.all([
+      loadAuthState(),
+      loadPrefs(),
+      getBYOKStatus(),
+    ]);
     setAuth({ serverUrl: authState.serverUrl, displayName: authState.displayName });
     setPrefs(loadedPrefs);
+    if (byok.data) {
+      setByokIsChild(!!byok.data.reason);
+      const anthropic = byok.data.keys.find(k => k.provider === 'anthropic');
+      setByokAnthropic(anthropic ?? { provider: 'anthropic', hasKey: false, enabled: false });
+    }
   }, []);
 
   useEffect(() => {
@@ -175,6 +193,61 @@ export default function SettingsScreen() {
     );
   };
 
+  const openBYOKEditor = () => {
+    setByokInput('');
+    setByokModal(true);
+  };
+
+  const handleSaveBYOK = async () => {
+    const trimmed = byokInput.trim();
+    if (trimmed.length < 10) {
+      Alert.alert('Invalid key', 'That doesn\u2019t look like a valid API key.');
+      return;
+    }
+    setByokSaving(true);
+    const { error } = await setBYOKKey('anthropic', trimmed);
+    setByokSaving(false);
+    if (error) {
+      Alert.alert('Could not save', error);
+      return;
+    }
+    setByokModal(false);
+    setByokInput('');
+    await refresh();
+  };
+
+  const handleRevokeBYOK = () => {
+    Alert.alert(
+      'Remove your Anthropic key?',
+      'Your queries will fall back to the deployment key. You can paste a new one anytime.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await revokeBYOKKey('anthropic');
+            if (error) {
+              Alert.alert('Could not remove', error);
+              return;
+            }
+            setByokModal(false);
+            await refresh();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleToggleBYOK = async (enabled: boolean) => {
+    const { error } = await toggleBYOKKey('anthropic', enabled);
+    if (error) {
+      Alert.alert('Could not update', error);
+      return;
+    }
+    await refresh();
+  };
+
   const handleFeedback = () => {
     const subject = encodeURIComponent('Memu feedback');
     const body = encodeURIComponent(
@@ -263,6 +336,27 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* AI Provider — BYOK (hidden for children) */}
+        {!byokIsChild && (
+          <>
+            <Text style={styles.sectionLabel}>AI provider</Text>
+            <View style={styles.section}>
+              <Row
+                icon="key-outline"
+                title="Anthropic API key"
+                subtitle={
+                  byokAnthropic?.hasKey
+                    ? byokAnthropic.enabled
+                      ? `Using your key \u00b7 ${byokAnthropic.keyHint ?? ''}`
+                      : `Disabled \u00b7 ${byokAnthropic.keyHint ?? ''}`
+                    : 'Using deployment key \u00b7 tap to use your own'
+                }
+                onPress={openBYOKEditor}
+              />
+            </View>
+          </>
+        )}
+
         {/* Context */}
         <Text style={styles.sectionLabel}>Context</Text>
         <View style={styles.section}>
@@ -288,6 +382,12 @@ export default function SettingsScreen() {
             title="Privacy Ledger"
             subtitle="Exactly what the AI received"
             onPress={() => router.push('/ledger')}
+          />
+          <Row
+            icon="shield-checkmark-outline"
+            title="Twin Registry"
+            subtitle="Names Memu never shares"
+            onPress={() => router.push('/twin-registry')}
           />
           <Row
             icon="download-outline"
@@ -416,6 +516,64 @@ export default function SettingsScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* BYOK modal */}
+      <Modal visible={byokModal} animationType="slide" transparent onRequestClose={() => setByokModal(false)}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Anthropic API key</Text>
+            <Text style={styles.modalHint}>
+              Paste your own key to bill Claude calls to your Anthropic account. Stored encrypted on your Memu server. Remove anytime.
+            </Text>
+
+            {byokAnthropic?.hasKey ? (
+              <>
+                <Text style={styles.modalLabel}>Current key</Text>
+                <View style={styles.byokCurrent}>
+                  <Text style={styles.byokHint}>{byokAnthropic.keyHint ?? '\u2026'}</Text>
+                  <Pressable
+                    onPress={() => handleToggleBYOK(!byokAnthropic.enabled)}
+                    style={[styles.byokToggle, byokAnthropic.enabled && styles.byokToggleOn]}
+                  >
+                    <Text style={[styles.byokToggleLabel, byokAnthropic.enabled && styles.byokToggleLabelOn]}>
+                      {byokAnthropic.enabled ? 'Enabled' : 'Disabled'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <Text style={[styles.modalLabel, { marginTop: spacing.lg }]}>Replace key</Text>
+              </>
+            ) : null}
+
+            <TextInput
+              style={styles.modalInput}
+              value={byokInput}
+              onChangeText={setByokInput}
+              placeholder="sk-ant-\u2026"
+              placeholderTextColor={colors.outline}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+
+            <View style={styles.modalActions}>
+              {byokAnthropic?.hasKey ? (
+                <GradientButton label="Remove" variant="ghost" onPress={handleRevokeBYOK} />
+              ) : (
+                <GradientButton label="Cancel" variant="ghost" onPress={() => setByokModal(false)} />
+              )}
+              <GradientButton
+                label={byokSaving ? 'Saving\u2026' : byokAnthropic?.hasKey ? 'Replace' : 'Save'}
+                loading={byokSaving}
+                onPress={handleSaveBYOK}
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Briefing modal */}
@@ -627,5 +785,43 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.body,
     color: colors.onSurfaceVariant,
     marginTop: 2,
+  },
+
+  byokCurrent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceContainerLow,
+    padding: spacing.md,
+    borderRadius: radius.md,
+  },
+  byokHint: {
+    flex: 1,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+    letterSpacing: 1,
+  },
+  byokToggle: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  byokToggleOn: {
+    backgroundColor: colors.primaryContainer,
+    borderColor: colors.primary,
+  },
+  byokToggleLabel: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+  byokToggleLabelOn: {
+    color: colors.onPrimaryContainer,
   },
 });

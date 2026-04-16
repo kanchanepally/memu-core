@@ -313,8 +313,23 @@ memu-core/
 ├── package.json                  # Backend dependencies
 ├── tsconfig.json                 # TypeScript config
 │
+├── skills/                       # Prompt skills (Agent Skills SKILL.md format)
+│   ├── extraction/SKILL.md       # Stream-card extraction from chat messages
+│   ├── synthesis_update/SKILL.md # Decide+write synthesis page updates
+│   ├── synthesis_write/SKILL.md  # Rewrite a single synthesis page
+│   ├── reflection/SKILL.md       # Contradiction / stale / unfinished / pattern (Story 2.2)
+│   ├── briefing/SKILL.md         # Morning briefing assembly
+│   ├── vision/SKILL.md           # Document / photo extraction
+│   ├── twin_translate/SKILL.md   # Novel-entity extraction (local, Story 1.5)
+│   ├── interactive_query/SKILL.md# System prompt for conversational turns
+│   ├── autolearn/SKILL.md        # Per-exchange durable-fact extraction
+│   └── import_extract/SKILL.md   # Bulk fact extraction from imported chat
+│
 ├── src/                          # Backend (Fastify + Intelligence)
 │   ├── index.ts                  # Server entry point + API routes
+│   ├── skills/
+│   │   ├── loader.ts             # SKILL.md parser + getSkill() / renderSkill()
+│   │   └── loader.test.ts
 │   ├── db/
 │   │   └── connection.ts         # PostgreSQL connection pool
 │   ├── channels/
@@ -459,6 +474,137 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Session pickup point — start of next session (2026-04-17 onward)
+
+**Phase 1 of `memu-core-build-backlog 15 April 2026.md` is complete** (Stories 1.0–1.5, all sections below). Tomorrow opens **Phase 2**, which is an architectural shift, not a drop-in feature.
+
+**Don't skip the design pass.** Stories 2.1 (synthesis-first retrieval, `spaces/<family_id>/` filesystem substrate, progressive disclosure, visibility enforcement) and 2.2 (multi-cadence reflection) **must ship paired**. Four design questions to confirm with Hareesh before any code:
+1. Where does `spaces/<family_id>/` live on disk? (container volume vs host bind-mount — flagged catastrophic-loss in `docs/INTEGRATION_CONTRACTS.md` §6)
+2. `family_id` scoping is still a Tier-1 blocker (1.3 flagged 0 occurrences in schema). Phase 2 introduces per-family paths — natural moment to add it.
+3. Visibility enforcement layer — orchestrator-side filter of catalogue, not a prompt instruction.
+4. Git author attribution per commit — `simple-git` wrapper.
+
+Re-read backlog lines 306–399 (Stories 2.1, 2.2) at session start. Memory file `project_memu_phase2_resume.md` carries the same context.
+
+### Mobile navigation overhaul (2026-04-16)
+
+The bottom tab bar is hidden. Navigation moved to a side drawer that opens by tapping the LogoMark in the top-left of any tab screen. Drawer at `mobile/components/SideDrawer.tsx` with context at `mobile/lib/drawer.tsx`. Sections: Today / Chat / Spaces / Calendar / Lists — divider — Settings.
+
+Status pills in the header (`Node Syncing`, `Private`, `Curated`, `Offline`, `Live`, `Your node`) were removed — they obscured the wordmark and added little signal. `statusLabel` / `statusPulse` props on `ScreenHeader` are kept for back-compat but no longer rendered; can be cleaned up later.
+
+Out-of-tabs screens (`ledger.tsx`, `twin-registry.tsx`, `memory.tsx`, `import.tsx`) live outside the `(tabs)` group and use the close-button pattern (`rightIcon="close"` → `router.back()`); the drawer context isn't available there.
+
+When adding a new top-level screen: register it in `(tabs)/_layout.tsx` Tabs.Screen list AND add a row to `SideDrawer.tsx` PRIMARY/SECONDARY array.
+
+### Story 1.5 — Novel-entity detection + Twin registry UI (2026-04-16)
+
+The Twin guard (Story 1.4) only protects against names already in `entity_registry`. Story 1.5 closes the gap for *unseen* proper nouns: an inbound message mentioning "the new piano teacher Mrs. Patel" no longer leaks, because the orchestrator now detects and registers novel entities before translation.
+
+Flow:
+1. Orchestrator calls `detectAndRegisterNovelEntities(rawText)` as step 0 of the pipeline (before `translateToAnonymous`).
+2. That function invokes the `twin_translate` skill (`model: local`, `skills/twin_translate/SKILL.md`) which returns a JSON array of `{text, kind, confidence}` hits.
+3. For each hit ≥0.5 confidence not already in the registry, we allocate a new anonymous label (`Person-N`, `Place-N`, `Institution-N`, `Detail-N`) and INSERT with `detected_by='auto_ner'`, `confirmed=FALSE`.
+4. `resetEntityNameCache()` bust so the very next `translateToAnonymous` / guard check in the same request picks up the new rows.
+
+Modes (`MEMU_TWIN_NOVEL_MODE`):
+- **auto** — detect + auto-register (default).
+- **prompt** — detect, log, but don't register; requires family approval (not yet implemented, currently degrades to no-op).
+- **off** — skip entirely.
+
+Tier-2 note: `twin_translate` is `model: local`. With Ollama unwired, set `MEMU_MODEL_OVERRIDE_LOCAL=haiku` to route it to Claude Haiku. The tradeoff — raw proper nouns sent to Haiku for extraction — is documented in `docs/INTEGRATION_CONTRACTS.md` §7.
+
+**Deviation from spec:** The spec called for a new `quasi_identifiers` table. The existing `entity_registry` already supports the full `CHECK` enum (person/school/workplace/medical/location/activity/business/institution/other) plus `detected_by` + `confirmed` columns, so we reused it rather than creating parallel structure. Entry point and detection are the only new surface.
+
+**Twin Registry mobile screen.** New screen at `mobile/app/twin-registry.tsx` (linked from Settings → Privacy → "Twin Registry"). Lists all mappings grouped by `entity_type`, flags auto-detected entries as "Auto-detected" until the user confirms them, supports add / edit / delete. Four new backend CRUD routes at `/api/twin/registry[/:id]`, four new mobile API methods (`getTwinRegistry` / `addTwinEntity` / `updateTwinEntity` / `deleteTwinEntity`).
+
+Tests: `src/twin/novel.test.ts` covers mode resolution (auto default, explicit values, invalid fallback).
+
+### Story 1.4 — Twin enforcement as runtime invariant (2026-04-16)
+
+The Digital Twin is now a runtime invariant, not a developer convention. Every dispatch for a skill with `requires_twin: true` in its frontmatter passes through `src/twin/guard.ts` immediately before the provider call. The guard loads the family's `entity_registry.real_name` list and scans system prompt + user prompt + history for whole-word matches (case-insensitive, regex-escaped).
+
+Modes (`MEMU_TWIN_GUARD_MODE`):
+- **throw** — refuse to dispatch, raise `TwinViolationError`, write `status='error'` + `twin_violations` to the ledger. Default in development.
+- **log_and_anonymize** — auto-translate the leaking fields through `translateToAnonymous`, proceed with dispatch, write `status='ok'` + `twin_verified=true` + `twin_violations` to the ledger. Default in production.
+- **off** — skip the check entirely. Not recommended.
+
+Ledger shape extended by migration 007: `twin_violations JSONB` column records which entities were about to leak. Every ok dispatch of a `requires_twin: true` skill now sets `twin_verified=true` when the check passed cleanly (empty violations) or when auto-anonymisation salvaged it.
+
+The guard is applied at the lowest possible level — inside `router.dispatch()` — so every call path is covered, including ones that don't yet exist. Skills with `requires_twin: false` or undefined skip the guard entirely.
+
+Tests (`src/twin/guard.test.ts`, 17 tests): word-boundary detection, case insensitivity, regex escape for names with dots/apostrophes, mode resolution (dev/prod/override/invalid), throw-mode error carries skill name + violations, system/user/history all scanned, off-mode bypass.
+
+What this unlocks: Tier 1 multi-tenancy, EDPB Opinion 28/2024 anonymisation defensibility, and the parent-facing Privacy Ledger claim "Memu cannot send your real name even if the developer forgot". The guarantee is now mechanical.
+
+### Story 1.3 — Integration contracts documentation (2026-04-15)
+
+New file `docs/INTEGRATION_CONTRACTS.md` documents the cross-repo integration surface for Tier 2 deployment. Nine contracts: Postgres (separate `memu_core` database, never touches Synapse/Immich/Baikal), Docker network (`memu-suite_memu_net`), Baikal CalDAV (read-only), Immich REST (planned, read-only), Matrix/Synapse (placeholder for Tier 3), file system bind-mounts (including the forthcoming `spaces/<family_id>/` tree as catastrophic-loss territory), `family_id` scoping (**flagged as a gap** — 0 occurrences in schema today, required before Tier 1), mobile ↔ backend API contract, env variable surface.
+
+Each contract lists what memu-core expects, what memu-os provides, and the blast radius when either side breaks it. The document is the source of truth for cross-repo change management.
+
+### Story 1.2 — BYOK for adults (2026-04-15)
+
+Adult profiles can paste their own Anthropic API key in Settings. The key is encrypted AES-256-GCM at rest (table `profile_provider_keys`, migration 006) using a master key in `MEMU_BYOK_ENCRYPTION_KEY` — generate with `openssl rand -base64 32`. If the master key is unset, BYOK is silently unavailable and the deployment key is always used.
+
+Key behaviours:
+- **Scope of use.** Only calls *on behalf of a single user* use that user's BYOK key — currently `interactive_query` (chat) and `autolearn`. Family-level pipeline steps (extraction, synthesis, briefing, vision, import) use the deployment key because they process group content not attributable to one user. Opt-in is explicit: `dispatch({ ..., useBYOK: true })`.
+- **Children blocked.** `setProviderKey()` refuses profiles with `role = 'child'`. The Settings UI hides the entire AI-provider section when the backend returns a `reason` string (child or BYOK disabled).
+- **Ledger tracks which key was used.** Every dispatch logs a `key_identifier` — either `deployment:claude` or `byok:<profileId>:<provider>:<hint>`. Hareesh verifies his Anthropic console shows the call; Rach's call shows `deployment:claude`.
+- **Toggle without revoking.** Keys can be disabled (kept stored) or removed entirely. Disabled keys resolve to null so dispatch falls back to deployment.
+- **Key hint stored separately.** `key_hint` column (`…xyz9`) lets the UI show which key is in use without decrypting.
+
+Files: `src/security/byok.ts` (crypto + CRUD), `src/security/byok.test.ts` (round-trip tests), `migrations/006_byok.sql`, `/api/profile/byok` routes (GET/POST/DELETE/toggle), `mobile/lib/api.ts` methods, `mobile/app/(tabs)/settings.tsx` AI-provider section.
+
+Providers plumbed: `anthropic`, `gemini`, `openai`. Only `anthropic` is surfaced in the mobile UI — the rest will follow when there's a reason to expose them.
+
+### Story 1.1 — Model router with skills-driven dispatch (2026-04-15)
+
+Every LLM call now routes through `src/skills/router.ts`. The router reads the `model` / `cost_tier` / `requires_twin` fields from each skill's frontmatter and resolves them to a concrete provider + model. There are no hardcoded model strings anywhere outside the router.
+
+Key behaviours:
+- **Per-skill model choice.** Change `model: haiku` to `model: sonnet` in a `SKILL.md` and extraction now uses Sonnet on the next run — no code changes required. The Sonnet-for-extraction bug is fixed by `skills/extraction/SKILL.md` specifying `model: haiku`.
+- **Env overrides.** A Tier 3 deployment can substitute local models for any alias: `MEMU_MODEL_OVERRIDE_HAIKU=local`, `MEMU_MODEL_OVERRIDE_SONNET=local`, etc. Skills don't change; routing changes.
+- **Budget-pressure downgrades.** `MEMU_BUDGET_PRESSURE=true` downgrades premium→haiku and standard sonnet→haiku without editing skills.
+- **Privacy Ledger.** Every dispatch is logged to the `privacy_ledger` table (migration 005) — skill name, requested vs dispatched model, provider, cost tier, requires_twin, token counts, latency, key identifier, dry_run flag. Append-only.
+- **Dry-run mode.** `dispatch({ skill, dryRun: true, ... })` returns the plan without calling the provider. Useful for Settings-UI previews and tests.
+- **requires_twin flag is plumbed** (written to ledger) but not yet enforced as a runtime invariant — that's Story 1.4.
+- **Local/Ollama.** Not wired yet. Calls that resolve to `provider: 'ollama'` throw a clear error until Tier 3 work lands.
+
+Concrete model strings live in router env defaults (`MEMU_CLAUDE_HAIKU_MODEL`, `MEMU_CLAUDE_SONNET_MODEL`, `MEMU_GEMINI_FLASH_MODEL`, `MEMU_GEMINI_FLASH_LITE_MODEL`, `MEMU_OLLAMA_MODEL`) so provider-side model upgrades don't require a code change either.
+
+Deleted: `src/intelligence/provider.ts` (the single-env-var switch). `claude.ts` and `gemini.ts` are now thin SDK wrappers exposing `callClaude()` / `callGemini()` — the router is the only caller.
+
+### Story 1.0 — Agent Skills adopted as prompt format (2026-04-15)
+
+All procedural prompts lifted out of TS string literals into `skills/<name>/SKILL.md` files following the Agent Skills open standard (Anthropic Dec 2025, adopted by OpenAI Codex, Gemini CLI, etc.). Prompts are now:
+
+- **Versionable** — diff-able markdown, git history shows prompt evolution
+- **Portable** — same SKILL.md runs across Claude / Gemini / Ollama
+- **Readable by non-developers** — open in any text editor and edit the prompt without touching code
+
+`src/skills/loader.ts` parses frontmatter with gray-matter, validates required fields (`name`, `description`, `model`, optionally `cost_tier`, `requires_twin`, `version`), and exposes `getSkill(name)` / `renderSkill(name, vars)`. Boot calls `validateAllSkills()` so a broken skill crashes startup, not the first LLM call.
+
+Current skills: `extraction`, `synthesis_update`, `synthesis_write`, `reflection`, `briefing`, `vision`, `twin_translate`, `interactive_query`, `autolearn`, `import_extract`. Every inline prompt in extraction / synthesis / briefing / vision / claude / autolearn / import has been refactored to read from the skill.
+
+Model choice is still hardcoded in call sites (Story 1.1 — ModelRouter — is next and routes via skill frontmatter).
+
+### Indigo Sanctuary sprint — Sessions A–M shipped (2026-04-15)
+
+A 13-session polish pass took the mobile app from rough beta to personal-use-ready. All sessions complete except M (final device walk-through + EAS build + Z2 push):
+
+- **A–B:** Indigo Sanctuary design tokens (Manrope headline + Inter body, primary #5054B5, tertiary #645A7A), reusable shells (Masthead, AIInsightCard, StatusPill, ScreenHeader, ScreenContainer, GradientButton).
+- **C–H:** Every tab redesigned and fully wired — Today (hero synthesis + calendar strip + stream + shopping footer), Chat (Family/Personal layer toggle), Spaces (asymmetric grid + detail modal + **manual create FAB** as of 2026-04-15), Lists, Calendar, Settings.
+- **I:** Privacy Ledger mobile polish (v5 Sanctuary).
+- **J:** Per-person context isolation — `migrations/003_context_visibility.sql` adds `visibility` + `owner_profile_id` to `context_entries`; orchestrator respects Family vs Personal boundary at query time; UI toggle in Chat.
+- **K:** Morning briefing push — `src/channels/mobile.ts` (Expo Push via fetch) + `push_tokens` table + `node-cron '0 7 * * *' Europe/London` + deep-link handler in `_layout.tsx`.
+- **L:** `ErrorBoundary` + `crashlog.ts` (SecureStore, last 3 entries) + `ToastProvider` + mailto escape hatch. No telemetry.
+- **M (in progress):** TS green both sides (already passing), device test, EAS APK, Z2 deploy.
+
+### Also shipped 2026-04-15
+- **Shopping extraction fix** — `src/intelligence/extraction.ts` prompt now emits one card per item (title = item, body = quantity/note), `max_tokens` 300→800. "Buy milk and eggs" → two cards.
+- **Manual Space creation** — `POST /api/spaces`, `createSpace()` in mobile API, FAB + category picker modal in Spaces tab.
+- **Migration runner** — `src/db/migrate.ts` with `schema_migrations` tracking, auto-applied at boot.
+
 ### Working
 - WhatsApp gateway (Baileys) with auto-profile creation (optional on startup)
 - Digital Twin anonymisation (bidirectional translation)
@@ -491,9 +637,17 @@ Cloud AI costs money. Families shouldn't worry about bills.
 6. **Onboarding flow** -- server connect + profile + calendar (Session 8)
 
 ### Also Needed Before Beta
-- Per-person context isolation (individual vs family layer privacy boundary)
-- Privacy Ledger UI polish on mobile
 - Stable deployment (VPS or Tailscale, not ngrok)
+- Device walk-through + EAS APK build (Session M close-out)
+
+### Candidate architectural shifts (identified 2026-04-15, NOT YET DECIDED)
+These came out of the next-priorities review + Skills research at end of 13-session sprint. Needs a planning session before any code:
+1. **Synthesis-first retrieval** — flip the answer path from vector RAG (`context.ts`) to compiled pages (`synthesis_pages`). Scaffolding exists; retrieval still uses `context_entries`.
+2. **Skills-shaped prompts** — lift system prompts from TS string literals in `extraction.ts`, `synthesis.ts`, `briefing.ts`, `vision.ts` into `skills/*/SKILL.md` with YAML frontmatter. Open standard (Anthropic + Gemini CLI both adopted). Portable to Ollama when docked.
+3. **Progressive disclosure for Spaces** — each Space *is* effectively a skill: metadata (title + category + ~1-line description) in system prompt, full `body_markdown` loads only when relevant. Collapses synthesis shift + model router into one move.
+4. **Model router with tier frontmatter** — `model: haiku | sonnet | local-ollama` in each skill's YAML; `provider.ts` reads it. Replaces the single env-var provider switch.
+5. **Reflection loop** — new capability: scheduled pass that notices patterns across recent conversations (not built, not started).
+6. **BYOK per user** — per-profile Anthropic key column + settings UI.
 
 ### Not Yet Built
 - Telegram Bot channel
@@ -502,9 +656,12 @@ Cloud AI costs money. Families shouldn't worry about bills.
 - Photo observer (Immich integration, when docked)
 - Billing/subscription system
 - Child safety classification UI (schema exists, frontend doesn't)
-- Calendar tab in mobile app
 - Comprehensive test suite
 - Production monitoring
+- DPIA template, Hetzner exit plan, tier-migration procedure, integration contracts doc (writing tasks, not code)
+
+### Open question — platform convergence
+At end of this sprint, memu-core has moved fast (mobile app, Spaces, push, per-person isolation, Indigo Sanctuary). memu-os has its own parallel track (Matrix/Immich/Ollama, touchscreen dashboard). The two were supposed to compose, but it's not clear from reading either CLAUDE.md whether the **docking contract** — how memu-core plugs into memu-os — still holds. Needs a cross-repo review session: compare `memu-platform/02-ARCHITECTURE.md` against what's actually in both codebases, reconcile the Skills question across both, and decide whether anything has quietly diverged.
 
 ---
 
@@ -526,6 +683,9 @@ Cloud AI costs money. Families shouldn't worry about bills.
 | 2026-04-02 | Digital Twin + Privacy Ledger is the marketing wedge | Not hardware, not self-hosting. "See exactly what the AI received" is the viral moment. |
 | 2026-04-02 | Naming simplified | User-facing: "Memu" (the app) and "Memu Home" (the box). Internal repo names stay. |
 | 2026-04-02 | DMA interoperability noted as strategic opportunity | When EU DMA group messaging interop arrives (~2027), Memu's Matrix infrastructure gets official WhatsApp bridge for free. |
+| 2026-04-15 | Indigo Sanctuary 13-session polish sprint shipped | App is personal-use-ready. Per-person isolation, morning push, crash recovery, manual Space create, shopping fix all in. |
+| 2026-04-15 | Skills / progressive disclosure flagged as likely next architectural shift | Open standard adopted by both Anthropic and Gemini CLI. SKILL.md format is provider-portable. Would collapse synthesis-layer shift + model router + Ollama path into one move. Needs a planning session before commit. |
+| 2026-04-15 | Platform-convergence review identified as needed | memu-core and memu-os moved in parallel. Docking contract in `memu-platform/02-ARCHITECTURE.md` may have drifted from both codebases. Schedule a cross-repo review before the next major feature. |
 
 Full decision log: `C:\Users\Lenovo\OneDrive\Obsidian-Ventures\01-Projects\Memu\decisions\`
 

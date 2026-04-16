@@ -13,6 +13,14 @@ import { registerPushToken } from './channels/mobile';
 import { requireAuth, registerProfile } from './auth';
 import { verifyGoogleIdToken, signInWithGoogle } from './channels/auth/google-signin';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
+import { validateAllSkills, listSkills } from './skills/loader';
+import {
+  setProviderKey,
+  revokeProviderKey,
+  setProviderKeyEnabled,
+  listProviderKeyStatus,
+  type BYOKProvider,
+} from './security/byok';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import path from 'path';
@@ -221,6 +229,191 @@ server.post('/api/push/register', async (request, reply) => {
   }
 });
 
+// BYOK — bring-your-own-key for LLM providers.
+// Adults can paste an API key (currently Anthropic only); children cannot.
+const VALID_BYOK_PROVIDERS: BYOKProvider[] = ['anthropic', 'gemini', 'openai'];
+
+server.get('/api/profile/byok', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return { keys: [], reason: 'children cannot configure BYOK keys' };
+    }
+    const keys = await listProviderKeyStatus(profileId);
+    return { keys };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load BYOK status' });
+  }
+});
+
+server.post('/api/profile/byok', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot configure BYOK keys' });
+    }
+    const body = request.body as { provider?: string; apiKey?: string };
+    if (!body?.provider || !VALID_BYOK_PROVIDERS.includes(body.provider as BYOKProvider)) {
+      return reply.code(400).send({ error: 'provider must be one of: anthropic, gemini, openai' });
+    }
+    if (!body.apiKey || typeof body.apiKey !== 'string') {
+      return reply.code(400).send({ error: 'apiKey is required' });
+    }
+    await setProviderKey((request as any).profileId, body.provider as BYOKProvider, body.apiKey);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(400).send({ error: err instanceof Error ? err.message : 'Failed to set key' });
+  }
+});
+
+server.delete('/api/profile/byok', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot configure BYOK keys' });
+    }
+    const body = request.body as { provider?: string };
+    const query = request.query as { provider?: string };
+    const providerRaw = body?.provider ?? query?.provider;
+    if (!providerRaw || !VALID_BYOK_PROVIDERS.includes(providerRaw as BYOKProvider)) {
+      return reply.code(400).send({ error: 'provider must be one of: anthropic, gemini, openai' });
+    }
+    await revokeProviderKey((request as any).profileId, providerRaw as BYOKProvider);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to revoke key' });
+  }
+});
+
+server.post('/api/profile/byok/toggle', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot configure BYOK keys' });
+    }
+    const body = request.body as { provider?: string; enabled?: boolean };
+    if (!body?.provider || !VALID_BYOK_PROVIDERS.includes(body.provider as BYOKProvider)) {
+      return reply.code(400).send({ error: 'provider required' });
+    }
+    if (typeof body.enabled !== 'boolean') {
+      return reply.code(400).send({ error: 'enabled (boolean) required' });
+    }
+    await setProviderKeyEnabled((request as any).profileId, body.provider as BYOKProvider, body.enabled);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to toggle key' });
+  }
+});
+
+// ==========================================
+// Twin Registry (Story 1.5) — family-visible management of anonymised entities
+// ==========================================
+
+const VALID_ENTITY_TYPES = [
+  'person', 'school', 'workplace', 'medical', 'location',
+  'activity', 'business', 'institution', 'other',
+];
+
+server.get('/api/twin/registry', async (_request, reply) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, entity_type, real_name, anonymous_label, detected_by, confirmed,
+              first_seen_at, confirmed_at
+         FROM entity_registry
+         ORDER BY entity_type, anonymous_label`,
+    );
+    return { entities: rows };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load Twin registry' });
+  }
+});
+
+server.post('/api/twin/registry', async (request, reply) => {
+  try {
+    const body = request.body as { entityType?: string; realName?: string; anonymousLabel?: string };
+    if (!body?.entityType || !VALID_ENTITY_TYPES.includes(body.entityType)) {
+      return reply.code(400).send({ error: `entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}` });
+    }
+    if (!body.realName || typeof body.realName !== 'string' || body.realName.trim().length < 1) {
+      return reply.code(400).send({ error: 'realName is required' });
+    }
+    if (!body.anonymousLabel || typeof body.anonymousLabel !== 'string' || body.anonymousLabel.trim().length < 1) {
+      return reply.code(400).send({ error: 'anonymousLabel is required' });
+    }
+    const profileId = (request as any).profileId;
+    const { rows } = await pool.query(
+      `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by, confirmed, confirmed_at, confirmed_by)
+       VALUES ($1, $2, $3, 'manual', TRUE, NOW(), $4)
+       RETURNING id, entity_type, real_name, anonymous_label, detected_by, confirmed`,
+      [body.entityType, body.realName.trim(), body.anonymousLabel.trim(), profileId],
+    );
+    return { entity: rows[0] };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(400).send({ error: err instanceof Error ? err.message : 'Failed to add entity' });
+  }
+});
+
+server.patch<{ Params: { id: string } }>('/api/twin/registry/:id', async (request, reply) => {
+  try {
+    const id = request.params.id;
+    const body = request.body as { realName?: string; anonymousLabel?: string; entityType?: string; confirmed?: boolean };
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+
+    if (body.realName !== undefined) { updates.push(`real_name = $${i++}`); values.push(body.realName.trim()); }
+    if (body.anonymousLabel !== undefined) { updates.push(`anonymous_label = $${i++}`); values.push(body.anonymousLabel.trim()); }
+    if (body.entityType !== undefined) {
+      if (!VALID_ENTITY_TYPES.includes(body.entityType)) {
+        return reply.code(400).send({ error: `entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}` });
+      }
+      updates.push(`entity_type = $${i++}`); values.push(body.entityType);
+    }
+    if (body.confirmed !== undefined) {
+      updates.push(`confirmed = $${i++}`); values.push(body.confirmed);
+      if (body.confirmed) {
+        updates.push(`confirmed_at = NOW()`);
+        updates.push(`confirmed_by = $${i++}`);
+        values.push((request as any).profileId);
+      }
+    }
+
+    if (updates.length === 0) return reply.code(400).send({ error: 'No updates provided' });
+
+    values.push(id);
+    const { rows, rowCount } = await pool.query(
+      `UPDATE entity_registry SET ${updates.join(', ')}
+       WHERE id = $${i}
+       RETURNING id, entity_type, real_name, anonymous_label, detected_by, confirmed`,
+      values,
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: 'Entity not found' });
+    return { entity: rows[0] };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(400).send({ error: err instanceof Error ? err.message : 'Failed to update entity' });
+  }
+});
+
+server.delete<{ Params: { id: string } }>('/api/twin/registry/:id', async (request, reply) => {
+  try {
+    const id = request.params.id;
+    const { rowCount } = await pool.query('DELETE FROM entity_registry WHERE id = $1', [id]);
+    if (rowCount === 0) return reply.code(404).send({ error: 'Entity not found' });
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to delete entity' });
+  }
+});
+
 // OAuth: Initiate Google Sign In — uses authenticated profile
 server.get('/api/auth/google', async (request, reply) => {
   const profileId = (request as any).profileId;
@@ -351,6 +544,39 @@ server.get('/api/dashboard/spaces', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to fetch spaces' });
+  }
+});
+
+// Create a new Space manually
+server.post('/api/spaces', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { title, category, body_markdown } = request.body as {
+      title?: string;
+      category?: string;
+      body_markdown?: string;
+    };
+
+    const validCategories = ['person', 'routine', 'household', 'commitment', 'document'];
+    if (!title || !title.trim()) {
+      return reply.code(400).send({ error: 'title is required' });
+    }
+    if (!category || !validCategories.includes(category)) {
+      return reply.code(400).send({ error: 'category must be one of person, routine, household, commitment, document' });
+    }
+
+    const res = await pool.query(
+      `INSERT INTO synthesis_pages (profile_id, category, title, body_markdown)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (profile_id, category, title)
+       DO UPDATE SET body_markdown = EXCLUDED.body_markdown, last_updated_at = NOW()
+       RETURNING *`,
+      [profileId, category, title.trim(), body_markdown || '']
+    );
+    return { space: res.rows[0] };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to create space' });
   }
 });
 
@@ -716,6 +942,11 @@ const start = async () => {
     // Initialize required external services
     await testConnection();
     await runMigrations();
+
+    // Validate prompt skills on the way up so a broken SKILL.md crashes boot,
+    // not the first LLM call in production.
+    validateAllSkills();
+    server.log.info(`Loaded ${listSkills().length} skills from skills/`);
 
     // WhatsApp is OPTIONAL — mobile app is the primary channel
     try {

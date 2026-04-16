@@ -1,49 +1,77 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { buildSystemPrompt, ConversationMessage } from './claude';
+import type { ConversationMessage } from './claude';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy-key');
+export interface GeminiCallInput {
+  model: string;
+  systemInstruction?: string;
+  contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>;
+  apiKey?: string;
+}
 
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+export interface GeminiCallResult {
+  text: string;
+  tokensIn: number;
+  tokensOut: number;
+  latencyMs: number;
+  model: string;
+  dummy: boolean;
+}
 
-export async function getGeminiResponse(
-  prompt: string,
-  context: string[] = [],
-  history: ConversationMessage[] = []
-): Promise<string> {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    return `[Dummy Mode: No Gemini Key] I am the Chief of Staff. I hear you saying: "${prompt}". My anonymity is guaranteed.`;
-  }
+function resolveKey(override?: string): string | null {
+  const k = override || process.env.GEMINI_API_KEY;
+  if (!k || k === 'your_gemini_api_key_here') return null;
+  return k;
+}
 
+export async function callGemini(input: GeminiCallInput): Promise<GeminiCallResult> {
   const start = Date.now();
-  try {
-    const model = genAI.getGenerativeModel({
-      model: DEFAULT_MODEL,
-      systemInstruction: buildSystemPrompt(context),
-    });
+  const key = resolveKey(input.apiKey);
 
-    const contents = [
-      ...history.map(h => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.content }],
-      })),
-      { role: 'user', parts: [{ text: prompt }] },
-    ];
-
-    const result = await model.generateContent({ contents });
-    const response = result.response;
-    const text = response.text();
-
-    const latency = Date.now() - start;
-    const usage = response.usageMetadata;
-    console.log(
-      `[LLM=gemini model=${DEFAULT_MODEL} latency=${latency}ms ` +
-      `in=${usage?.promptTokenCount ?? '?'} out=${usage?.candidatesTokenCount ?? '?'}]`
-    );
-
-    return text || "I'm sorry, I couldn't form a response.";
-  } catch (err) {
-    const latency = Date.now() - start;
-    console.error(`[LLM=gemini model=${DEFAULT_MODEL} latency=${latency}ms ERROR]`, err);
-    return 'Error contacting Gemini. Please check the logs.';
+  if (!key) {
+    const lastUser = [...input.contents].reverse().find(c => c.role === 'user');
+    const userPrompt = lastUser?.parts[0]?.text ?? '';
+    return {
+      text: `[Dummy Mode: No Gemini Key] I am the Chief of Staff. I hear you saying: "${userPrompt}". My anonymity is guaranteed.`,
+      tokensIn: 0,
+      tokensOut: 0,
+      latencyMs: Date.now() - start,
+      model: input.model,
+      dummy: true,
+    };
   }
+
+  const genAI = new GoogleGenerativeAI(key);
+  const model = genAI.getGenerativeModel({
+    model: input.model,
+    ...(input.systemInstruction ? { systemInstruction: input.systemInstruction } : {}),
+  });
+
+  const result = await model.generateContent({ contents: input.contents });
+  const response = result.response;
+  const text = response.text();
+  const usage = response.usageMetadata;
+  const latency = Date.now() - start;
+
+  return {
+    text: text || "I'm sorry, I couldn't form a response.",
+    tokensIn: usage?.promptTokenCount ?? 0,
+    tokensOut: usage?.candidatesTokenCount ?? 0,
+    latencyMs: latency,
+    model: input.model,
+    dummy: false,
+  };
+}
+
+// Helper to adapt ConversationMessage[] + current user prompt into Gemini's content shape.
+export function toGeminiContents(
+  prompt: string,
+  history: ConversationMessage[] = [],
+): GeminiCallInput['contents'] {
+  return [
+    ...history.map(h => ({
+      role: h.role === 'assistant' ? ('model' as const) : ('user' as const),
+      parts: [{ text: h.content }],
+    })),
+    { role: 'user' as const, parts: [{ text: prompt }] },
+  ];
 }
