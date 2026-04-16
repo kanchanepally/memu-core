@@ -6,7 +6,7 @@ Memu is a privacy-first family Chief of Staff. Accessed primarily via a dedicate
 
 The difference: **the AI never learns who you are.**
 
-Every family member's name, every school, every address, every friend's name is translated into anonymous labels before anything reaches the cloud (Anthropic's Claude). "Alice has swimming at Springfield Leisure Centre" becomes "Child-1 has Activity-3 at Location-2." Claude gives a brilliant answer. Memu translates it back. Your family sees real names. Claude saw none.
+Every family member's name, every school, every address, every friend's name is translated into anonymous labels before anything reaches the cloud AI model (e.g., Google Gemini, Anthropic Claude). "Alice has swimming at Springfield Leisure Centre" becomes "Child-1 has Activity-3 at Location-2." The AI gives a brilliant answer. Memu translates it back. Your family sees real names. The AI saw none.
 
 ## What a Chief of Staff Does (That a Chatbot Doesn't)
 
