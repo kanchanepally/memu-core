@@ -2,11 +2,11 @@
 
 > The power of OpenClaw. The privacy of Signal. Built for families.
 
-Memu is a WhatsApp contact that coordinates your family's life. It knows your calendar, reads your family group chat, watches your email — and answers questions using Claude with the full context of your family's world.
+Memu is a WhatsApp contact that coordinates your family's life. It knows your calendar, reads your family group chat, watches your email — and answers questions using AI models (like Google Gemini or Anthropic Claude) with the full context of your family's world.
 
 The difference: **the AI never learns who you are.**
 
-Every family member's name, every school, every address, every friend's name is translated into anonymous labels before anything reaches Claude. "Robin has swimming at Ridgeway Leisure Centre" becomes "Child-1 has Activity-3 at Location-2." Claude gives a brilliant answer. Memu translates it back. Your family sees real names. Claude saw none.
+Every family member's name, every school, every address, every friend's name is translated into anonymous labels before anything reaches the AI. "Robin has swimming at Ridgeway Leisure Centre" becomes "Child-1 has Activity-3 at Location-2." The AI gives a brilliant answer. Memu translates it back. Your family sees real names. The AI saw none.
 
 This isn't a chatbot with a privacy filter. **It's a Family Chief of Staff** — one that proactively flags scheduling conflicts, reminds you about deadlines, suggests birthday presents based on conversations from last month, and creates calendar events on your behalf. It does everything a brilliant personal assistant would do, except it works for your family and it can't identify you to anyone.
 
@@ -20,12 +20,12 @@ A chatbot answers when you ask. A Chief of Staff **anticipates.**
 | "Add milk to the shopping list" → adds milk | Notices you've mentioned needing milk three times this week and haven't bought it. Adds it to the list and reminds you when you're near the shops. |
 | "What should I get Rach for her birthday?" → gives generic ideas | Already knows her birthday is in 3 weeks (calendar), she mentioned paddleboarding last month (family group chat), you took coastal walk photos together in September (photo metadata). Suggests a paddleboarding experience and offers to create the calendar event. |
 
-This is possible because Memu isn't just translating your messages. It's building a **persistent, growing knowledge graph** of your family — from every observed source — and injecting the relevant context into every conversation. Claude becomes brilliant about your family because Memu gives it the context. And Claude stays anonymous because Memu translates the identity.
+This is possible because Memu isn't just translating your messages. It's building a **persistent, growing knowledge graph** of your family — from every observed source — and injecting the relevant context into every conversation. The AI becomes brilliant about your family because Memu gives it the context. And the AI stays anonymous because Memu translates the identity.
 
 ## How It Works (The Full Picture)
 
 ```
-YOUR FAMILY                        MEMU (your hardware)                    CLAUDE (cloud)
+YOUR FAMILY                        MEMU (your hardware)                    AI MODEL (cloud / local)
                                                      
   You text Memu    ──────►  Gateway receives message
   on WhatsApp                     │
@@ -40,12 +40,12 @@ YOUR FAMILY                        MEMU (your hardware)                    CLAUD
                             Group chat: Adult-2 said "in London Thu"
                             Email: School-1 non-uniform Friday
                                   │
-                            Anonymous prompt built     ──────►  Claude sees:
+                            Anonymous prompt built     ──────►  The AI sees:
                                                                 "Child-1, Activity-3,
                                                                  Adult-2 in Location-4,
                                                                  School-1 event Friday"
                                                                         │
-                            Response received           ◄──────  Claude responds with
+                            Response received           ◄──────  The AI responds with
                                   │                              anonymous labels
                             Twin translates back:
                             "Child-1" → "Robin"
@@ -55,8 +55,8 @@ YOUR FAMILY                        MEMU (your hardware)                    CLAUD
   with real names              Full audit trail stored
 ```
 
-**What Claude sees:** Anonymous labels, family context, no identifying information.
-**What Claude never sees:** Your names, your school, your address, your friends.
+**What the AI sees:** Anonymous labels, family context, no identifying information.
+**What the AI never sees:** Your names, your school, your address, your friends.
 **What your family sees:** A warm, knowledgeable response with real names — as if Memu knows you personally.
 
 ## Five Things That Make Memu Different
@@ -65,13 +65,13 @@ YOUR FAMILY                        MEMU (your hardware)                    CLAUD
 Not a PII stripper that pokes holes in your messages. A complete anonymous model of your family — relationships, schedules, preferences, routines — that gets richer over time. The AI gets *better* context than it would from raw messages, because the twin injects structured information alongside the anonymous query.
 
 ### 2. The Context Engine
-Memu passively observes your family WhatsApp group, your calendar, and your email. It builds a searchable knowledge graph using vector embeddings (pgvector). When you ask a question, semantic search finds the relevant context from potentially thousands of entries in milliseconds. Claude doesn't search — Memu does, and hands Claude exactly what it needs.
+Memu passively observes your family WhatsApp group, your calendar, and your email. It builds a searchable knowledge graph using vector embeddings (pgvector). When you ask a question, semantic search finds the relevant context from potentially thousands of entries in milliseconds. The AI doesn't search — Memu does, and hands the AI exactly what it needs.
 
 ### 3. The Proactive Engine
 Every morning at 7am, Memu delivers a briefing to your family WhatsApp group — synthesised from today's calendar, yesterday's emails, and what was said in the group chat. Throughout the day, it nudges you about approaching deadlines, scheduling conflicts, and things you've mentioned but haven't acted on. It doesn't wait to be asked.
 
 ### 4. The Capability Envelope
-When Memu takes actions (creating calendar events, setting reminders, managing shopping lists), the AI never gets credentials. Claude writes instructions using anonymous labels. Memu's gateway translates and executes the real action locally. The AI planned it. Your hardware did it. The AI never had access to your Google Calendar, your email, or anything else.
+When Memu takes actions (creating calendar events, setting reminders, managing shopping lists), the AI never gets credentials. The AI writes instructions using anonymous labels. Memu's gateway translates and executes the real action locally. The AI planned it. Your hardware did it. The AI never had access to your Google Calendar, your email, or anything else.
 
 ### 5. Family-Native Architecture
 Every family member has their own private conversation with Memu. Dad's questions are invisible to Mum. Mum's are invisible to Dad. Children get age-appropriate AI with educational guardrails, rate limits, and full parental visibility. If the family changes — separation, divorce — any adult can leave with their data, instantly, without the other's permission. This isn't an individual AI assistant bolted onto a family. It's built for how families actually work.
@@ -82,7 +82,7 @@ Every family member has their own private conversation with Memu. Dad's question
 git clone https://github.com/kanchanepally/memu-core.git
 cd memu-core
 cp .env.example .env
-# Add your Claude API key to .env
+# Add your AI provider API key (e.g., Gemini, Claude) to .env
 docker compose up
 # Scan QR code to connect WhatsApp
 # Start texting
@@ -92,9 +92,11 @@ Time to magic: **3 minutes.**
 
 ## What You Need
 
+*Note: Memu's Model Router is entirely provider-agnostic, seamlessly shifting workloads across top-tier models (Gemini, Claude, local Ollama) based on cost and capability.*
+
 | Thing | Why | Cost |
 |---|---|---|
-| A Claude API key | The AI that answers questions (anonymously) | ~£2-5/month for a typical family |
+| An AI API key (e.g. Gemini / Claude) | The AI that answers questions (anonymously) | ~£2-5/month for a typical family |
 | A cheap SIM card | Memu's own WhatsApp number (not yours) | £1-2 one-time |
 | Docker | Runs Memu | Free |
 
@@ -122,7 +124,7 @@ Both modes use the same codebase. Same features. Same privacy guarantees.
 | What | Where it's processed | Where it's stored |
 |---|---|---|
 | Your real names and identities | Your hardware only (twin translation) | Your hardware only (encrypted) |
-| Anonymous AI queries | Claude API (Anthropic's cloud) | Not stored by Anthropic (API terms) |
+| Anonymous AI queries | AI provider (e.g. Google Cloud, Anthropic) | Not stored by enterprise AI providers (API terms) |
 | Family context (calendar, chat, email) | Your hardware only | Your hardware only (PostgreSQL) |
 | Conversation history | Your hardware only | Your hardware only (encrypted per user) |
 
