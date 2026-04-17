@@ -14,6 +14,9 @@ import { requireAuth, registerProfile } from './auth';
 import { verifyGoogleIdToken, signInWithGoogle } from './channels/auth/google-signin';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
 import { validateAllSkills, listSkills } from './skills/loader';
+import { registerWebIdRoutes } from './webid/server';
+import { registerOidcRoutes } from './oidc/routes';
+import { setOidcPassword } from './oidc/accounts';
 import {
   setProviderKey,
   revokeProviderKey,
@@ -57,6 +60,13 @@ server.get('/health', async (request, reply) => {
     timestamp: new Date().toISOString()
   };
 });
+
+// Story 1.6 — WebID profile documents and Solid-compatible identity.
+// `/people/:slug` is public; `/api/profile/card` is subject-authenticated.
+registerWebIdRoutes(server);
+// Solid-OIDC provider — `.well-known/*` discovery and `/oidc/*` endpoints.
+// Dispatched to Panva's oidc-provider via raw Node handlers.
+registerOidcRoutes(server);
 
 // ==========================================
 // REGISTRATION (no auth required)
@@ -286,6 +296,22 @@ server.delete('/api/profile/byok', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to revoke key' });
+  }
+});
+
+// Set the OIDC login password for the authenticated profile. Separate
+// from the API-key used by the mobile app — this one is what the user
+// types into Memu's login form when a Solid client redirects them here.
+server.post('/api/profile/oidc-password', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const body = request.body as { password?: string };
+    if (!body?.password) return reply.code(400).send({ error: 'password required' });
+    await setOidcPassword(profileId, body.password);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(400).send({ error: err instanceof Error ? err.message : 'Failed to set password' });
   }
 });
 

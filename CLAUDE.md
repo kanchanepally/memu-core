@@ -149,12 +149,21 @@ Before building anything:
 │       All translations audited in messages table          │
 │                                                           │
 ├─────────────────────────────────────────────────────────┤
+│   IDENTITY LAYER (Solid-OIDC + WebID)                    │
+│   ├── webid/server.ts    (/people/:slug Turtle+JSON-LD)  │
+│   ├── oidc/provider.ts   (Panva oidc-provider v8, DPoP)  │
+│   ├── oidc/adapter.ts    (Postgres durable / mem volatile)│
+│   ├── oidc/jwks.ts       (JWKS persisted in oidc_jwks)   │
+│   └── oidc/routes.ts     (/oidc/* + /.well-known/*)      │
+│                                                           │
+├─────────────────────────────────────────────────────────┤
 │   DATA LAYER                                              │
 │   PostgreSQL 16 + pgvector                                │
 │   Local embeddings (Xenova/all-MiniLM-L6-v2)            │
 │   Tables: profiles, personas, entity_registry,           │
 │   conversations, messages, context_entries,               │
-│   stream_cards, actions, alerts, audit_log               │
+│   stream_cards, actions, alerts, audit_log,               │
+│   synthesis_pages, oidc_payload, oidc_jwks               │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -163,6 +172,16 @@ Before building anything:
 **Standalone:** `docker compose up` -- brings up Fastify + PostgreSQL. Mobile app connects via HTTPS.
 
 **Docked (into memu-os):** `docker compose -f docker-compose.home.yml up` -- joins memu-os network, shares PostgreSQL instance (separate `memu_core` database), connects to Immich for photo context, Baikal for calendar, Ollama as local AI fallback.
+
+### Identity: WebID + Solid-OIDC
+
+Each profile is addressable as a WebID: `https://<base>/people/<slug>#me`, where `<base>` is set by `MEMU_WEBID_BASE_URL` (falls back to `PUBLIC_BASE_URL`, then `http://localhost:$PORT`). The profile document at `/people/:slug` is public and content-negotiated (Turtle or JSON-LD), declares `solid:oidcIssuer` = this server, and exposes both `pim:storage` and `solid:storage` for Pod compatibility.
+
+The OIDC endpoints (mounted at `/oidc/*` and `/.well-known/*`) are Panva's `oidc-provider` v8 wrapped inside Fastify via `reply.hijack()`. DPoP, dynamic client registration, PKCE, userinfo, revocation, introspection, and resource indicators are all on. Durable records (clients, grants, initial/registration access tokens, replay detection) are persisted to `oidc_payload`; volatile records (access tokens, auth codes, sessions, interactions) stay in-memory for fresh-after-restart semantics.
+
+Users authenticate at the interaction page with email + bcrypt password (`profiles.oidc_password_hash`). This is distinct from the mobile-app API-key scheme: `POST /api/profile/oidc-password` lets an API-key-authenticated user set or rotate their OIDC login password.
+
+JWKS is generated once on first boot and persisted to `oidc_jwks`. Rotate `MEMU_OIDC_COOKIE_KEYS` before any external deployment.
 
 ---
 
