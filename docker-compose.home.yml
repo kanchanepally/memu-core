@@ -1,6 +1,14 @@
-# For deployment alongside existing memu-suite stack
-# Uses existing PostgreSQL, Ollama, and Docker network
-# IMPORTANT: Run schema.sql against existing PostgreSQL first (see SETUP.md)
+# =============================================================================
+# memu-core docked into memu-os (HP Z2 home deployment — Tier 2)
+# =============================================================================
+# Preconditions (validated by scripts/preflight.sh):
+#   - memu-os v1.1+ stack is up; memu-suite_memu_net network exists.
+#   - memu_postgres container is healthy; memu_core DB + pgvector created via
+#     scripts/db-init.sh.
+#   - /mnt/memu-data/memu-core/{spaces,tmp}/ directories exist (host bind-mounts).
+#
+# Run:  docker compose -f docker-compose.home.yml up -d
+# =============================================================================
 services:
   gateway:
     build: .
@@ -8,27 +16,75 @@ services:
     ports:
       - "3100:3100"
     environment:
+      # ---- Core ----
+      - TZ=Europe/London
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+
+      # ---- Database (separate memu_core DB inside memu_postgres) ----
       - DATABASE_URL=postgresql://memu_user:${DB_PASSWORD}@memu_postgres:5432/memu_core
+
+      # ---- LLM providers (router dispatches per-skill) ----
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      # Optional alias overrides (e.g. MEMU_MODEL_OVERRIDE_LOCAL=haiku when
+      # Ollama isn't wired for the local twin_translate skill).
+      - MEMU_MODEL_OVERRIDE_HAIKU=${MEMU_MODEL_OVERRIDE_HAIKU:-}
+      - MEMU_MODEL_OVERRIDE_SONNET=${MEMU_MODEL_OVERRIDE_SONNET:-}
+      - MEMU_MODEL_OVERRIDE_LOCAL=${MEMU_MODEL_OVERRIDE_LOCAL:-}
+      - MEMU_BUDGET_PRESSURE=${MEMU_BUDGET_PRESSURE:-}
+
+      # ---- Privacy layer ----
+      - MEMU_TWIN_GUARD_MODE=${MEMU_TWIN_GUARD_MODE:-log_and_anonymize}
+      - MEMU_TWIN_NOVEL_MODE=${MEMU_TWIN_NOVEL_MODE:-auto}
+      - MEMU_BYOK_ENCRYPTION_KEY=${MEMU_BYOK_ENCRYPTION_KEY:-}
+
+      # ---- Identity (Solid-OIDC + WebID) ----
+      - MEMU_WEBID_BASE_URL=${MEMU_WEBID_BASE_URL:-}
+      - MEMU_OIDC_COOKIE_KEYS=${MEMU_OIDC_COOKIE_KEYS:-}
+
+      # ---- On-disk data roots (bind-mounted below) ----
+      - MEMU_SPACES_ROOT=/app/spaces
+      - MEMU_TMP_DIR=/app/tmp
+
+      # ---- memu-os co-tenants ----
       - OLLAMA_HOST=http://memu_brain:11434
       - IMMICH_API_URL=http://memu_photos:2283
-      - IMMICH_API_KEY=${IMMICH_API_KEY}
+      - IMMICH_API_KEY=${IMMICH_API_KEY:-}
       - BAIKAL_URL=http://memu_calendar:80
-      - BAIKAL_USERNAME=${CALDAV_USERNAME}
-      - BAIKAL_PASSWORD=${CALDAV_PASSWORD}
-      - ENABLE_CALENDAR_OBSERVER=true
-      - ENABLE_EMAIL_OBSERVER=${ENABLE_EMAIL:-false}
-      - ENABLE_PHOTO_OBSERVER=true
+      - BAIKAL_USERNAME=${CALDAV_USERNAME:-}
+      - BAIKAL_PASSWORD=${CALDAV_PASSWORD:-}
+
+      # ---- Observers (off by default on Tier-2 beta) ----
+      - ENABLE_CALENDAR_OBSERVER=${ENABLE_CALENDAR_OBSERVER:-false}
+      - ENABLE_EMAIL_OBSERVER=${ENABLE_EMAIL_OBSERVER:-false}
+      - ENABLE_PHOTO_OBSERVER=${ENABLE_PHOTO_OBSERVER:-false}
+
+      # ---- Google OAuth (optional — Calendar + Sign-In) ----
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
       - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID:-}
       - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID:-}
       - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}
-      - TZ=Europe/London
+    volumes:
+      # Synthesis Spaces — catastrophic-loss territory (INTEGRATION_CONTRACTS.md §5).
+      # Host path lives under /mnt/memu-data so nightly file-backup (B3) picks it up.
+      - /mnt/memu-data/memu-core/spaces:/app/spaces
+      # Ephemeral snapshots + Article-20 export staging. Safe to clear between runs.
+      - /mnt/memu-data/memu-core/tmp:/app/tmp
     networks:
       - memu-suite_memu_net
     restart: unless-stopped
+    # Explicit healthcheck (mirrors Dockerfile; kept here so memu-watchdog.sh
+    # and `docker inspect` see it even when build cache is stale).
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
 networks:
   memu-suite_memu_net:

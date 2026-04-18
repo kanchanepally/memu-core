@@ -13,6 +13,9 @@ build/
 auth_info_baileys/
 postgres-data/
 
+# Runtime data roots (MEMU_SPACES_ROOT, MEMU_TMP_DIR — local dev only)
+data/
+
 # OS Files
 .DS_Store
 Thumbs.db

@@ -12,7 +12,7 @@
 
 **What it is NOT:** A standalone product. It's one half of the Memu platform. The other half is memu-os (full self-hosted sovereignty). They compose together — memu-core can dock into memu-os, sharing infrastructure and gaining local AI, photos, and self-hosted chat.
 
-**Stage:** Alpha. Intelligence pipeline working. Mobile app in development. Targeting Kickstarter June 2026.
+**Stage (2026-04-18):** Phases 1, 2, 3.1–3.4 complete. Mobile app personal-use ready post Indigo Sanctuary sprint. Active work: Milestone A (Gemini provider plumbing) → Milestone B (Tier-2 convergence with memu-os on Z2 + Pod drives) → Milestone C (Tier-1 hosted ready for ~20 Founding-50 beta families). Kickstarter June 2026 is **deferred**; commercial path is Founding-50 paid beta first. See `C:\Users\Lenovo\Code\memu-platform\memu-core-build-backlog 15 April 2026.md` Part 0 for the active milestone sequence.
 
 ---
 
@@ -22,13 +22,17 @@ Memu Core exists within a broader platform. Before building, read:
 
 | Document | Location | What It Covers |
 |----------|----------|---------------|
-| Platform Vision | `C:\Users\Lenovo\Code\memu-platform\01-VISION.md` | Why Memu exists, positioning, differentiation |
-| Architecture | `C:\Users\Lenovo\Code\memu-platform\02-ARCHITECTURE.md` | Layer model, composability, deployment modes |
-| Design System | `C:\Users\Lenovo\Code\memu-platform\03-UX-DESIGN-SYSTEM.md` | Tokens, components, interaction patterns |
-| Roadmap | `C:\Users\Lenovo\Code\memu-platform\04-ROADMAP.md` | What we're building, when, dependencies |
-| Pricing | `C:\Users\Lenovo\Code\memu-platform\05-PRICING-COMMERCE.md` | Tiers, Kickstarter, revenue model |
+| Platform README | `C:\Users\Lenovo\Code\memu-platform\README.md` | Umbrella entry — start here if you don't know which doc you need |
+| Bible | `C:\Users\Lenovo\Code\memu-platform\01-BIBLE.md` | Why Memu exists, the structural privacy imperative, Pod portability promise |
+| Architecture | `C:\Users\Lenovo\Code\memu-platform\02-ARCHITECTURE.md` | System topology, Solid-OIDC identity, three-tier model, agent skills |
+| Design System | `C:\Users\Lenovo\Code\memu-platform\03-DESIGN-SYSTEM.md` | Indigo Sanctuary — colours, typography, components |
+| Roadmap | `C:\Users\Lenovo\Code\memu-platform\04-ROADMAP.md` | Strategic trajectory + pointer to active milestone sequencing |
+| Pricing/GTM (canonical) | `C:\Users\Lenovo\Code\memu-platform\Pricing and economics\files\memu-gtm-pricing-funding-strategy.md` | Founding-50 + Family + Family+ + Self-hosted, SEIS funding path, Gemini economics, distribution funnel |
 | Privacy Framework | `C:\Users\Lenovo\Code\memu-platform\06-PRIVACY-SECURITY.md` | Privacy by design, Digital Twin, compliance |
-| Agent Framework | `C:\Users\Lenovo\Code\memu-platform\07-AGENT-FRAMEWORK.md` | Chief of Staff model, autonomy levels, safety |
+| Mobile App Spec | `C:\Users\Lenovo\Code\memu-platform\08-MOBILE-APP-SPEC.md` | Primary mobile surface specification |
+| Engineering backlog (cross-repo) | `C:\Users\Lenovo\Code\memu-platform\memu-core-build-backlog 15 April 2026.md` | **Read Part 0 first** — active milestone sequencing |
+
+*Note: 07-AGENT-FRAMEWORK and the original Vision/Pricing/UX-Design-System docs have been archived under `_legacy_archive/` pending V3-style rewrites.*
 
 **memu-os operating instructions:** `C:\Users\Lenovo\Code\memu\memu-os\CLAUDE.md`
 
@@ -492,6 +496,72 @@ Cloud AI costs money. Families shouldn't worry about bills.
 ---
 
 ## Current State (April 2026)
+
+### Milestone B2 — docker-compose.home.yml + Dockerfile tightening (2026-04-19)
+
+Second slice of Milestone B. `docker-compose.home.yml` was a stub carrying just the core env vars; B2 brings it up to the full surface required by Stories 1.2 / 1.4 / 1.5 / 3.1 / 3.3 / A3 before the B7 cutover.
+
+**New env plumbed in:** `GEMINI_API_KEY` + `GEMINI_MODEL` (A3 skill routing), `MEMU_BYOK_ENCRYPTION_KEY` (Story 1.2 per-user keys), `MEMU_TWIN_GUARD_MODE` (default `log_and_anonymize` for prod), `MEMU_TWIN_NOVEL_MODE` (default `auto`), `MEMU_OIDC_COOKIE_KEYS` + `MEMU_WEBID_BASE_URL` + `PUBLIC_BASE_URL` (Solid-OIDC + WebID), the four model-alias overrides + `MEMU_BUDGET_PRESSURE` (router escape hatches), and explicit `MEMU_SPACES_ROOT=/app/spaces` + `MEMU_TMP_DIR=/app/tmp` so the on-disk roots match the volume mounts below.
+
+**Host bind-mounts:** `/mnt/memu-data/memu-core/spaces` → `/app/spaces` (synthesis pages — catastrophic-loss per `docs/INTEGRATION_CONTRACTS.md` §5; this is the path B3 will add to the nightly file-backup scope), and `/mnt/memu-data/memu-core/tmp` → `/app/tmp` (snapshot + Article-20 export staging; safe to clear). Operator needs `mkdir -p /mnt/memu-data/memu-core/{spaces,tmp}` before first `up`.
+
+**Healthcheck** duplicated from Dockerfile into the compose service (explicit block so `docker inspect` shows it regardless of build cache, and so the B4 watchdog integration has an unambiguous signal). 30s interval, 20s start period, 3 retries.
+
+**Dockerfile fix piggy-backed onto B2.** The runtime image was missing `COPY skills ./skills` and `COPY migrations ./migrations`, so first boot would have crashed at skill-loader validation and migration-runner read. Both paths are now in the image.
+
+Validated with `docker compose -f docker-compose.home.yml config --quiet` — clean. Live test is still deferred to B7 cutover; this slice is about shape, not smoke.
+
+**What B2 doesn't touch (still B3+):** adding `memu_core` DB to `pg_dumpall` scope and `/mnt/memu-data/memu-core/spaces/` to the file-backup scope happens in memu-os (B3). Watchdog integration (B4) adds `memu_core` to `/usr/local/bin/memu-watchdog.sh`.
+
+### Milestone B1 — preflight + db-init safety rails (2026-04-18)
+
+First slice of Milestone B. Two new bash scripts in `scripts/` — **authored in memu-core, not memu-os** (see decision `2026-04-18-b1-scripts-location.md` in the Obsidian decisions log; dependency direction is memu-core → memu-os, so memu-core carries its own safety rails and memu-os stays oblivious).
+
+**`scripts/preflight.sh`.** Read-only host audit — never modifies state. Six sections:
+1. Run context — sudo + docker daemon responsive.
+2. memu-os v1.1 signals — `tailscaled` running on host (not in a container), `memu-backup.timer` enabled, `memu-watchdog.sh` present at `/usr/local/bin/`. These three operational signals stand in for a missing version file.
+3. Container health — enumerates all 11 memu-os containers (`memu_proxy memu_intelligence memu_photos memu_synapse memu_calendar memu_redis memu_postgres memu_element memu_photos_ml memu_bootstrap memu_brain`) and checks `docker inspect` state + healthcheck status per container.
+4. Disk space — root filesystem ≥ 20GB free, `/mnt/memu-data` ≥ 50GB free.
+5. Backup freshness — finds newest file under `/mnt/memu-data/backups`, passes when ≤ 2h old, warns between 2–24h (operator should take ad-hoc backup before deploy), fails > 24h.
+6. memu-core side — `memu-suite_memu_net` Docker network exists, no stale `memu_core` container.
+
+Exit codes: 0 pass, 1 any hard-fail, 2 warnings only. Colour-coded PASS/FAIL/WARN/INFO output.
+
+**`scripts/db-init.sh`.** Creates the `memu_core` database inside memu-os's Postgres without touching Immich / Synapse / Baikal data. Whitelist-only — every operation is scoped to `memu_core`. Accepts `DB_PASSWORD` env var directly or reads it from `MEMU_OS_ENV_FILE=/path/to/memu-os/.env`. Flow: verify container running → authenticate as `memu_user` → audit-print existing database list (so the operator can eyeball what's on the instance before anything is created) → idempotent `CREATE DATABASE memu_core OWNER memu_user` (no-op if exists) → `CREATE EXTENSION IF NOT EXISTS vector` against `memu_core` only → post-init audit print.
+
+Both scripts passed `bash -n` syntax check. Live validation deferred to session B7 cutover on the Z2 — running preflight against a live v1.1 host is the earliest real-world test signal, and db-init only runs once per dock.
+
+**What B1 doesn't cover (B2+ work):**
+- `docker-compose.home.yml` adjustments (B2) — the compose file exists but may need tweaks once preflight surfaces host-specific assumptions.
+- Backup integration (B3) — adding `memu_core` DB to `pg_dumpall` scope + `spaces/<family_id>/` tree to file-backup scope.
+- Watchdog integration (B4), mobile Tier-2 config (B5), validation script (B6), cutover (B7).
+
+### Milestone A3 — extraction swapped to Gemini Flash (2026-04-18)
+
+A3 of Milestone A shipped. `skills/extraction/SKILL.md` now declares `model: gemini-flash` (v2), so every inbound-message extraction is dispatched to Gemini 2.5 Flash instead of Claude Haiku. The Twin guard still runs ahead of the provider call (the skill is `requires_twin: true`), so the privacy invariant holds regardless of which provider is on the other end of the socket.
+
+**Router plumbing (A2, verified live under A3).** `src/intelligence/gemini.ts` now threads `temperature` and `maxTokens` through to `getGenerativeModel({ generationConfig: { temperature, maxOutputTokens } })` — extraction depends on `temperature: 0` for deterministic stream-card JSON, and without this the Gemini defaults (temp 1.0, 8192 tokens) made replies drift. `src/skills/router.ts` forwards both fields from `DispatchInput` into the Gemini branch, matching the Claude branch. Dummy mode (no `GEMINI_API_KEY`) is preserved — extraction's regex `replyText.match(/\[[\s\S]*\]/)` returns `null` on the stub reply and the pipeline no-ops gracefully.
+
+**Test churn.** `router.test.ts` and `loader.test.ts` were rewritten where they assumed extraction → Claude Haiku. The haiku-default shape is now tested against `autolearn` (still Haiku); Gemini-routing tests remain covered via `autolearn` + `MEMU_MODEL_OVERRIDE_HAIKU=gemini-flash*`. Full suite: **263 tests passing across 19 files** (was 258).
+
+**Per-skill cost table** (anchored against volume in Hareesh's household, ~April 2026):
+
+| Skill | Model | Tier | Typical input | Typical output | Est. cost/call | Daily volume | Daily £ |
+|---|---|---|---|---|---|---|---|
+| extraction | **gemini-flash** (A3) | cheap | ~400 tok | ~150 tok | ~£0.0002 | ~100 msgs | ~£0.02 |
+| autolearn | haiku | cheap | ~600 tok | ~120 tok | ~£0.0005 | ~30 exchanges | ~£0.015 |
+| twin_translate | local (→haiku if overridden) | cheap | ~200 tok | ~80 tok | ~£0.0003 | ~50 msgs | ~£0.015 |
+| import_extract | haiku | cheap | ~2000 tok | ~300 tok | ~£0.001 | rare (bulk) | <£0.01 |
+| synthesis_update | sonnet | standard | ~1500 tok | ~400 tok | ~£0.012 | ~20 | ~£0.24 |
+| synthesis_write | sonnet | standard | ~1800 tok | ~800 tok | ~£0.016 | ~10 | ~£0.16 |
+| interactive_query | sonnet | standard | ~1200 tok | ~400 tok | ~£0.010 | ~40 | ~£0.40 |
+| briefing | sonnet | standard | ~2500 tok | ~600 tok | ~£0.018 | 1–2 | ~£0.03 |
+| reflection | sonnet | standard | ~3000 tok | ~500 tok | ~£0.020 | 1 daily + 1 weekly | ~£0.02 |
+| vision | sonnet-vision | premium | ~1200 tok + image | ~300 tok | ~£0.025 | <1 | ~£0.01 |
+
+Household daily total: ~£0.93 (was ~£0.98 before A3). Swap saves ~£1.50/family/month — small per-family but meaningful at Founding-50 scale (~£900/year). Validation against the five evidence-dashboard metrics (cost < $3/family/month) continues to look comfortable. Actual live cost to be measured against the privacy-ledger `tokens_in`/`tokens_out` columns after ~1 week in production.
+
+**What A3 doesn't touch.** autolearn and twin_translate are the next cheap-tier candidates for Gemini (both listed in the backlog's Gemini priority bucket), but the spec asks for *one* skill per milestone so provider drift is attributable. Next provider swap goes in once extraction has a week of ledger data showing Gemini output quality holds against Claude on real family traffic.
 
 ### Story 3.4 complete — cross-household Pod portability (2026-04-18)
 

@@ -47,6 +47,10 @@ COPY package.json ./
 # PWA assets are served from src/dashboard/public at runtime
 COPY src/dashboard/public ./src/dashboard/public
 
+# Agent Skills (SKILL.md files) and SQL migrations are read from disk at runtime
+COPY skills ./skills
+COPY migrations ./migrations
+
 # Baileys session + uploaded documents persistence
 RUN mkdir -p /app/auth_info_baileys /app/documents
 VOLUME ["/app/auth_info_baileys", "/app/documents"]
