@@ -17,6 +17,7 @@
     "@types/qrcode-terminal": "^0.12.2",
     "@whiskeysockets/baileys": "latest",
     "@xenova/transformers": "^2.17.2",
+    "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "compromise": "^14.15.0",
     "date-fns": "^4.1.0",
@@ -25,6 +26,8 @@
     "googleapis": "^171.4.0",
     "gray-matter": "^4.0.3",
     "imapflow": "^1",
+    "jose": "^5.10.0",
+    "n3": "^2.0.3",
     "node-cron": "^3.0.3",
     "oidc-provider": "^8.8.1",
     "pg": "^8",
@@ -33,7 +36,9 @@
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.4",
     "@types/bcryptjs": "^2.4.6",
+    "@types/n3": "^1.26.1",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
     "@types/oidc-provider": "^9.5.0",

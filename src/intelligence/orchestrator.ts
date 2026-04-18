@@ -3,13 +3,15 @@ import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { detectAndRegisterNovelEntities } from '../twin/novel';
 import type { ConversationMessage } from './claude';
 import { dispatch } from '../skills/router';
-import { retrieveRelevantContext, type Visibility } from './context';
+import { type Visibility } from './context';
 import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
 import { processSynthesisUpdate } from './synthesis';
+import { retrieveForQuery, buildContextBlock } from '../spaces/retrieval';
+import { recordRetrievalProvenance } from '../spaces/provenance';
 
 const HISTORY_LIMIT = 10; // Last N message pairs for multi-turn conversation
 const CONVERSATION_GAP_MS = 30 * 60 * 1000; // 30 minutes — start new conversation after this gap
@@ -106,16 +108,36 @@ export async function processIntelligencePipeline(
   const anonymousMsg = await translateToAnonymous(content);
   console.log(`[IN -> Translated]: ${anonymousMsg}`);
 
-  // 2. Context Retrieval — scoped to this profile and visibility layer
-  const rawContexts = await retrieveRelevantContext(content, 3, profileId, visibility);
-
-  const anonymousContexts = [];
-  for (const ctx of rawContexts) {
-    anonymousContexts.push(await translateToAnonymous(ctx));
+  // 2. Synthesis-first retrieval — Story 2.1. Direct addressing and
+  // catalogue matching pull from compiled Spaces; we only fall back to
+  // embedding recall when nothing else fits. Everything coming back is
+  // run through the Twin before it reaches the LLM.
+  const retrieval = await retrieveForQuery({
+    familyId: profileId,
+    viewerProfileId: profileId,
+    query: content,
+    embeddingVisibility: visibility,
+  });
+  const anonymousSpaces = await Promise.all(
+    retrieval.spaces.map(async s => ({
+      ...s,
+      bodyMarkdown: await translateToAnonymous(s.bodyMarkdown),
+      description: await translateToAnonymous(s.description),
+      name: await translateToAnonymous(s.name),
+    })),
+  );
+  const anonymousEmbeddings: string[] = [];
+  for (const ctx of retrieval.embeddingContexts) {
+    anonymousEmbeddings.push(await translateToAnonymous(ctx));
   }
-  if (anonymousContexts.length > 0) {
-    console.log(`[CONTEXT -> Injected]: ${anonymousContexts.length} relevant facts found.`);
-  }
+  const anonymousRetrieval = {
+    ...retrieval,
+    spaces: anonymousSpaces,
+    embeddingContexts: anonymousEmbeddings,
+  };
+  console.log(
+    `[RETRIEVAL -> ${retrieval.provenance.path}]: spaces=${retrieval.provenance.spaceUris.length} embeddings=${retrieval.provenance.embeddingHits}`,
+  );
 
   // 3. Fetch conversation history (already anonymous from prior audit storage)
   const history = await getConversationHistory(profileId);
@@ -125,9 +147,7 @@ export async function processIntelligencePipeline(
 
   // 4. LLM call — routed through the model router per skill frontmatter.
   // Digital Twin guarantees anonymity regardless of which provider handles the call.
-  const contextBlock = anonymousContexts.length === 0
-    ? ''
-    : `=== RELEVANT FAMILY CONTEXT ===\n${anonymousContexts.map((c, i) => `[${i + 1}] ${c}`).join('\n')}\n==============================`;
+  const contextBlock = buildContextBlock(anonymousRetrieval);
   const { text: claudeResponse } = await dispatch({
     skill: 'interactive_query',
     templateVars: { context_block: contextBlock },
@@ -144,6 +164,12 @@ export async function processIntelligencePipeline(
 
   // 6. Immutable Message Storage (Audit Trail)
   await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
+
+  // 6b. Provenance record — what retrieval path answered this message.
+  // Helps debugging and feeds the Spaces-tab "recent queries" UI.
+  recordRetrievalProvenance(profileId, messageId, retrieval.provenance).catch(err => {
+    console.error('[SPACES] provenance record failed:', err);
+  });
 
   // 7. Auto-learning: extract durable facts in the background (fire-and-forget)
   extractAndStoreFacts(profileId, anonymousMsg, claudeResponse, visibility).catch(err => {

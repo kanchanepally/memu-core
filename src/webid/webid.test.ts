@@ -80,6 +80,7 @@ describe('serializeTurtle', () => {
     expect(ttl).toContain('solid:oidcIssuer <https://memu-hub.local>');
     expect(ttl).toContain('solid:storage <https://memu-hub.local/spaces/hareesh/>');
     expect(ttl).toContain('pim:storage <https://memu-hub.local/spaces/hareesh/>');
+    expect(ttl).toContain('solid:publicTypeIndex <https://memu-hub.local/typeIndex>');
   });
 
   it('ends the :me block with a period, not a semicolon', () => {
@@ -117,6 +118,7 @@ describe('serializeJsonLd', () => {
     expect(person).toBeTruthy();
     expect(person['http://xmlns.com/foaf/0.1/name']).toBe('Hareesh Kanchanepally');
     expect(person['http://www.w3.org/ns/solid/terms#oidcIssuer']).toEqual({ '@id': 'https://memu-hub.local' });
+    expect(person['http://www.w3.org/ns/solid/terms#publicTypeIndex']).toEqual({ '@id': 'https://memu-hub.local/typeIndex' });
   });
 });
 

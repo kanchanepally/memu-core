@@ -4,6 +4,7 @@ import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
 import { sock } from '../channels/whatsapp';
 import { getTokensForProfile, sendPush } from '../channels/mobile';
+import { listDomainStates, renderDomainHealthHeader } from '../domains/health';
 
 export async function generateProactiveSynthesis(profileId: string): Promise<string | null> {
   try {
@@ -38,10 +39,12 @@ export async function generateProactiveSynthesis(profileId: string): Promise<str
 
     const compiledState = `TODAY'S CALENDAR:\n${eventsStr || 'No events.'}\n\nACTIVE ITEMS/COLLISIONS:\n${streamStr || 'No pending items.'}`;
     const anonState = await translateToAnonymous(compiledState);
+    const domainHeader = renderDomainHealthHeader(await listDomainStates(profileId));
 
     const { text: claudeRaw } = await dispatch({
       skill: 'briefing',
       templateVars: {
+        domain_header: domainHeader,
         anon_state: anonState,
         max_paragraphs: '2',
         channel: 'push',
@@ -108,12 +111,14 @@ export async function generateAndPushMorningBriefing(profileId: string) {
 
     // 4. Translate out of Real Identity Scope
     const anonState = await translateToAnonymous(compiledState);
+    const domainHeader = renderDomainHealthHeader(await listDomainStates(profileId));
 
     // 5. Synthesize Context via the router
     console.log(`[BRIEFING ENGINE] Dispatching context synthesis to Claude...`);
     const { text: claudeRaw } = await dispatch({
       skill: 'briefing',
       templateVars: {
+        domain_header: domainHeader,
         anon_state: anonState,
         max_paragraphs: '4',
         channel: 'whatsapp',

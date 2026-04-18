@@ -11,16 +11,35 @@ version: 1
 
 The default system prompt for conversational turns from the mobile app, WhatsApp DM, or PWA.
 
-Template variable: `{{context_block}}` — either empty string or a block of the form:
+Template variable: `{{context_block}}` — either empty string, a block of compiled Spaces (preferred, Story 2.1), or a block of raw recall facts (fallback). The two shapes:
 
 ```
-=== RELEVANT FAMILY CONTEXT ===
+=== COMPILED FAMILY UNDERSTANDING (Spaces) ===
+=== SPACE: Robin's Swimming (routine) ===
+uri: memu://family_1/routines/abc123
+description: Weekly Thursday swimming class, 4–5pm.
+confidence: 0.85
+last_updated: 2026-04-15T18:32:00Z
+
+(body markdown here)
+=== END SPACE ===
+==============================================
+```
+
+```
+=== RELEVANT FAMILY CONTEXT (raw recall) ===
 [1] <fact one>
 [2] <fact two>
-==============================
+==========================================
 ```
 
-The caller constructs the context block from retrieved `context_entries` (or, after Story 2.1, from compiled Spaces).
+The caller constructs the block via the synthesis-first retrieval path (`src/spaces/retrieval.ts`):
+
+1. **Direct addressing:** if the query names a known Space (slug, display name, or `[[wikilink]]`), load that Space's full body. Skip any further search.
+2. **Catalogue-driven match:** otherwise, the visibility-filtered Spaces catalogue is shown to the matcher (this same skill, with a matcher-flavoured user message) and the LLM is asked which Spaces are relevant. Load the full bodies of the matches.
+3. **Embedding fallback:** only if no Space matched, fall back to vector search over `context_entries` for raw historical messages.
+
+Visibility is enforced in the catalogue, not at render time — a child viewer never sees `adults_only` content, a query by Rach never sees Hareesh's `private` Spaces.
 
 ## System prompt
 

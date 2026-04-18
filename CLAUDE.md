@@ -493,17 +493,211 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
-### Session pickup point — start of next session (2026-04-17 onward)
+### Story 3.4 complete — cross-household Pod portability (2026-04-18)
 
-**Phase 1 of `memu-core-build-backlog 15 April 2026.md` is complete** (Stories 1.0–1.5, all sections below). Tomorrow opens **Phase 2**, which is an architectural shift, not a drop-in feature.
+**Phase 3 is now done end-to-end.** 3.4a (membership + grants schema/API), 3.4b (external Pod read pipeline + Twin extension), 3.4c (mobile UI), 3.4d (POD_PORTABILITY.md + scripted two-deployment test), and the daily finaliseExpiredLeaves cron all shipped 2026-04-18. The marriage / immigration / cohabitation flow works: someone with their own Memu deployment can join a household, share individual Spaces from their Pod by reference (not by copy), be referenced safely in the household's Claude calls (foreign WebID auto-registered in the Twin so it never leaks), leave with a 30-day grace period (cancellable), and rejoin cleanly with full historic continuity.
 
-**Don't skip the design pass.** Stories 2.1 (synthesis-first retrieval, `spaces/<family_id>/` filesystem substrate, progressive disclosure, visibility enforcement) and 2.2 (multi-cadence reflection) **must ship paired**. Four design questions to confirm with Hareesh before any code:
-1. Where does `spaces/<family_id>/` live on disk? (container volume vs host bind-mount — flagged catastrophic-loss in `docs/INTEGRATION_CONTRACTS.md` §6)
-2. `family_id` scoping is still a Tier-1 blocker (1.3 flagged 0 occurrences in schema). Phase 2 introduces per-family paths — natural moment to add it.
-3. Visibility enforcement layer — orchestrator-side filter of catalogue, not a prompt instruction.
-4. Git author attribution per commit — `simple-git` wrapper.
+### Story 3.4d — POD_PORTABILITY.md + two-deployment scripted test (2026-04-18)
 
-Re-read backlog lines 306–399 (Stories 2.1, 2.2) at session start. Memory file `project_memu_phase2_resume.md` carries the same context.
+Final slice of 3.4. The code is the same 3.4a + 3.4b + 3.4c surface; what's new is the documentation + the verification harness.
+
+**`docs/POD_PORTABILITY.md`.** Plain-language doc for a family who already runs Memu and now needs to share with someone whose Pod lives elsewhere. Same audience and tone as `docs/INTEGRATION_CONTRACTS.md`. Covers what portability does (per-Space grants, Twin auto-registration of foreign WebIDs, grace-period leave, cache cleanup), what it does not do (no copy, no write access, no field-level redaction, no DPoP-on-outbound yet), the lifecycle state machine with cron behaviour, the 12-step end-to-end test verbatim, the failure-mode catalogue (B offline → degrades to cache, B revoked → keeps cache pending admin attention, parse error → cache preserved + sweep continues), and the residual gaps explicitly. This is the public spec for Story 3.4.
+
+**`scripts/test-pod-portability.ts`.** Self-contained runner that drives the 12-step flow against two real deployments via HTTP, exits non-zero on the first regression, and is idempotent against re-runs (pre-cleans any existing member row matching the WebID before starting). Reads six env vars: `MEMU_HOUSEHOLD_BASE`, `MEMU_HOUSEHOLD_API_KEY`, `MEMU_MEMBER_BASE`, `MEMU_MEMBER_WEBID`, `MEMU_MEMBER_DISPLAY_NAME`, `MEMU_MEMBER_API_KEY`. Each step prints `[N] label ... OK` or `[N] label ... FAIL <reason>`. Steps 1–11 from the doc are mechanical; step 5 (Claude reflection check) is left as a manual eyeball — automating "verify the WebID URL never appears in the prompt" requires intercepting the Twin guard's ledger, and a structured assertion would just duplicate the existing `twin_verified=true` test in `src/twin/guard.test.ts`.
+
+**Cron — `30 4 * * *` Europe/London daily household sweep (`src/index.ts`).** Two passes:
+1. `finaliseExpiredLeaves()` from `src/households/membership.ts` — flips any `leaving` member whose `leave_grace_until <= now` to `left`, in a transaction that cascade-revokes their `pod_grants`. Then `dropAllCacheForMember(memberId)` clears their `external_space_cache` rows.
+2. `SELECT DISTINCT household_admin_profile_id FROM household_members` then iterates `syncHouseholdGrants(adminProfileId)` per household. Errors on individual households are logged and isolated — one bad household doesn't poison the sweep.
+Sits at 04:30 to land cleanly after the Monday 04:00 git gc. Both passes are wrapped in their own try/catch so a Postgres outage doesn't crash the cron worker.
+
+### Story 3.4c — mobile UI for join / leave / grants (2026-04-18)
+
+Third slice of 3.4. Settings now has a "Household" section between Context and Privacy: "People in this household — Join, leave, share Spaces from another Pod" → `/household`.
+
+**`mobile/app/household.tsx`** (~700 lines, file-based route via Expo Router). Three components in one file:
+- **HouseholdScreen.** Masthead "Cross-household sharing / Who is part of this household.", an `includeLeft` toggle that toggles whether `left` rows are visible (audit), an Invite button. Each member row renders a status badge (ok/warn/danger/neutral tone), the WebID, and grace-period preview text "Leaves in N days · cancellable" when the member is in `leaving`.
+- **InviteModal.** Paste WebID + display name, pick a `LeavePolicyForEmergent` from `LEAVE_POLICIES`, set grace days (with helper text 'How long after they tap "Leave" before access is fully revoked'). Maps `MembershipError` reasons to inline error text.
+- **MemberDetailModal.** Status display, lifecycle action row that adapts to status (Accept invite / Start leaving / Cancel leaving / Remove now — the destructive actions go through `Alert.alert` confirmation), grants list with cached-Space metadata, "Add grant URL" form, "Sync from their Pod now" button that surfaces per-grant outcomes (`fresh` / `not_modified` / `error: <reason>`).
+
+**`mobile/lib/api.ts`** gained the household section: 4 type interfaces (`MemberStatus`, `LeavePolicy`, `HouseholdMember`, `PodGrant`, `CachedExternalSpace`, `SyncReport`) and 11 methods (`listHouseholdMembers`, `inviteHouseholdMember`, `acceptHouseholdInvite`, `leaveHousehold`, `cancelHouseholdLeave`, `removeHouseholdMember`, `listMemberGrants`, `recordMemberGrant`, `revokeMemberGrant`, `syncMemberGrantsNow`, `listCachedMemberSpaces`).
+
+Mobile typecheck clean.
+
+### Story 3.4b — external Pod read pipeline + Twin extension (2026-04-18)
+
+Second slice of 3.4. Granted external Pod Spaces are now actually fetched, parsed, cached, and the foreign WebIDs they surface get auto-registered in the Twin so the household's Claude never sees a raw cross-Pod URL.
+
+**Migration 015 — `external_space_cache`.** Stores parsed external Spaces keyed by `(member_id, space_url)` UNIQUE with FK CASCADE on member delete. Carries the full Space projection (name/category/slug/description/visibility/confidence/people/domains/tags/sourceReferences/bodyMarkdown), plus `remote_last_updated` from the Space and `fetched_at` for staleness display.
+
+**Conditional fetch (`src/spaces/solid_client.ts`).** New `fetchExternalSpaceConditional(url, opts)` returns a discriminated union `{kind: 'fresh', space, cacheHints} | {kind: 'not_modified', cacheHints}` so callers needing 304-aware caching get the etag/last-modified back from response headers and the request `If-None-Match` / `If-Modified-Since` get forwarded if supplied. The original `fetchExternalSpace()` is kept as a thin wrapper for callers who only want the Space. New `FetchOptions.ifNoneMatch` / `ifModifiedSince` are passed through to the HTTP request.
+
+**`src/spaces/external_sync.ts` (~370 lines).** Pure helpers `extractForeignWebids(space)` (https-only filter, dedup, drops local profile ids and http:// URLs — same rule as `validateWebid`) and `buildConditionalHeaders(grant, opts)` (returns `{}` when `forceRefetch` is set even with hints). Twin: `registerForeignWebid(webid, displayName)` allocates a fresh `Person-N` label via `allocatePersonLabel()`, INSERTs with `detected_by='auto_pod_grant'` (distinct from `auto_ner` / `manual` so the Twin Registry UI can show provenance), calls `resetEntityNameCache()`. Cache CRUD: `upsertCache` / `findCache` / `listCachedSpacesForMember` / `dropCacheForGrant` / `dropAllCacheForMember`.
+
+Orchestration: `syncGrant(member, grant, opts)` returns a `SyncOutcome` (`'fresh'` / `'not_modified'` / `'error'` with `reason` + `message`). On 304 it just calls `recordGrantSync(grant.id, cacheHints)` to update the grant's cache hints — no cache row touched. On fresh it upserts the cache, calls `recordGrantSync`, registers the member's own webid + every foreign webid in `space.people[]`. Errors don't poison sweeps — they're returned as a structured outcome so `syncMemberGrants(memberId)` and `syncHouseholdGrants(householdAdminProfileId)` can iterate cleanly.
+
+**Cascade cleanup.** Because `revokeGrant` only flips `pod_grants.status` to `'revoked'` (doesn't delete the row, so FK CASCADE doesn't fire), the route layer composes the cleanup explicitly: `DELETE /api/households/members/:id/grants` calls `dropCacheForGrant`, `DELETE /api/households/members/:id` and `POST /leave` with `gracePeriodDaysOverride === 0` both call `dropAllCacheForMember` after `finaliseLeave`. Kept `revokeGrant` in `membership.ts` pure (no `external_sync` import) to avoid a cycle.
+
+**New routes.** `POST /api/households/members/:id/grants/sync` (admin or self) and `GET /api/households/members/:id/grants/cached` (admin or self).
+
+**Tests.** `src/spaces/external_sync.test.ts` (15 — `extractForeignWebids` URL filtering / http rejection / dedup / empty, `buildConditionalHeaders` no-hints / etag-only / lastModified-only / both / forceRefetch, `fetchExternalSpaceConditional` 200 fresh + hints / 304 not_modified / header forwarding / omission / 500 SolidClientError). DB-touching paths (Twin registration, cache upsert, grant orchestration) covered by manual QA per the story DoD. Full suite: 258 tests passing across 19 files (was 243).
+
+### Story 3.4a — household membership + per-Space Pod grants (2026-04-18)
+
+First slice of Story 3.4 (cross-household Pod portability — the marriage/immigration flow). The schema + service + API are in; live external-Pod fetch, Twin extension, mobile UI, and the two-deployment end-to-end test are 3.4b/c/d.
+
+**Migration 014 — `household_members` + `pod_grants`.** Two new tables. `household_members` records adults whose primary Pod may live elsewhere (member_webid, member_display_name, optional internal_profile_id when they also have a profile on this deployment, status enum invited/active/leaving/left, leave_policy_for_emergent enum retain_attributed/anonymise/remove default retain_attributed, grace_period_days default 30, the four lifecycle timestamps). `pod_grants` records per-Space external read access from a member's Pod to this household (member_id FK, space_url, status active/revoked, granted_at/revoked_at, plus cache hints last_synced_at/last_etag/last_modified_header for 3.4b). Unique partial index on `(member_id, space_url) WHERE status='active'` so revoked grants accumulate as audit without conflicting. Same `household_admin_profile_id = primary admin profile_id` convention as Stories 2.1–3.3 — to be replaced when the proper households table lands.
+
+**`src/households/membership.ts`.** Pure rule helpers: `allowedNextStatuses` / `canTransition` (state machine: invited → active|left, active → leaving|left, leaving → active|left, left terminal); `validateWebid` and `validateSpaceUrl` (https-only, fragment stripped on space URLs); `computeGraceUntil(now, days)` and `isLeaveFinalisable(member, now)` for grace-period maths. DB functions: `inviteMember` / `listMembers` / `findMember`, `acceptInvite` / `initiateLeave` / `cancelLeave` / `finaliseLeave` (transactional — cascade-revokes all active grants in the same UPDATE), `finaliseExpiredLeaves` for the cron, and the grants CRUD `recordGrant` (idempotent — returns existing active grant), `listGrants`, `revokeGrant`, `recordGrantSync` (cache-hint update for 3.4b).
+
+**Routes mounted under `/api/households/*`:** POST /members (admin invite), GET /members (admin list), POST /members/:id/accept (admin or self), POST /members/:id/leave (admin or self, with policy + grace overrides), POST /members/:id/cancel-leave, DELETE /members/:id (admin force-remove), GET /members/:id/grants, POST /members/:id/grants (record), DELETE /members/:id/grants?spaceUrl= (revoke). Two helpers — `ensureAdminCaller` and `ensureAdminOrSelf` — express the auth model: admins do invites + force-remove + listing; the linked internal member can record/revoke their own grants and initiate own leave; children blocked across the board. `MembershipError` from the service layer is mapped to 400 with a `reason` field so the mobile UI can branch on `webid_must_be_https` / `illegal_transition` / `member_not_found` / etc. without scraping messages.
+
+**Tests.** `src/households/membership.test.ts` (24 — state-machine transitions including all illegal jumps, https-only WebID + space URL validation, fragment stripping, grace-period maths including 0/negative/fractional, `isLeaveFinalisable` truth table, LEAVE_POLICIES catalogue matches the SQL CHECK). DB-touching paths (the route handlers, transactional `finaliseLeave`, `recordGrant`/`revokeGrant`) covered by manual QA per the story DoD. Full suite: 243 tests passing across 18 files (was 219).
+
+### Story 3.3d — DPoP proof verification + Turtle parser (2026-04-18)
+
+Fourth slice of Story 3.3. Two of the four 3.3d items shipped — the code-shaped pieces. Tier-2 wizard step (`profiles.external_pod_url`), Twin extension for foreign WebIDs, and external-client interop QA are still pending and each warrant their own session.
+
+**DPoP proof verification (`src/oidc/bearer.ts`).** New `verifyDpopProof(proofJwt, opts)` (RFC 9449) checks:
+- `header.typ === 'dpop+jwt'` and `header.jwk` present + `header.alg` set
+- Signature verifies under the embedded JWK (proof of possession of the matching private key)
+- `payload.htm` matches the request method (case-insensitive)
+- `payload.htu` matches the request URI after `normalizeHtu` (strips query + fragment per §4.2)
+- `payload.iat` within ±60s (configurable via `maxAgeSeconds`)
+- `payload.jti` is present (no replay cache yet — that needs a TTL store; for now the iat window is the brake)
+- `payload.ath === base64url(SHA-256(accessToken))` when an access token is supplied
+- `expectedJkt` (from access token's `cnf.jkt`) matches `calculateJwkThumbprint(jwk)`
+
+`verifyBearer` now extracts `cnf.jkt` from the access token payload and surfaces it as `cnfJkt` on `VerifiedBearer`. `solid_routes.ts` `authenticateOrReject` enforces it: when the token has `cnfJkt`, the request MUST carry a valid `DPoP` header binding the same key to this method+URI+token, otherwise 401 with `WWW-Authenticate: DPoP realm="memu", error="invalid_dpop_proof"`. Plain bearer tokens (no `cnf.jkt`) continue to work as before — this is additive: DPoP-bound tokens get their binding checked, non-DPoP tokens stay accepted.
+
+Implementation note: removed the `oidc-provider/node_modules/jose` indirect-path require (it never actually existed at that location — jose is a top-level dep). bearer.ts now does `import * as joseLib from 'jose'` directly. jwks lazy-load is preserved because it pulls in `db/connection`, which would otherwise force every importer to set `DATABASE_URL`.
+
+**Turtle parser (`src/spaces/solid_client.ts`).** New `parseSpaceFromTurtle(ttl, sourceUrl)` uses the `n3` package (just added: `n3@2.0.3` + `@types/n3`). Walks quads, groups by subject, picks the one carrying `memu:slug` or `memu:category` as the Space node (falls back to first subject), extracts `schema:name` / `schema:description` / `memu:uri` / `memu:category` / `memu:slug` / `memu:domain` / `memu:tag` / `memu:confidence` / `dcterms:modified` / `memu:bodyMarkdown`. Same safe-defaults behaviour as the JSON-LD parser (name → 'Untitled', category → 'document' via `coerceCategory`, confidence → 0.5).
+
+`fetchExternalSpace` dispatch updated: `text/turtle` / `text/n3` / `application/n3` now route to `parseSpaceFromTurtle` instead of throwing `turtle_unsupported`. Round-trip verified by serialising via `serializeSpaceTurtle` and parsing back through the new parser. `SolidClientError` reasons gain `invalid_turtle`; `turtle_unsupported` is retired.
+
+**Tests.** `src/oidc/bearer.test.ts` (+14 → 27 total): 3 for `normalizeHtu` (query/fragment stripping, trailing slash, parse-failure passthrough), 11 for `verifyDpopProof` covering happy path, every reason field (`dpop_wrong_typ`, `dpop_missing_jwk`, `dpop_htm_mismatch`, `dpop_htu_mismatch`, `dpop_iat_stale`, `dpop_missing_jti`, `dpop_ath_mismatch`, `dpop_jkt_mismatch`), htu compared with query/fragment stripped, and accessToken-omitted case. `src/spaces/solid_client.test.ts` (+3 → 19 total): Turtle round-trip, invalid-Turtle error, minimal-Turtle defaults, and a fetch-dispatch test that returns `text/turtle` and parses it. Removed the `turtle_unsupported` test. Full suite: 219 tests passing across 17 files.
+
+**What's still pending in 3.3 overall:**
+- Tier-2 wizard step writing `profiles.external_pod_url` (UI work; lands with wizard polish for 3.4).
+- Twin extension for external WebIDs surfaced by fetched Spaces — when an `ExternalSpace.people` includes a foreign WebID we don't recognise, the Twin should auto-register the entity so subsequent Claude calls don't leak the URL.
+- Replay cache for DPoP `jti` (needs Redis/pg TTL store). Iat window is the practical brake until then.
+- External-client interop QA against PodSpaces / inrupt-test-pod / Penny — the actual conformance check needs a deployment.
+
+### Story 3.3c — Solid client (read external Pods) (2026-04-18)
+
+Third slice of Story 3.3. Memu can now fetch Spaces published by external Solid Pods (other Memu deployments, PodSpaces, NSS, anything that round-trips our published shape). The mirror image of `solid_routes.ts`: where the routes let outsiders read us, this lets us read them.
+
+**`src/spaces/solid_client.ts`.** `fetchExternalSpace(url, opts)` does a content-negotiated HTTP GET (`Accept: application/ld+json, text/markdown;q=0.7, text/turtle;q=0.5`), 10s default timeout via AbortController, optional `Bearer <token>` for ACP-gated resources. Dispatches by response Content-Type:
+- `application/ld+json` / `application/json` → `parseSpaceFromJsonLd`
+- `text/markdown` / `text/plain` (or unset) → `parseSpaceFromMarkdown` (uses gray-matter — same library `store.ts` writes with, so the on-disk frontmatter shape parses cleanly)
+- `text/turtle` → throws `SolidClientError` with `reason: 'turtle_unsupported'` and a clear message pointing the caller at the Accept header. Real Turtle parsing requires `n3` or `rdflib` and was deferred so we don't ship a half-correct hand-rolled parser. Targeted for 3.3d when external interop QA forces the issue.
+
+`SolidClientError` carries a structured `reason` field (`unauthorized` / `http_error` / `fetch_failed` / `invalid_json` / `empty_graph` / `turtle_unsupported` / `unknown_content_type` / `no_fetch`) so callers can branch on the failure mode without scraping the message.
+
+**Output shape: `ExternalSpace`.** `Omit<Space, 'familyId' | 'id'> & { sourceUrl }`. The local-only fields (`familyId`, internal `id`) are populated by the caller after fetch — an external Pod doesn't know our internal IDs and shouldn't. `visibility` defaults to `'private'` on fetch (the safest assumption for a Space we didn't publish ourselves). `sourceUrl` is preserved for re-fetch + dedup; `sourceReferences` defaults to `[sourceUrl]` for traceability.
+
+**Round-trip verified.** Tests serialise a Space via `serializeSpaceJsonLd` (or `gray-matter.stringify`), parse it back through the client parsers, and assert the round-trip preserves name / category / slug / uri / confidence / domains / tags / lastUpdated / bodyMarkdown. So if the external Pod is another Memu, the wire format works in both directions; if it's not, the parsers tolerate missing fields with safe defaults (name → 'Untitled', category → 'document', confidence → 0.5).
+
+**Migration 013 — `profiles.external_pod_url`.** Optional TEXT column. NULL = no external Pod (Memu is source of truth for this profile's Spaces); set = external Pod is authoritative, Memu caches but never overwrites. The Tier-2 wizard step "Do you already have a Solid Pod?" writes here.
+
+**What's still pending (3.3d):**
+- DPoP proof verification (HTTP-method/URL/body binding) on incoming requests. Still tolerated as plain Bearer.
+- Turtle parser (`n3` package) so the client handles Pods that only serve `text/turtle`.
+- The Tier-2 wizard step that sets `external_pod_url`. UI work; will land alongside wizard polish for 3.4.
+- Twin extension for external WebIDs — when a fetched Space references a person via an external WebID URL (not in our `entity_registry`), the Twin needs to register them as a foreign entity so we don't leak the URL in subsequent Claude calls.
+- External-client interop QA against PodSpaces / inrupt-test-pod / Penny — the actual conformance check.
+
+**Tests.** `src/spaces/solid_client.test.ts` (16 — JSON-LD round-trip + minimal + unknown category + invalid JSON + empty graph; markdown round-trip + slug fallback + no-frontmatter; fetch dispatch by content-type; Authorization header presence/absence; 401/403/500 error reasons; turtle_unsupported reason). Full suite: 202 tests passing across 17 files.
+
+### Story 3.3b — Solid write methods + containers + typeIndex (2026-04-18)
+
+Second slice of Story 3.3. Memu now has a complete read+write Solid surface for Spaces — external Solid editors can PUT/DELETE individual Spaces, walk into per-category and per-person containers to discover what's published, and read the typeIndex to learn the Pod's shape.
+
+**PUT `/spaces/:category/:slug`.** Accepts a `text/markdown` body and upserts the Space via the existing `upsertSpace()` store. Slug comes from the URL (Solid editors choose their own slugs and we honour that). On create: defaults visibility=`family`, name=slug, confidence inherited from store default. On update: existing visibility / domains / people / tags are preserved unless overwritten by a future PATCH. Returns 201 + `Location` on create, 204 on replace, with `Link: <acp_url>; rel="acl"`.
+
+**DELETE `/spaces/:category/:slug`.** New `deleteSpace()` in `store.ts` — DB row deleted in a transaction with a `spaces_log` event=`deleted` entry, then best-effort filesystem cleanup (unlink the .md, append to `_log.md`, git commit attributed to the actor). Idempotent on the DB side: missing slug returns 404, but the store function itself is safe to call repeatedly.
+
+**Write authorization (`authorizeWrite` in `solid_routes.ts`).** Caller must (a) pass bearer verification, (b) be `admin` or `adult` in the profiles table — children can read Spaces they're allowed to but cannot write, and (c) for existing Spaces, be in the derived allowed-readers set (you cannot edit a Space you can't see). For new Spaces the second-and-third-checks short-circuit since there's nothing to compare against. Coarse — finer write-ACP comes when the visibility model adds a separate `writers` field.
+
+**Containers (`serializeContainer` in `solid.ts` + `GET /spaces/:segment/`).** LDP `BasicContainer` Turtle listing every Space the caller can see, filtered two ways:
+- If `:segment` matches a known `SPACE_CATEGORIES` value → per-category container (all Spaces of that category).
+- Otherwise treated as a `webid_slug` → per-person container (all Spaces where that profile is in `space.people`). 404s if no profile matches the slug.
+
+In both cases the container is filtered by the caller's visibility — same `deriveAllowedReaders` check as the GET resource path. Empty containers are valid LDP and emit a clean `ldp:BasicContainer` shape with no `ldp:contains`. Each entry carries a `schema:name` triple in a separate subject block so a Pod browser can show titles without parsing the Space body.
+
+**typeIndex (`serializeTypeIndex` + `defaultTypeIndexEntries` in `solid.ts` + `GET /typeIndex`).** Standard `solid:TypeIndex` document with one `solid:TypeRegistration` per category, each pointing at its container URL. The WebID profile doc (`webid.ts`) now emits `solid:publicTypeIndex <typeIndex>` so external Solid clients reading the WebID can discover the Pod's published kinds in one hop.
+
+**Body parsing.** Registered Fastify content-type parsers for `text/markdown`, `text/turtle`, `text/plain`, `application/n3` — all passthrough to a string body. JSON is still handled by Fastify's default parser.
+
+**What this still doesn't do (3.3c/d):**
+- DPoP proof verification of method+url+body (still tolerated as plain Bearer; documented in the route comment). Will land before external interop QA.
+- PATCH (N3 patches / SPARQL UPDATE) — clients that need partial updates can re-PUT the whole body. Real Solid editors expect PATCH eventually.
+- Solid client (`solid_client.ts`) for reading external Pods and the Tier-2 wizard step "do you already have a Solid Pod?".
+- External-client interop QA against PodSpaces / inrupt-test-pod / Penny.
+
+**Tests.** `src/spaces/solid.test.ts` extended (+10 tests): `serializeContainer` (empty + populated + dot-termination + ACP pointer), `serializeTypeIndex` (TypeIndex declaration, one registration per category, correct `solid:forClass` per category). `src/webid/webid.test.ts` extended (+1 assertion): typeIndex pointer now in both Turtle and JSON-LD profile output. Full suite: 186 tests passing across 16 files. DB-touching paths (`deleteSpace`, the route handlers themselves, profile lookup by webid_slug) covered by manual QA per the story DoD.
+
+### Story 3.3a — Solid HTTP read surface for Spaces (2026-04-18)
+
+First slice of Story 3.3. Every Space is now addressable as a Solid resource at `https://<base>/spaces/<category>/<slug>` with content negotiation, an ACP resource at `?ext=acp`, and Solid-OIDC bearer auth gating reads. Default-deny: a caller whose WebID isn't in the derived allowed-readers set gets 403, even with a valid token.
+
+**Bearer verification (`src/oidc/bearer.ts`).** `extractBearerToken()` accepts both `Bearer` and `DPoP` schemes (DPoP proof binding deferred to 3.3b along with write methods). `verifyBearer()` runs `jose.jwtVerify` against the local JWKS — no DB round-trip to oidc-provider's volatile token store, so reads stay cheap across restarts. Validates issuer + audience (= our base URL, matching `resourceIndicators.defaultResource`), pulls the `webid` claim, parses the `/people/<slug>` path, and looks up the Memu profile by `webid_slug`. `BearerVerificationError` carries a structured `reason` for ledger logging. jose + jwks loaded lazily inside `getKeySet()` so the pure helpers stay importable in test environments that can't resolve the nested `oidc-provider/node_modules/jose` path.
+
+**Solid serialization (`src/spaces/solid.ts`).** Three representations of one Space:
+- `text/markdown` — the body verbatim, default for browsers and humans
+- `text/turtle` — RDF using foaf, schema.org, dcterms, and a `memu:` vocab (`https://memu.digital/vocab#`). Carries `memu:bodyMarkdown` literal so the human content is reachable from the RDF view too.
+- `application/ld+json` — same statements as JSON-LD with explicit IRIs
+
+`negotiateSpaceContentType()` picks markdown by default (browser-friendly), turtle/JSON-LD only when explicitly asked. `rdfTypeForCategory()` maps person→schema:Person, household→schema:Place, and routine/commitment/document to memu:* terms.
+
+**ACP (`serializeAcp` in `src/spaces/solid.ts`).** Standard `acp:` + `acl:` vocabulary so Solid clients can validate authorisation independently. `deriveAllowedReaders()` reuses `resolveVisibility()` from `model.ts` — same source of truth as the orchestrator's `canSee()`. Profile ids without a `webid_slug` are dropped (fail closed). Explicit `https://` URIs in the visibility list pass through verbatim — that's the path for cross-household sharing in 3.4. Empty allowed-set → ACP with no `acp:Matcher` and a `memu:note` explaining the lock; we deliberately do NOT emit `acl:agentClass foaf:Agent` (would be public).
+
+**Routes (`src/spaces/solid_routes.ts`).** Mounted outside `/api/` so the existing API-key preHandler skips them — Solid clients use the bearer instead. `GET /spaces/:category/:slug` and `HEAD /spaces/:category/:slug`:
+1. Validate the second segment against `SPACE_CATEGORIES` enum (anything else 404s — per-person Pod root `/spaces/<webid_slug>/` is 3.3b).
+2. `authenticateOrReject` extracts + verifies bearer; 401 with `WWW-Authenticate: Bearer` header on failure.
+3. Resolve `family_id` from caller (single-family convention: lowest-created admin).
+4. Load the Space, the family roster, and a profile-id → WebID lookup for the ACP.
+5. If `?ext=acp` → return the ACP Turtle (still requires valid bearer to discourage casual probing).
+6. Visibility check against derived allowed-readers; 403 if caller's WebID isn't in the set.
+7. Set `Link: <acp_url>; rel="acl"`, `Last-Modified`, `Vary: Accept`, and the negotiated `Content-Type`.
+
+**Family-id scoping reminder (still).** Same pattern as Stories 2.1–2.3: `family_id` = primary admin's profile_id. When the proper families table lands in 3.4, replace `resolveFamilyIdForCaller` with a profile→family lookup.
+
+**Tests.** `src/spaces/solid.test.ts` (28 — content negotiation, URL building, Turtle/JSON-LD shape + escaping + RDF type mapping per category, ACP lookup, allowed-reader derivation including external WebIDs and fail-closed, ACP default-deny + populated). `src/oidc/bearer.test.ts` (13 — Bearer/DPoP scheme parsing, case + whitespace tolerance, slug parsing including URL-encoding, BearerVerificationError shape). DB-touching paths (`verifyBearer`, the route handlers, profile lookup) covered by manual QA per the story DoD. Full suite: 179 tests passing across 16 files (was 138 across 14).
+
+**What this still doesn't do (3.3b/c/d):** PUT/PATCH/DELETE write methods, DPoP proof verification, Pod root `/spaces/<webid_slug>/` listing + typeIndex, the Solid client (`solid_client.ts`) that reads external Pods, the Tier-2 wizard step "do you already have a Solid Pod?", and the external-client interop QA against PodSpaces / inrupt-test-pod.
+
+### Story 3.1 + 3.2 — Spaces stewardship & Article 20 export (2026-04-18)
+
+First paired release of Phase 3. **3.3, 3.4, 3.5 still pending.** Memu now treats the family's compiled understanding as something the family **owns** — every commit is attributed to a real person, the directory carries an auto-maintained README explaining what it is, and on-demand snapshot + full Article 20 export endpoints let the family take everything to a competitor or read it on their own machine. The Solid Pod surface (3.3), cross-household portability (3.4), and physical Pod drives (3.5) are the next steps in giving the family genuine ownership.
+
+**Story 3.1 — Spaces stewardship.** `src/spaces/store.ts` rewritten so every git commit on `spaces/<family_id>/` is attributed via `--author` to the actor profile (display_name + email looked up from `profiles`). New `ensureReadme()` writes a fixed README explaining the directory + Obsidian compatibility on first init (idempotent unless `force=true` on the very first repo creation). New `src/spaces/maintenance.ts` ships `gcFamilyRepo` / `gcAllFamilyRepos` (runs `git gc --quiet --auto`) and `snapshotFamilyRepo` (uses `tar -czf` to bundle the directory including `.git/`, writes to `MEMU_TMP_DIR`, logs to `spaces_log` with event=`snapshot`). Weekly cron `0 4 * * 1` Europe/London sweeps every family's repo. New `GET /api/spaces/snapshot` endpoint streams the tarball and best-effort cleans up the temp file on stream close — adults only.
+
+**Story 3.2 — Article 20 export.** `src/export/article20.ts` builds a ZIP via `archiver` (added to deps) containing `data.json`, `README.md`, `spaces/` mirror, and `attachments/` (if present). `data.json` aggregates 13 categories: profile, personas, connected channels, messages, stream_cards, stream_card_actions (joined to family stream_cards), synthesis_pages, context_entries (embeddings stripped to keep human-readable), privacy_ledger, twin_registry, care_standards, domain_states, reflection_findings. SHA-256 of `data.json` is computed and embedded in the README so the archive is internally consistent, and recorded to a new `export_log` table (migration 012) for proof-of-export. `spaces_log` event vocab extended with `snapshot` and `exported`. `GET /api/export` rewritten to call `buildArticle20Export`, stream the ZIP with `Content-Disposition`, `Content-Length`, and `X-Export-Hash` headers — adults only (the archive contains adults_only / partners_only material). `category_counts` table in the README is locked by tests so it can't drift from the JSON shape.
+
+**Tests.** `src/export/article20.test.ts` (6 — countCategories shape + cardinality, channel key alias, deterministic SHA-256, hash sensitivity to payload changes). DB-touching paths (`gatherFamilyData`, `buildArticle20Export` end-to-end, INSERTs to `export_log` + `spaces_log`) covered by manual QA per the story DoD. Pre-existing `loader.test.ts` synthesis_update test was patched to include the `enabled_standards` + `now_iso` template vars introduced by Story 2.3. Full suite: 138 tests passing across 14 files.
+
+**Phase 3 deviation.** Original spec for export endpoint was JSON-only. Replaced with the ZIP archive because the spec explicitly says "ZIP file" and the family experience of opening a single archive is markedly better than parsing one giant JSON. The legacy JSON shape is no longer returned — clients hitting `/api/export` now receive `application/zip`.
+
+### Session pickup point — start of next session (2026-04-18 onward)
+
+**Phase 1, Phase 2, and Phase 3 (Stories 3.1, 3.2, 3.3a–d code, 3.4a–d + cron) are complete.** Per Hareesh's instruction at end of the 3.4 session: pause before 3.5 for discussion. Open questions before committing to 3.5:
+
+- **Is 3.5 (physical modular Pod drives — LUKS USB per person + family) actually memu-core, or is it a post-Kickstarter Memu Home story?** It's hardware-shaped (udev watching, LUKS lifecycle, hot-plug write journal) and arguably belongs in memu-os. Worth re-reading the backlog priority filter before committing the surface.
+- **Three 3.3d residual items still open**, each its own session: Tier-2 wizard step writing `profiles.external_pod_url` (UI; naturally lands with 3.4 wizard polish), and end-to-end interop QA against PodSpaces / inrupt-test-pod / Penny (needs a deployment). Twin extension for foreign WebIDs surfaced by fetched Spaces is now covered by 3.4b's `registerForeignWebid` (`detected_by='auto_pod_grant'`) — the residual is whether to extend the same machinery to the 3.3c read path for Spaces fetched outside a household-grant context (e.g. anonymous public Pod browsing).
+- **Phase 5 (Tier-2 convergence onto the Z2) is gated by the cross-repo architecture review (#38).** memu-os runs the family in production today (Synapse, Immich, Baikal, Ollama). memu-core does not "deploy to" the Z2; it docks alongside via Phase 5: preflight (5.1), co-existence Compose sharing only Postgres (5.2), DB-init safety (5.3), backup integration (5.4), watchdog integration (5.5), mobile Tier-2 config (5.6). Treat any cross-repo touchpoint as high-risk by default.
+
+**Decision wanted from Hareesh:** 3.5 next, Phase 5 next (after the cross-repo review), or pause Phase work and ship something Kickstarter-shaped (demo video polish, onboarding flow, beta pipeline)?
+
+### Story 2.3 + 2.4 — Care standards & domain health (2026-04-17)
+
+**Story 2.3 — Minimum Standards of Care.** New `care_standards` table (migration 010) with TEXT ids, partial unique index on `(family_id, domain, description) WHERE custom = FALSE` so re-seeding is idempotent. `src/care/defaults.ts` ships 16 defaults across 9 domains (dental 180d each_person, GP 365d each_adult, MOT 365d household, intentional evening together 30d couple, etc.). `src/care/standards.ts` exposes `seedDefaultStandards / listStandards / setStandardEnabled / createCustomStandard / deleteCustomStandard / markCompleted / evaluateStandards`. The reflection daily pass now calls `runStandardsCheck` after the LLM scan: anything `evaluateStandards` grades `overdue` raises a `care_standard_lapsed` stream card with actions `[Mark done, Snooze]`, deduped via `reflection_findings` finding-hash. Completion detection: `synthesis_update` skill v2 takes `{{enabled_standards}}` (id — description list), emits `completed_standards: [{id, completed_at}]`, processSynthesisUpdate calls `markCompleted` for each known id. CRUD at `/api/care-standards` (GET list with `?enabled=true`, POST create, POST seed, POST :id/toggle, POST :id/complete, DELETE :id) — children blocked from mutations.
+
+**Story 2.4 — Domain health states.** New `domain_states` table (migration 011) with unique key on `(family_id, domain)` for clean UPSERT. `src/domains/health.ts` computes per-domain green/amber/red from care_standards counts (overdue → red, approaching → amber) plus recent (≤14d) reflection findings linked to the domain via `synthesis_pages.domains[]` URI matching. Multiple amber signals or any contradiction → red. Notes carry one-line summary ("Dental check-up overdue by 3 weeks; 1 unresolved contradiction"). The reflection daily pass calls `computeDomainStates` after the standards check so newly-overdue items propagate. The briefing skill v2 takes a new `{{domain_header}}` template var rendered as the spec header (`✓ Health, Shelter` / `⚠ Domain — note` / `✕ Domain — note`) and is told to open with it verbatim. `briefing.ts` (both PWA + WhatsApp paths) injects the header. `GET /api/domains/status` returns the full state for adults; children get domain + health only (notes/counts stripped, since notes can leak `partners_only` or `adults_only` content).
+
+**Family-id scoping reminder:** like Stories 2.1–2.3, `family_id` continues to be the primary admin's profile_id. When the proper families table lands (Phase 3) the seeder, evaluator, and domain-health compute all need the join updated.
+
+**Tests:** `src/care/defaults.test.ts` (7 — catalogue shape, scope validity, uniqueness), `src/domains/health.test.ts` (8 — header rendering, ordering, multi-word domains, no-notes case). Plus the existing 11 reflection tests. DB-touching paths (seeder, evaluator, computeDomainStates) covered by manual QA per the story DoD.
 
 ### Mobile navigation overhaul (2026-04-16)
 

@@ -80,6 +80,8 @@ describe('skills loader', () => {
       existing_pages: 'Page A',
       user_message: 'Robin has swim on Thursday',
       ai_response: 'Noted.',
+      enabled_standards: 'std-1 — Dental check-up',
+      now_iso: '2026-04-18T10:00:00.000Z',
     });
     expect(rendered).toContain('Page A');
     expect(rendered).toContain('Robin has swim on Thursday');

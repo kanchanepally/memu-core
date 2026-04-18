@@ -91,6 +91,16 @@ export function buildOidcIssuer(base?: string): string {
   return base ?? resolveWebIdBaseUrl();
 }
 
+/**
+ * Public typeIndex URL. Story 3.3b serves this resource — clients walk
+ * to it from the profile doc to discover what kinds of things this Pod
+ * publishes (one TypeRegistration per Space category).
+ */
+export function buildPublicTypeIndexUrl(base?: string): string {
+  const b = base ?? resolveWebIdBaseUrl();
+  return `${b}/typeIndex`;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization
 // ---------------------------------------------------------------------------
@@ -117,6 +127,7 @@ export function serializeTurtle(profile: WebIdProfile, opts: SerializeOptions = 
   const docUrl = buildProfileDocUrl(profile.slug, base);
   const storage = buildStorageUri(profile.slug, base);
   const issuer = buildOidcIssuer(base);
+  const typeIndex = buildPublicTypeIndexUrl(base);
 
   const lines: string[] = [];
   lines.push('@prefix foaf: <http://xmlns.com/foaf/0.1/> .');
@@ -137,6 +148,7 @@ export function serializeTurtle(profile: WebIdProfile, opts: SerializeOptions = 
   // client can discover it.
   lines.push(`    pim:storage <${storage}> ;`);
   lines.push(`    solid:storage <${storage}> ;`);
+  lines.push(`    solid:publicTypeIndex <${typeIndex}> ;`);
   if (opts.includePrivate && profile.email) {
     lines.push(`    foaf:mbox <mailto:${profile.email}> ;`);
   }
@@ -158,6 +170,7 @@ export function serializeJsonLd(profile: WebIdProfile, opts: SerializeOptions = 
   const webid = buildWebId(profile.slug, base);
   const storage = buildStorageUri(profile.slug, base);
   const issuer = buildOidcIssuer(base);
+  const typeIndex = buildPublicTypeIndexUrl(base);
 
   const me: Record<string, unknown> = {
     '@id': webid,
@@ -166,6 +179,7 @@ export function serializeJsonLd(profile: WebIdProfile, opts: SerializeOptions = 
     'http://www.w3.org/ns/solid/terms#oidcIssuer': { '@id': issuer },
     'http://www.w3.org/ns/pim/space#storage': { '@id': storage },
     'http://www.w3.org/ns/solid/terms#storage': { '@id': storage },
+    'http://www.w3.org/ns/solid/terms#publicTypeIndex': { '@id': typeIndex },
   };
   if (opts.includePrivate && profile.email) {
     me['http://xmlns.com/foaf/0.1/mbox'] = { '@id': `mailto:${profile.email}` };

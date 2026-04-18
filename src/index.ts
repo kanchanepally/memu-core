@@ -16,6 +16,7 @@ import { importWhatsAppExport, importTextFile, importFileBundle } from './intell
 import { validateAllSkills, listSkills } from './skills/loader';
 import { registerWebIdRoutes } from './webid/server';
 import { registerOidcRoutes } from './oidc/routes';
+import { registerSolidSpaceRoutes } from './spaces/solid_routes';
 import { setOidcPassword } from './oidc/accounts';
 import {
   setProviderKey,
@@ -67,6 +68,11 @@ registerWebIdRoutes(server);
 // Solid-OIDC provider — `.well-known/*` discovery and `/oidc/*` endpoints.
 // Dispatched to Panva's oidc-provider via raw Node handlers.
 registerOidcRoutes(server);
+// Story 3.3a — Solid HTTP read surface for Spaces. Auth here is the
+// Solid-OIDC bearer JWT issued by registerOidcRoutes above; these
+// routes deliberately live outside /api/ so the API-key preHandler
+// does not run on them.
+registerSolidSpaceRoutes(server);
 
 // ==========================================
 // REGISTRATION (no auth required)
@@ -312,6 +318,201 @@ server.post('/api/profile/oidc-password', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(400).send({ error: err instanceof Error ? err.message : 'Failed to set password' });
+  }
+});
+
+// Family-wide reflection on/off toggle. Story 2.2 — a quiet mode so a
+// family can silence the reflection engine without losing the Spaces
+// write path. Any authenticated adult may toggle.
+server.get('/api/family/settings', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const res = await pool.query(
+      `SELECT reflection_enabled FROM family_settings WHERE family_id = $1`,
+      [profileId],
+    );
+    const reflection_enabled = res.rows[0]?.reflection_enabled ?? true;
+    return { reflection_enabled };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load family settings' });
+  }
+});
+
+server.post('/api/family/settings', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot change family settings' });
+    }
+    const body = request.body as { reflection_enabled?: boolean };
+    if (typeof body?.reflection_enabled !== 'boolean') {
+      return reply.code(400).send({ error: 'reflection_enabled (boolean) required' });
+    }
+    const profileId = (request as any).profileId;
+    await pool.query(
+      `INSERT INTO family_settings (family_id, reflection_enabled, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (family_id) DO UPDATE
+         SET reflection_enabled = EXCLUDED.reflection_enabled, updated_at = NOW()`,
+      [profileId, body.reflection_enabled],
+    );
+    return { success: true, reflection_enabled: body.reflection_enabled };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to update family settings' });
+  }
+});
+
+// ==========================================
+// Care Standards (Story 2.3) — Minimum Standards of Care CRUD
+// ==========================================
+
+server.get('/api/care-standards', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const url = new URL(request.url, 'http://localhost');
+    const enabledOnly = url.searchParams.get('enabled') === 'true';
+    const { listStandards } = await import('./care/standards');
+    const standards = await listStandards(profileId, enabledOnly);
+    return { standards };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to list care standards' });
+  }
+});
+
+server.post('/api/care-standards/seed', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot seed care standards' });
+    }
+    const profileId = (request as any).profileId;
+    const { seedDefaultStandards } = await import('./care/standards');
+    const inserted = await seedDefaultStandards(profileId);
+    return { success: true, inserted };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to seed care standards' });
+  }
+});
+
+server.post('/api/care-standards', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot add care standards' });
+    }
+    const body = request.body as {
+      domain?: string;
+      description?: string;
+      frequencyDays?: number;
+      appliesTo?: string[];
+    };
+    if (!body?.domain || !body.description || typeof body.frequencyDays !== 'number' || body.frequencyDays <= 0) {
+      return reply.code(400).send({ error: 'domain, description, and positive frequencyDays required' });
+    }
+    const profileId = (request as any).profileId;
+    const { createCustomStandard } = await import('./care/standards');
+    const standard = await createCustomStandard({
+      familyId: profileId,
+      domain: body.domain as any,
+      description: body.description,
+      frequencyDays: body.frequencyDays,
+      appliesTo: body.appliesTo,
+    });
+    return { standard };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to create care standard' });
+  }
+});
+
+server.post('/api/care-standards/:id/toggle', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot toggle care standards' });
+    }
+    const { id } = request.params as { id: string };
+    const body = request.body as { enabled?: boolean };
+    if (typeof body?.enabled !== 'boolean') {
+      return reply.code(400).send({ error: 'enabled (boolean) required' });
+    }
+    const { setStandardEnabled } = await import('./care/standards');
+    await setStandardEnabled(id, body.enabled);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to toggle care standard' });
+  }
+});
+
+server.post('/api/care-standards/:id/complete', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot mark care standards complete' });
+    }
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { completedAt?: string };
+    const when = body.completedAt ? new Date(body.completedAt) : new Date();
+    if (isNaN(when.getTime())) {
+      return reply.code(400).send({ error: 'completedAt must be a valid ISO date' });
+    }
+    const { markCompleted } = await import('./care/standards');
+    await markCompleted(id, when);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to mark care standard complete' });
+  }
+});
+
+// ==========================================
+// Domain Health (Story 2.4) — read-only status, visibility-scoped
+// ==========================================
+
+server.get('/api/domains/status', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    const profileId = (request as any).profileId;
+    const { listDomainStates } = await import('./domains/health');
+    const states = await listDomainStates(profileId);
+    // Children see domain + health only — notes can carry adult-only or
+    // partners_only context. Adults see the full picture.
+    const isChild = profile?.role === 'child';
+    const visible = states.map(s => ({
+      domain: s.domain,
+      health: s.health,
+      lastActivity: s.lastActivity,
+      openItems: isChild ? null : s.openItems,
+      overdueStandards: isChild ? null : s.overdueStandards,
+      approachingStandards: isChild ? null : s.approachingStandards,
+      notes: isChild ? null : s.notes,
+      updatedAt: s.updatedAt,
+    }));
+    return { domains: visible };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load domain status' });
+  }
+});
+
+server.delete('/api/care-standards/:id', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot delete care standards' });
+    }
+    const { id } = request.params as { id: string };
+    const { deleteCustomStandard } = await import('./care/standards');
+    await deleteCustomStandard(id);
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to delete care standard' });
   }
 });
 
@@ -637,6 +838,35 @@ server.put('/api/spaces/:id', async (request, reply) => {
   }
 });
 
+// Story 3.1 — on-demand tarball of the family's spaces directory
+// (including .git history). Adults only.
+server.get('/api/spaces/snapshot', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot trigger spaces snapshots' });
+    }
+    const profileId = (request as any).profileId;
+    const { snapshotFamilyRepo } = await import('./spaces/maintenance');
+    const { tarPath, bytes } = await snapshotFamilyRepo(profileId);
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const filename = path.basename(tarPath);
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+    reply.header('Content-Length', String(bytes));
+    reply.type('application/gzip');
+    const stream = fs.createReadStream(tarPath);
+    stream.on('close', () => {
+      fs.unlink(tarPath, () => { /* best-effort cleanup */ });
+    });
+    return reply.send(stream);
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to snapshot spaces' });
+  }
+});
+
 // Delete a Space
 server.delete('/api/spaces/:id', async (request, reply) => {
   try {
@@ -861,37 +1091,35 @@ server.get('/api/admin/trigger-briefing', async (request, reply) => {
 // SLICE 6: TRUST ARCHITECTURE
 // ==========================================
 
-// DATA SOVEREIGNTY: Export full profile dataset — uses authenticated profile
+// DATA SOVEREIGNTY: Story 3.2 — full Article 20 family export (ZIP).
+// Bundles data.json + README.md + spaces/ + attachments/ and records the
+// SHA-256 hash to export_log so the family can later prove what they took.
+// Adults only — the archive contains adults_only and partners_only material.
 server.get('/api/export', async (request, reply) => {
   try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot trigger exports' });
+    }
     const profileId = (request as any).profileId;
-    const profileRes = await pool.query("SELECT * FROM profiles WHERE id = $1", [profileId]);
+    const profileRes = await pool.query("SELECT id FROM profiles WHERE id = $1", [profileId]);
     if (profileRes.rows.length === 0) return reply.code(404).send({ error: 'No profile found' });
-    const profile = profileRes.rows[0];
 
-    // Fetch all related sovereign data
-    const personas = await pool.query("SELECT * FROM personas WHERE profile_id = $1", [profileId]);
-    const channels = await pool.query("SELECT channel, channel_identifier FROM profile_channels WHERE profile_id = $1", [profileId]);
-    const messages = await pool.query("SELECT * FROM messages WHERE profile_id = $1 ORDER BY created_at ASC", [profileId]);
-    const streamCards = await pool.query("SELECT * FROM stream_cards WHERE family_id = $1", [profileId]);
+    const { buildArticle20Export } = await import('./export/article20');
+    const archive = await buildArticle20Export(profileId, profileId);
 
-    // Build the sovereign JSON archive
-    const archive = {
-      exported_at: new Date().toISOString(),
-      profile: {
-         id: profile.id,
-         display_name: profile.display_name,
-         role: profile.role
-      },
-      personas: personas.rows,
-      connected_channels: channels.rows,
-      intelligence_stream_cards: streamCards.rows,
-      private_chat_history: messages.rows
-    };
-
-    reply.header('Content-Disposition', 'attachment; filename="memu_household_export.json"');
-    reply.type('application/json');
-    return archive;
+    const fs = await import('fs');
+    const path = await import('path');
+    const filename = path.basename(archive.zipPath);
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+    reply.header('Content-Length', String(archive.bytes));
+    reply.header('X-Export-Hash', archive.dataHash);
+    reply.type('application/zip');
+    const stream = fs.createReadStream(archive.zipPath);
+    stream.on('close', () => {
+      fs.unlink(archive.zipPath, () => { /* best-effort cleanup */ });
+    });
+    return reply.send(stream);
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to export data' });
@@ -960,6 +1188,286 @@ server.post('/api/family/detach', async (request, reply) => {
   }
 });
 
+// ==========================================
+// HOUSEHOLDS — Story 3.4a: cross-household membership + per-Space Pod grants
+// ==========================================
+//
+// Authorization model:
+//   - admin: invite, list, accept-on-behalf-of, force-remove, list any
+//     member's grants
+//   - the linked internal member (when household_members.internal_profile_id
+//     equals the caller's profile_id): record/revoke own grants, initiate
+//     own leave, cancel own leave
+//   - children: blocked from all of these (handled by role check)
+
+async function ensureAdminCaller(request: any, reply: any): Promise<string | null> {
+  const profile = (request as any).profile;
+  if (!profile || profile.role !== 'admin') {
+    reply.code(403).send({ error: 'Admin role required' });
+    return null;
+  }
+  return (request as any).profileId as string;
+}
+
+async function ensureAdminOrSelf(
+  request: any,
+  reply: any,
+  memberId: string,
+): Promise<{ profileId: string; isAdmin: boolean } | null> {
+  const profile = (request as any).profile;
+  if (!profile) {
+    reply.code(401).send({ error: 'Authentication required' });
+    return null;
+  }
+  if (profile.role === 'child') {
+    reply.code(403).send({ error: 'Children cannot manage household membership' });
+    return null;
+  }
+  const callerId = (request as any).profileId as string;
+  if (profile.role === 'admin') {
+    return { profileId: callerId, isAdmin: true };
+  }
+  const { findMember } = await import('./households/membership');
+  const member = await findMember(memberId);
+  if (!member) {
+    reply.code(404).send({ error: 'Member not found' });
+    return null;
+  }
+  if (member.internalProfileId !== callerId) {
+    reply.code(403).send({ error: 'Caller is not the linked member' });
+    return null;
+  }
+  return { profileId: callerId, isAdmin: false };
+}
+
+server.post('/api/households/members', async (request, reply) => {
+  const adminId = await ensureAdminCaller(request, reply);
+  if (!adminId) return;
+  const body = request.body as {
+    memberWebid?: string;
+    memberDisplayName?: string;
+    internalProfileId?: string | null;
+    leavePolicyForEmergent?: 'retain_attributed' | 'anonymise' | 'remove';
+    gracePeriodDays?: number;
+  };
+  if (!body?.memberWebid || !body.memberDisplayName) {
+    return reply.code(400).send({ error: 'memberWebid and memberDisplayName required' });
+  }
+  try {
+    const { inviteMember, MembershipError } = await import('./households/membership');
+    const member = await inviteMember({
+      householdAdminProfileId: adminId,
+      memberWebid: body.memberWebid,
+      memberDisplayName: body.memberDisplayName,
+      invitedByProfileId: adminId,
+      internalProfileId: body.internalProfileId,
+      leavePolicyForEmergent: body.leavePolicyForEmergent,
+      gracePeriodDays: body.gracePeriodDays,
+    });
+    return reply.code(201).send({ member });
+  } catch (err: any) {
+    if (err?.name === 'MembershipError') {
+      return reply.code(400).send({ error: err.message, reason: err.reason });
+    }
+    server.log.error({ err }, 'Failed to invite household member');
+    return reply.code(500).send({ error: 'Failed to invite member' });
+  }
+});
+
+server.get('/api/households/members', async (request, reply) => {
+  const adminId = await ensureAdminCaller(request, reply);
+  if (!adminId) return;
+  const includeLeft = (request.query as any)?.includeLeft === 'true';
+  try {
+    const { listMembers } = await import('./households/membership');
+    return { members: await listMembers(adminId, { includeLeft }) };
+  } catch (err) {
+    server.log.error({ err }, 'Failed to list household members');
+    return reply.code(500).send({ error: 'Failed to list members' });
+  }
+});
+
+server.post<{ Params: { id: string } }>('/api/households/members/:id/accept', async (request, reply) => {
+  const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+  if (!ctx) return;
+  try {
+    const { acceptInvite } = await import('./households/membership');
+    return { member: await acceptInvite(request.params.id) };
+  } catch (err: any) {
+    if (err?.name === 'MembershipError') {
+      return reply.code(400).send({ error: err.message, reason: err.reason });
+    }
+    server.log.error({ err }, 'Failed to accept invite');
+    return reply.code(500).send({ error: 'Failed to accept invite' });
+  }
+});
+
+server.post<{ Params: { id: string } }>('/api/households/members/:id/leave', async (request, reply) => {
+  const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+  if (!ctx) return;
+  const body = (request.body ?? {}) as {
+    policyOverride?: 'retain_attributed' | 'anonymise' | 'remove';
+    gracePeriodDaysOverride?: number;
+  };
+  try {
+    const { initiateLeave } = await import('./households/membership');
+    const member = await initiateLeave({
+      memberId: request.params.id,
+      policyOverride: body.policyOverride,
+      gracePeriodDaysOverride: body.gracePeriodDaysOverride,
+    });
+    if (body.gracePeriodDaysOverride === 0) {
+      const { dropAllCacheForMember } = await import('./spaces/external_sync');
+      await dropAllCacheForMember(request.params.id);
+    }
+    return { member };
+  } catch (err: any) {
+    if (err?.name === 'MembershipError') {
+      return reply.code(400).send({ error: err.message, reason: err.reason });
+    }
+    server.log.error({ err }, 'Failed to initiate leave');
+    return reply.code(500).send({ error: 'Failed to initiate leave' });
+  }
+});
+
+server.post<{ Params: { id: string } }>('/api/households/members/:id/cancel-leave', async (request, reply) => {
+  const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+  if (!ctx) return;
+  try {
+    const { cancelLeave } = await import('./households/membership');
+    return { member: await cancelLeave(request.params.id) };
+  } catch (err: any) {
+    if (err?.name === 'MembershipError') {
+      return reply.code(400).send({ error: err.message, reason: err.reason });
+    }
+    server.log.error({ err }, 'Failed to cancel leave');
+    return reply.code(500).send({ error: 'Failed to cancel leave' });
+  }
+});
+
+// Admin force-remove (no grace period). Use sparingly — leave + grace is
+// the safer default. Useful for an invited member who never accepted.
+server.delete<{ Params: { id: string } }>('/api/households/members/:id', async (request, reply) => {
+  const adminId = await ensureAdminCaller(request, reply);
+  if (!adminId) return;
+  try {
+    const { finaliseLeave } = await import('./households/membership');
+    const member = await finaliseLeave(request.params.id);
+    const { dropAllCacheForMember } = await import('./spaces/external_sync');
+    await dropAllCacheForMember(request.params.id);
+    return { member };
+  } catch (err: any) {
+    if (err?.name === 'MembershipError') {
+      return reply.code(400).send({ error: err.message, reason: err.reason });
+    }
+    server.log.error({ err }, 'Failed to remove member');
+    return reply.code(500).send({ error: 'Failed to remove member' });
+  }
+});
+
+server.get<{ Params: { id: string } }>('/api/households/members/:id/grants', async (request, reply) => {
+  const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+  if (!ctx) return;
+  const includeRevoked = (request.query as any)?.includeRevoked === 'true';
+  try {
+    const { listGrants } = await import('./households/membership');
+    return { grants: await listGrants(request.params.id, { includeRevoked }) };
+  } catch (err) {
+    server.log.error({ err }, 'Failed to list grants');
+    return reply.code(500).send({ error: 'Failed to list grants' });
+  }
+});
+
+server.post<{ Params: { id: string } }>('/api/households/members/:id/grants', async (request, reply) => {
+  const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+  if (!ctx) return;
+  const body = request.body as { spaceUrl?: string };
+  if (!body?.spaceUrl) {
+    return reply.code(400).send({ error: 'spaceUrl required' });
+  }
+  try {
+    const { recordGrant } = await import('./households/membership');
+    const grant = await recordGrant({ memberId: request.params.id, spaceUrl: body.spaceUrl });
+    return reply.code(201).send({ grant });
+  } catch (err: any) {
+    if (err?.name === 'MembershipError') {
+      return reply.code(400).send({ error: err.message, reason: err.reason });
+    }
+    server.log.error({ err }, 'Failed to record grant');
+    return reply.code(500).send({ error: 'Failed to record grant' });
+  }
+});
+
+server.delete<{ Params: { id: string }; Querystring: { spaceUrl?: string } }>(
+  '/api/households/members/:id/grants',
+  async (request, reply) => {
+    const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+    if (!ctx) return;
+    const spaceUrl = request.query?.spaceUrl;
+    if (!spaceUrl) {
+      return reply.code(400).send({ error: 'spaceUrl querystring required' });
+    }
+    try {
+      const { revokeGrant } = await import('./households/membership');
+      const ok = await revokeGrant(request.params.id, spaceUrl);
+      if (!ok) return reply.code(404).send({ error: 'Active grant not found' });
+      const { dropCacheForGrant } = await import('./spaces/external_sync');
+      await dropCacheForGrant(request.params.id, spaceUrl);
+      return { success: true };
+    } catch (err: any) {
+      if (err?.name === 'MembershipError') {
+        return reply.code(400).send({ error: err.message, reason: err.reason });
+      }
+      server.log.error({ err }, 'Failed to revoke grant');
+      return reply.code(500).send({ error: 'Failed to revoke grant' });
+    }
+  },
+);
+
+// Story 3.4b — manually trigger a sync of all active grants for a member.
+// Background sweep runs on the 3.4 cron; this is for the wizard's "Test it
+// now" button after granting + for ops debugging.
+server.post<{ Params: { id: string } }>(
+  '/api/households/members/:id/grants/sync',
+  async (request, reply) => {
+    const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+    if (!ctx) return;
+    const body = (request.body ?? {}) as { accessToken?: string; forceRefetch?: boolean };
+    try {
+      const { syncMemberGrants } = await import('./spaces/external_sync');
+      const reports = await syncMemberGrants(request.params.id, {
+        accessToken: body.accessToken,
+        forceRefetch: body.forceRefetch,
+      });
+      return { reports };
+    } catch (err: any) {
+      if (err?.name === 'ExternalSyncError') {
+        return reply.code(400).send({ error: err.message, reason: err.reason });
+      }
+      server.log.error({ err }, 'Failed to sync grants');
+      return reply.code(500).send({ error: 'Failed to sync grants' });
+    }
+  },
+);
+
+// Story 3.4b — list parsed Spaces cached from a member's external Pod.
+// This is what synthesis / briefings / chat will read from once the
+// retrieval layer learns to fold external Spaces in.
+server.get<{ Params: { id: string } }>(
+  '/api/households/members/:id/grants/cached',
+  async (request, reply) => {
+    const ctx = await ensureAdminOrSelf(request, reply, request.params.id);
+    if (!ctx) return;
+    try {
+      const { listCachedSpacesForMember } = await import('./spaces/external_sync');
+      return { spaces: await listCachedSpacesForMember(request.params.id) };
+    } catch (err) {
+      server.log.error({ err }, 'Failed to list cached spaces');
+      return reply.code(500).send({ error: 'Failed to list cached spaces' });
+    }
+  },
+);
+
 // Boot server
 const start = async () => {
   try {
@@ -1026,6 +1534,76 @@ const start = async () => {
 
       if (pushRes.rows.length === 0 && waRes.rows.length === 0) {
         server.log.warn('No recipients registered for briefings — skipping');
+      }
+    }, { timezone: 'Europe/London' });
+
+    // Story 2.2 — reflection cadences. Daily walks the catalogue at
+    // 03:15 so findings land before the 07:00 morning briefing; weekly
+    // pattern detection runs Sunday night. Both skip families that
+    // have reflection_enabled = false.
+    cron.schedule('15 3 * * *', async () => {
+      server.log.info('Running daily reflection pass across all families');
+      const { runReflectionForAllFamilies } = await import('./reflection/reflection');
+      const results = await runReflectionForAllFamilies('daily');
+      server.log.info({ results }, 'Daily reflection complete');
+    }, { timezone: 'Europe/London' });
+
+    cron.schedule('0 23 * * 0', async () => {
+      server.log.info('Running weekly reflection pass across all families');
+      const { runReflectionForAllFamilies } = await import('./reflection/reflection');
+      const results = await runReflectionForAllFamilies('weekly');
+      server.log.info({ results }, 'Weekly reflection complete');
+    }, { timezone: 'Europe/London' });
+
+    // Story 3.1 — weekly git gc on every family's spaces repo to keep
+    // pack files compact. Mondays at 04:00 (after Sunday's reflection).
+    cron.schedule('0 4 * * 1', async () => {
+      server.log.info('Running weekly git gc across all family spaces repos');
+      const { gcAllFamilyRepos } = await import('./spaces/maintenance');
+      const summary = await gcAllFamilyRepos();
+      server.log.info({ summary }, 'Spaces git gc complete');
+    }, { timezone: 'Europe/London' });
+
+    // Story 3.4 — daily 04:30 sweep: (1) finalise any household_members whose
+    // leave grace period has elapsed (also drops their external Space cache),
+    // then (2) refresh granted external Pod Spaces for every household admin.
+    cron.schedule('30 4 * * *', async () => {
+      server.log.info('Running daily household sweep (finaliseExpiredLeaves + syncHouseholdGrants)');
+      try {
+        const { finaliseExpiredLeaves } = await import('./households/membership');
+        const { dropAllCacheForMember, syncHouseholdGrants } = await import('./spaces/external_sync');
+        const { pool } = await import('./db/connection');
+
+        const finalised = await finaliseExpiredLeaves();
+        for (const member of finalised) {
+          try {
+            await dropAllCacheForMember(member.id);
+          } catch (err) {
+            server.log.error({ err, memberId: member.id }, 'Failed to drop cache for finalised member');
+          }
+        }
+
+        const admins = await pool.query<{ household_admin_profile_id: string }>(
+          'SELECT DISTINCT household_admin_profile_id FROM household_members',
+        );
+        let totalReports = 0;
+        for (const row of admins.rows) {
+          try {
+            const reports = await syncHouseholdGrants(row.household_admin_profile_id);
+            totalReports += reports.length;
+          } catch (err) {
+            server.log.error(
+              { err, household: row.household_admin_profile_id },
+              'syncHouseholdGrants failed for household',
+            );
+          }
+        }
+        server.log.info(
+          { finalised: finalised.length, households: admins.rows.length, grantReports: totalReports },
+          'Daily household sweep complete',
+        );
+      } catch (err) {
+        server.log.error({ err }, 'Daily household sweep failed');
       }
     }, { timezone: 'Europe/London' });
 

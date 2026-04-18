@@ -1,45 +1,141 @@
+/**
+ * Story 2.1 — synthesis page compilation.
+ * Story 2.3 — care-standard completion detection.
+ *
+ * After every chat turn we ask the LLM whether any durable understanding
+ * should be compiled into a Space (or an existing Space updated), AND
+ * whether any enabled care standard was just completed. If yes to either,
+ * the Space lands through the Spaces store and completions advance
+ * care_standards.last_completed / next_due via markCompleted().
+ */
+
 import { pool } from '../db/connection';
 import { dispatch } from '../skills/router';
+import { upsertSpace } from '../spaces/store';
+import { SPACE_CATEGORIES, type SpaceCategory, type SpaceDomain } from '../spaces/model';
+import { runPerMessageReflection } from '../reflection/reflection';
+import { listStandards, markCompleted } from '../care/standards';
 
-// Hardcoded categories as defined in memu-architecture-v2.md
-export const SYNTHESIS_CATEGORIES = ['person', 'routine', 'household', 'commitment', 'document'];
+export const SYNTHESIS_CATEGORIES = [...SPACE_CATEGORIES];
 
-export async function processSynthesisUpdate(profileId: string, anonymousMsg: string, aiResponse: string) {
-    // 1. Fetch current active pages to provide as context
-    const res = await pool.query('SELECT category, title, body_markdown FROM synthesis_pages WHERE profile_id = $1', [profileId]);
-    const existingStr = res.rows.map(r => `Category: ${r.category}\nTitle: ${r.title}\nCurrent Body:\n${r.body_markdown}\n---`).join('\n\n') || 'No existing pages.';
+interface SynthesisUpdate {
+  category?: SpaceCategory;
+  title?: string;
+  markdown_body?: string;
+  description?: string;
+  domains?: SpaceDomain[];
+  people?: string[];
+  visibility?: string | string[];
+  confidence?: number;
+  tags?: string[];
+  completed_standards?: Array<{ id: string; completed_at?: string }>;
+}
 
-    const { text: llmResult } = await dispatch({
-      skill: 'synthesis_update',
-      templateVars: {
-        existing_pages: existingStr,
-        user_message: anonymousMsg,
-        ai_response: aiResponse,
-      },
-      profileId,
+function renderEnabledStandards(rows: Array<{ id: string; description: string; domain: string }>): string {
+  if (rows.length === 0) return '(none)';
+  return rows.map(r => `- ${r.id} — [${r.domain}] ${r.description}`).join('\n');
+}
+
+export async function processSynthesisUpdate(
+  profileId: string,
+  anonymousMsg: string,
+  aiResponse: string,
+) {
+  const [pagesRes, standards] = await Promise.all([
+    pool.query(
+      `SELECT category, title, body_markdown
+         FROM synthesis_pages
+        WHERE family_id = $1 OR profile_id = $1`,
+      [profileId],
+    ),
+    listStandards(profileId, true),
+  ]);
+
+  const existingStr =
+    pagesRes.rows
+      .map(r => `Category: ${r.category}\nTitle: ${r.title}\nCurrent Body:\n${r.body_markdown}\n---`)
+      .join('\n\n') || 'No existing pages.';
+
+  const enabledStandardsStr = renderEnabledStandards(
+    standards.map(s => ({ id: s.id, description: s.description, domain: s.domain })),
+  );
+
+  const { text: llmResult } = await dispatch({
+    skill: 'synthesis_update',
+    templateVars: {
+      existing_pages: existingStr,
+      enabled_standards: enabledStandardsStr,
+      user_message: anonymousMsg,
+      ai_response: aiResponse,
+      now_iso: new Date().toISOString(),
+    },
+    profileId,
+  });
+
+  if (llmResult.trim() === 'NONE' || llmResult.trim().startsWith('NONE')) return;
+
+  let update: SynthesisUpdate;
+  try {
+    const cleanJson = llmResult.replace(/```json/gi, '').replace(/```/g, '').trim();
+    update = JSON.parse(cleanJson) as SynthesisUpdate;
+  } catch (err) {
+    console.error('[SYNTHESIS] Failed to parse JSON from AI', err);
+    return;
+  }
+
+  // Completion detection — advance each named standard. Must run even
+  // if no page update was produced. Unknown ids are ignored rather
+  // than failing the whole batch.
+  const standardIds = new Set(standards.map(s => s.id));
+  if (Array.isArray(update.completed_standards)) {
+    for (const entry of update.completed_standards) {
+      if (!entry || typeof entry.id !== 'string') continue;
+      if (!standardIds.has(entry.id)) {
+        console.warn(`[SYNTHESIS] Completion for unknown standard id: ${entry.id}`);
+        continue;
+      }
+      const when = entry.completed_at ? new Date(entry.completed_at) : new Date();
+      if (isNaN(when.getTime())) continue;
+      try {
+        await markCompleted(entry.id, when);
+        console.log(`[CARE] Marked standard ${entry.id} completed at ${when.toISOString()}`);
+      } catch (err) {
+        console.error('[CARE] markCompleted failed:', err);
+      }
+    }
+  }
+
+  // If the LLM only returned completions, stop here — no page to upsert.
+  if (!update.category || !update.title || !update.markdown_body) return;
+
+  if (!SPACE_CATEGORIES.includes(update.category)) {
+    console.warn(`[SYNTHESIS] Unknown category: ${update.category}`);
+    return;
+  }
+
+  try {
+    const space = await upsertSpace({
+      familyId: profileId,
+      category: update.category,
+      name: update.title,
+      bodyMarkdown: update.markdown_body,
+      description: update.description ?? '',
+      domains: update.domains ?? [],
+      people: update.people ?? [],
+      visibility: (update.visibility as any) ?? 'family',
+      confidence: update.confidence ?? 0.7,
+      tags: update.tags ?? [],
+      actorProfileId: profileId,
     });
-    
-    if (llmResult.trim() === 'NONE' || llmResult.trim().startsWith('NONE')) {
-        return; // Nothing to synthesize
-    }
+    console.log(`[SYNTHESIS] Upserted Space: ${space.uri}`);
 
-    try {
-        // Strip markdown blocks if the LLM wraps it
-        const cleanJson = llmResult.replace(/```json/gi, '').replace(/```/g, '').trim();
-        const update = JSON.parse(cleanJson);
-
-        if (!SYNTHESIS_CATEGORIES.includes(update.category)) return;
-
-        console.log(`[SYNTHESIS] Upserting Compiled Page: [${update.category}] ${update.title}`);
-
-        await pool.query(
-            `INSERT INTO synthesis_pages (profile_id, category, title, body_markdown) 
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (profile_id, category, title) DO UPDATE 
-             SET body_markdown = EXCLUDED.body_markdown, last_updated_at = NOW()`,
-            [profileId, update.category, update.title, update.markdown_body]
-        );
-    } catch(err) {
-        console.error('[SYNTHESIS] Failed to parse JSON from AI or write to DB', err);
-    }
+    // Per-message reflection — cheap synchronous check for contradictions
+    // against linked Spaces. Fire-and-forget: the chat flow shouldn't
+    // wait on reflection.
+    runPerMessageReflection(profileId, space).catch(err => {
+      console.error('[REFLECTION] per-message pass failed:', err);
+    });
+  } catch (err) {
+    console.error('[SYNTHESIS] Failed to upsert Space', err);
+  }
 }

@@ -374,6 +374,17 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* Household */}
+        <Text style={styles.sectionLabel}>Household</Text>
+        <View style={styles.section}>
+          <Row
+            icon="people-outline"
+            title="People in this household"
+            subtitle="Join, leave, share Spaces from another Pod"
+            onPress={() => router.push('/household')}
+          />
+        </View>
+
         {/* Privacy */}
         <Text style={styles.sectionLabel}>Privacy</Text>
         <View style={styles.section}>

@@ -394,6 +394,144 @@ export async function deleteTwinEntity(id: string) {
   });
 }
 
+// ==========================================
+// Household members + Pod grants (Story 3.4)
+// ==========================================
+
+export type MemberStatus = 'invited' | 'active' | 'leaving' | 'left';
+export type LeavePolicy = 'retain_attributed' | 'anonymise' | 'remove';
+
+export interface HouseholdMember {
+  id: string;
+  householdAdminProfileId: string;
+  memberWebid: string;
+  memberDisplayName: string;
+  internalProfileId: string | null;
+  invitedByProfileId: string;
+  status: MemberStatus;
+  leavePolicyForEmergent: LeavePolicy;
+  gracePeriodDays: number;
+  invitedAt: string;
+  joinedAt: string | null;
+  leaveInitiatedAt: string | null;
+  leaveGraceUntil: string | null;
+  leftAt: string | null;
+}
+
+export interface PodGrant {
+  id: string;
+  memberId: string;
+  spaceUrl: string;
+  status: 'active' | 'revoked';
+  grantedAt: string;
+  revokedAt: string | null;
+  lastSyncedAt: string | null;
+  lastEtag: string | null;
+  lastModifiedHeader: string | null;
+}
+
+export interface CachedExternalSpace {
+  id: string;
+  memberId: string;
+  spaceUrl: string;
+  uri: string;
+  category: string;
+  slug: string;
+  name: string;
+  description: string;
+  bodyMarkdown: string;
+  remoteLastUpdated: string | null;
+  fetchedAt: string;
+}
+
+export interface SyncReport {
+  memberId: string;
+  spaceUrl: string;
+  outcome:
+    | { kind: 'fetched'; cache: CachedExternalSpace }
+    | { kind: 'not_modified'; cache: CachedExternalSpace | null }
+    | { kind: 'error'; reason: string; message: string };
+}
+
+export async function listHouseholdMembers(includeLeft = false) {
+  const qs = includeLeft ? '?includeLeft=true' : '';
+  return request<{ members: HouseholdMember[] }>(`/api/households/members${qs}`);
+}
+
+export async function inviteHouseholdMember(params: {
+  memberWebid: string;
+  memberDisplayName: string;
+  internalProfileId?: string | null;
+  leavePolicyForEmergent?: LeavePolicy;
+  gracePeriodDays?: number;
+}) {
+  return request<{ member: HouseholdMember }>('/api/households/members', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function acceptHouseholdInvite(memberId: string) {
+  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/accept`, {
+    method: 'POST',
+  });
+}
+
+export async function leaveHousehold(
+  memberId: string,
+  opts: { policyOverride?: LeavePolicy; gracePeriodDaysOverride?: number } = {},
+) {
+  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/leave`, {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
+}
+
+export async function cancelHouseholdLeave(memberId: string) {
+  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/cancel-leave`, {
+    method: 'POST',
+  });
+}
+
+export async function removeHouseholdMember(memberId: string) {
+  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function listMemberGrants(memberId: string, includeRevoked = false) {
+  const qs = includeRevoked ? '?includeRevoked=true' : '';
+  return request<{ grants: PodGrant[] }>(`/api/households/members/${memberId}/grants${qs}`);
+}
+
+export async function recordMemberGrant(memberId: string, spaceUrl: string) {
+  return request<{ grant: PodGrant }>(`/api/households/members/${memberId}/grants`, {
+    method: 'POST',
+    body: JSON.stringify({ spaceUrl }),
+  });
+}
+
+export async function revokeMemberGrant(memberId: string, spaceUrl: string) {
+  return request<{ success: boolean }>(
+    `/api/households/members/${memberId}/grants?spaceUrl=${encodeURIComponent(spaceUrl)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function syncMemberGrantsNow(
+  memberId: string,
+  opts: { accessToken?: string; forceRefetch?: boolean } = {},
+) {
+  return request<{ reports: SyncReport[] }>(`/api/households/members/${memberId}/grants/sync`, {
+    method: 'POST',
+    body: JSON.stringify(opts),
+  });
+}
+
+export async function listCachedMemberSpaces(memberId: string) {
+  return request<{ spaces: CachedExternalSpace[] }>(`/api/households/members/${memberId}/grants/cached`);
+}
+
 // Data export — returns JSON archive text
 export async function exportData(): Promise<ApiResponse<string>> {
   try {
