@@ -1,10 +1,10 @@
 ---
 name: extraction
 description: Extract actionable stream cards (tasks, reminders, collisions, shopping items) from an inbound family chat message. One card per distinct commitment; one card per shopping item.
-model: haiku
+model: gemini-flash
 cost_tier: cheap
 requires_twin: true
-version: 1
+version: 2
 ---
 
 # Extraction

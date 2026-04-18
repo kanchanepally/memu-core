@@ -43,8 +43,8 @@ describe('skills loader', () => {
     }
   });
 
-  it('extraction skill resolves to haiku (fixes the Sonnet bug)', () => {
-    expect(getSkill('extraction').frontmatter.model).toBe('haiku');
+  it('extraction skill is authored as gemini-flash (Milestone A3)', () => {
+    expect(getSkill('extraction').frontmatter.model).toBe('gemini-flash');
   });
 
   it('marks family-data skills as requires_twin', () => {

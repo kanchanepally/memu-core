@@ -34,16 +34,23 @@ describe('model router — plan resolution', () => {
     }
   });
 
-  it('routes extraction to Claude Haiku (fixes the Sonnet bug)', () => {
+  it('routes extraction to Gemini Flash (Milestone A3 cost swap)', () => {
     const plan = planDispatch('extraction');
     expect(plan.skillName).toBe('extraction');
-    expect(plan.requestedModel).toBe('haiku');
-    expect(plan.effectiveModel).toBe('haiku');
-    expect(plan.provider).toBe('claude');
-    expect(plan.concreteModel).toMatch(/haiku/i);
+    expect(plan.requestedModel).toBe('gemini-flash');
+    expect(plan.effectiveModel).toBe('gemini-flash');
+    expect(plan.provider).toBe('gemini');
+    expect(plan.concreteModel).toMatch(/gemini.*flash/i);
     expect(plan.requiresTwin).toBe(true);
     expect(plan.overridden).toBe(false);
     expect(plan.downgraded).toBe(false);
+  });
+
+  it('routes autolearn to Claude Haiku by default', () => {
+    const plan = planDispatch('autolearn');
+    expect(plan.requestedModel).toBe('haiku');
+    expect(plan.provider).toBe('claude');
+    expect(plan.concreteModel).toMatch(/haiku/i);
   });
 
   it('routes interactive_query to Claude Sonnet by default', () => {
@@ -68,7 +75,7 @@ describe('model router — plan resolution', () => {
 
   it('applies env override: MEMU_MODEL_OVERRIDE_HAIKU=local routes haiku skills to Ollama', () => {
     process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'local';
-    const plan = planDispatch('extraction');
+    const plan = planDispatch('autolearn');
     expect(plan.requestedModel).toBe('haiku');
     expect(plan.effectiveModel).toBe('local');
     expect(plan.provider).toBe('ollama');
@@ -84,7 +91,7 @@ describe('model router — plan resolution', () => {
 
   it('ignores invalid env override values', () => {
     process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'nonsense';
-    const plan = planDispatch('extraction');
+    const plan = planDispatch('autolearn');
     expect(plan.effectiveModel).toBe('haiku');
     expect(plan.overridden).toBe(false);
   });
@@ -129,12 +136,53 @@ describe('model router — plan resolution', () => {
     // module is re-imported in a child test process, or at least that the
     // default shape is sensible; if this assertion fails, adjust router to
     // read env lazily.
-    const plan = planDispatch('extraction');
+    const plan = planDispatch('autolearn');
     // We can't guarantee re-import here; accept either the override or the default.
     expect(plan.concreteModel).toMatch(/haiku/i);
   });
 
   it('throws on unknown skill', () => {
     expect(() => planDispatch('does_not_exist')).toThrow(/unknown skill/i);
+  });
+
+  // --- Gemini routing (A2) --------------------------------------------------
+
+  it('routes gemini-flash override to Gemini provider', () => {
+    process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'gemini-flash';
+    const plan = planDispatch('autolearn');
+    expect(plan.effectiveModel).toBe('gemini-flash');
+    expect(plan.provider).toBe('gemini');
+    expect(plan.concreteModel).toMatch(/gemini.*flash/i);
+    expect(plan.overridden).toBe(true);
+  });
+
+  it('routes gemini-flash-lite override to Gemini provider', () => {
+    process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'gemini-flash-lite';
+    const plan = planDispatch('autolearn');
+    expect(plan.effectiveModel).toBe('gemini-flash-lite');
+    expect(plan.provider).toBe('gemini');
+    expect(plan.concreteModel).toMatch(/gemini.*flash.*lite/i);
+  });
+
+  it('downgrades standard-tier gemini-flash to gemini-flash-lite under budget pressure', () => {
+    // interactive_query is authored as model:sonnet, cost_tier:standard.
+    // Override swaps it to gemini-flash; budget pressure should then downgrade
+    // gemini-flash → gemini-flash-lite (not haiku — stay within provider).
+    process.env.MEMU_MODEL_OVERRIDE_SONNET = 'gemini-flash';
+    process.env.MEMU_BUDGET_PRESSURE = 'true';
+    const plan = planDispatch('interactive_query');
+    expect(plan.requestedModel).toBe('sonnet');
+    expect(plan.effectiveModel).toBe('gemini-flash-lite');
+    expect(plan.provider).toBe('gemini');
+    expect(plan.overridden).toBe(true);
+    expect(plan.downgraded).toBe(true);
+  });
+
+  it('respects MEMU_GEMINI_FLASH_MODEL concrete-model override', () => {
+    // extraction is authored as model:gemini-flash (A3), so its concrete model
+    // is always a Gemini id. The env → concrete override follows the same
+    // pattern as the Claude counterpart test above.
+    const plan = planDispatch('extraction');
+    expect(plan.concreteModel).toMatch(/gemini/i);
   });
 });

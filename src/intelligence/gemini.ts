@@ -6,6 +6,8 @@ export interface GeminiCallInput {
   systemInstruction?: string;
   contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>;
   apiKey?: string;
+  maxTokens?: number;
+  temperature?: number;
 }
 
 export interface GeminiCallResult {
@@ -41,9 +43,14 @@ export async function callGemini(input: GeminiCallInput): Promise<GeminiCallResu
   }
 
   const genAI = new GoogleGenerativeAI(key);
+  const generationConfig: { temperature?: number; maxOutputTokens?: number } = {};
+  if (input.temperature !== undefined) generationConfig.temperature = input.temperature;
+  if (input.maxTokens !== undefined) generationConfig.maxOutputTokens = input.maxTokens;
+
   const model = genAI.getGenerativeModel({
     model: input.model,
     ...(input.systemInstruction ? { systemInstruction: input.systemInstruction } : {}),
+    ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {}),
   });
 
   const result = await model.generateContent({ contents: input.contents });

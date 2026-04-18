@@ -404,6 +404,8 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
         systemInstruction: effectiveSystemPrompt,
         contents,
         apiKey: callKey.apiKey,
+        maxTokens: input.maxTokens,
+        temperature: input.temperature,
       });
       const ledgerId = await writeLedger(plan, input, callKey.keyIdentifier, {
         tokensIn: result.tokensIn,

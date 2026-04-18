@@ -21,8 +21,7 @@
  *     That's 3.3c (Solid client side); for now we only honour tokens we
  *     issued ourselves.
  *
- * Uses the nested oidc-provider/jose to avoid version skew with the
- * issuance side (see jwks.ts for the same pattern).
+ * Uses direct jose import to match jwks.ts.
  */
 
 import { pool } from '../db/connection';

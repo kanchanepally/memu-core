@@ -5,14 +5,13 @@
  * We generate an RSA keypair on first boot and persist the JWK form in
  * Postgres so tokens remain verifiable across restarts.
  *
- * The `jose` library ships transitively with oidc-provider. We import it
- * from the nested dependency path deliberately — duplicating the dep at
- * the top level would risk version skew.
+ * The `jose` library is used for JWK generation and thumbprint calculation.
+ * We import it directly as it is a top-level dependency in package.json.
  */
 
 import { pool } from '../db/connection';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const jose = require('oidc-provider/node_modules/jose') as typeof import('jose');
+const jose = require('jose') as typeof import('jose');
 
 export interface Jwks {
   keys: import('jose').JWK[];
