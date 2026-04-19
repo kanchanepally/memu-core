@@ -637,6 +637,7 @@ function renderMarkdown(text) {
         if (inList) { out.push('</ul>'); inList = false; }
         if (/^---+$/.test(line)) { out.push('<hr>'); continue; }
         let m;
+        if ((m = line.match(/^#### (.+)$/))) { out.push('<h5>' + inline(m[1]) + '</h5>'); continue; }
         if ((m = line.match(/^### (.+)$/))) { out.push('<h4>' + inline(m[1]) + '</h4>'); continue; }
         if ((m = line.match(/^## (.+)$/))) { out.push('<h3>' + inline(m[1]) + '</h3>'); continue; }
         if ((m = line.match(/^# (.+)$/))) { out.push('<h2>' + inline(m[1]) + '</h2>'); continue; }
