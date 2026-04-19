@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -53,6 +56,10 @@ async function api(path, opts = {}) {
         <button class="sidebar-nav-item" id="tab-chat" onclick="switchTab('chat')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span>Chat</span>
+        </button>
+        <button class="sidebar-nav-item" id="tab-spaces" onclick="switchTab('spaces')">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"/></svg>
+            <span>Spaces</span>
         </button>
         <button class="sidebar-nav-item" id="tab-ledger" onclick="switchTab('ledger')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -130,6 +137,10 @@ async function api(path, opts = {}) {
 
 <!-- Persistent quick composer (Today tab only) -->
 <div id="quick-composer" class="quick-composer">
+    <button class="attach-btn" id="quick-attach" onclick="document.getElementById('quick-file').click()" title="Attach photo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    </button>
+    <input type="file" id="quick-file" accept="image/*" style="display:none" onchange="handleFilePick(event,'quick')">
     <input type="text" class="chat-input" id="quick-input" placeholder="Ask Memu, or say 'add milk to shopping'..." maxlength="500" autocomplete="off">
     <button class="send-btn" id="quick-send" onclick="sendQuick()" disabled>&#x27A4;</button>
 </div>
@@ -141,10 +152,78 @@ async function api(path, opts = {}) {
             <div class="typing-indicator" id="chat-loading">Loading conversation...</div>
         </div>
         <div class="chat-input-bar">
+            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+            <input type="file" id="chat-file" accept="image/*" style="display:none" onchange="handleFilePick(event,'chat')">
             <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
             <button class="send-btn" id="chat-send" onclick="sendMessage()" disabled>
                 &#x27A4;
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== SPACES TAB ==================== -->
+<div id="view-spaces" class="container hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+    <header class="spaces-masthead">
+        <div class="briefing-eyebrow">Spaces</div>
+        <div class="briefing-title">What Memu knows</div>
+        <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
+    </header>
+
+    <div id="spaces-chips" class="spaces-chips"></div>
+
+    <div id="spaces-empty" class="empty-state hidden">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
+
+    <div id="spaces-feature" class="spaces-feature"></div>
+    <div id="spaces-grid" class="spaces-grid"></div>
+</div>
+
+<button id="spaces-fab" class="spaces-fab hidden" onclick="openSpaceCreate()" title="New Space">+</button>
+
+<!-- Space Detail Modal -->
+<div class="modal-overlay" id="space-detail-modal">
+    <div class="modal-card" style="max-width:640px;">
+        <div class="flex justify-between" style="align-items:center;margin-bottom:var(--space-sm);">
+            <div id="space-detail-category" class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;"></div>
+            <button class="btn btn-secondary btn-sm" onclick="closeSpaceDetail()" style="border:none;">&#x2715;</button>
+        </div>
+        <div id="space-detail-view">
+            <h3 id="space-detail-title" class="mb-sm"></h3>
+            <div id="space-detail-updated" class="text-muted mb-md" style="font-size:12px;"></div>
+            <div id="space-detail-body" class="space-body"></div>
+            <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-lg);">
+                <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
+                <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
+            </div>
+        </div>
+        <div id="space-detail-edit" class="hidden">
+            <label class="input-label">Title</label>
+            <input type="text" id="space-edit-title" class="input mb-md">
+            <label class="input-label">Body (Markdown)</label>
+            <textarea id="space-edit-body" class="input" rows="10" style="font-family:var(--font-mono,monospace);font-size:13px;"></textarea>
+            <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
+                <button class="btn btn-secondary btn-sm" onclick="exitSpaceEdit()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="space-edit-save" onclick="saveSpaceEdit()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Space Create Modal -->
+<div class="modal-overlay" id="space-create-modal">
+    <div class="modal-card" style="max-width:560px;">
+        <h3 class="mb-md">New Space</h3>
+        <label class="input-label">Category</label>
+        <div id="space-create-categories" class="spaces-chips" style="margin-bottom:var(--space-md);"></div>
+        <label class="input-label">Title</label>
+        <input type="text" id="space-create-title" class="input mb-md" placeholder="e.g. Robin's piano lessons">
+        <label class="input-label">Body (Markdown, optional)</label>
+        <textarea id="space-create-body" class="input" rows="6" style="font-family:var(--font-mono,monospace);font-size:13px;" placeholder="## Notes&#10;..."></textarea>
+        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
+            <button class="btn btn-secondary btn-sm" onclick="closeSpaceCreate()">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="space-create-save" onclick="saveSpaceCreate()">Create</button>
         </div>
     </div>
 </div>
@@ -328,7 +407,7 @@ async function api(path, opts = {}) {
 // ========== TAB NAVIGATION ==========
 
 let currentTab = 'today';
-const tabs = ['today', 'chat', 'ledger', 'import', 'settings'];
+const tabs = ['today', 'chat', 'spaces', 'ledger', 'import', 'settings'];
 
 function switchTab(tab) {
     currentTab = tab;
@@ -338,9 +417,12 @@ function switchTab(tab) {
     });
     // Quick composer only on Today
     document.getElementById('quick-composer').classList.toggle('hidden', tab !== 'today');
+    // FAB only on Spaces
+    document.getElementById('spaces-fab').classList.toggle('hidden', tab !== 'spaces');
     // Load data on tab switch
     if (tab === 'today') loadBrief();
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
+    if (tab === 'spaces') loadSpaces();
     if (tab === 'ledger') loadLedger();
     if (tab === 'settings') loadSettings();
 }
@@ -879,6 +961,327 @@ async function sendQuick() {
         quickSend.disabled = !quickInput.value.trim();
         quickInput.placeholder = originalPlaceholder;
         quickInput.focus();
+    }
+}
+
+// ========== SPACES TAB ==========
+
+const SPACE_CATEGORIES = [
+    { key: 'all', label: 'All', icon: '&#x2605;' },
+    { key: 'person', label: 'People', icon: '&#x1F464;' },
+    { key: 'routine', label: 'Routines', icon: '&#x23F1;' },
+    { key: 'household', label: 'Household', icon: '&#x1F3E0;' },
+    { key: 'commitment', label: 'Commitments', icon: '&#x1F4C5;' },
+    { key: 'document', label: 'Documents', icon: '&#x1F4C4;' },
+];
+
+let spacesState = {
+    spaces: [],
+    filter: 'all',
+    currentId: null,
+    newCategory: 'person',
+};
+
+function renderSpaceChips() {
+    const el = document.getElementById('spaces-chips');
+    el.innerHTML = SPACE_CATEGORIES.map(c => {
+        const active = c.key === spacesState.filter ? ' active' : '';
+        return `<button class="space-chip${active}" onclick="setSpaceFilter('${c.key}')">
+            <span>${c.icon}</span><span>${c.label}</span>
+        </button>`;
+    }).join('');
+}
+
+function setSpaceFilter(key) {
+    spacesState.filter = key;
+    renderSpaceChips();
+    renderSpaces();
+}
+
+function formatSpaceUpdated(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        const now = new Date();
+        const diffMs = now - d;
+        const diffDays = Math.floor(diffMs / 86400000);
+        if (diffDays === 0) return 'Updated today';
+        if (diffDays === 1) return 'Updated yesterday';
+        if (diffDays < 7) return `Updated ${diffDays} days ago`;
+        return 'Updated ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch { return ''; }
+}
+
+function categoryLabel(key) {
+    const c = SPACE_CATEGORIES.find(x => x.key === key);
+    return c ? c.label.replace(/s$/, '') : key;
+}
+
+function categoryIcon(key) {
+    const c = SPACE_CATEGORIES.find(x => x.key === key);
+    return c ? c.icon : '&#x2605;';
+}
+
+async function loadSpaces() {
+    try {
+        const res = await api('/api/dashboard/spaces');
+        const data = await res.json();
+        spacesState.spaces = data.spaces || [];
+        renderSpaceChips();
+        renderSpaces();
+    } catch (err) {
+        document.getElementById('spaces-empty').textContent = "Couldn't load Spaces.";
+        document.getElementById('spaces-empty').classList.remove('hidden');
+    }
+}
+
+function renderSpaces() {
+    const filter = spacesState.filter;
+    const filtered = filter === 'all'
+        ? spacesState.spaces
+        : spacesState.spaces.filter(s => s.category === filter);
+
+    const featureEl = document.getElementById('spaces-feature');
+    const gridEl = document.getElementById('spaces-grid');
+    const emptyEl = document.getElementById('spaces-empty');
+
+    if (filtered.length === 0) {
+        featureEl.innerHTML = '';
+        gridEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+        emptyEl.textContent = filter === 'all'
+            ? "No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves."
+            : `No ${categoryLabel(filter).toLowerCase()}s yet.`;
+        return;
+    }
+    emptyEl.classList.add('hidden');
+
+    const [feature, ...rest] = filtered;
+    featureEl.innerHTML = renderSpaceCard(feature, true);
+    gridEl.innerHTML = rest.map(s => renderSpaceCard(s, false)).join('');
+}
+
+function renderSpaceCard(s, isFeature) {
+    const catIcon = categoryIcon(s.category);
+    const catLabel = categoryLabel(s.category);
+    const updated = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at);
+    const preview = esc((s.body_markdown || '').replace(/[#*_`>]/g, '').slice(0, isFeature ? 220 : 120));
+    const cls = isFeature ? 'space-card space-card-feature' : 'space-card';
+    return `<div class="${cls}" onclick="openSpaceDetail('${s.id}')">
+        <div class="space-card-meta">
+            <span class="space-card-cat"><span>${catIcon}</span><span>${catLabel}</span></span>
+            ${updated ? `<span class="space-card-updated">${updated}</span>` : ''}
+        </div>
+        <div class="space-card-title">${esc(s.title || 'Untitled')}</div>
+        ${preview ? `<div class="space-card-preview">${preview}${(s.body_markdown || '').length > (isFeature ? 220 : 120) ? '…' : ''}</div>` : ''}
+    </div>`;
+}
+
+function openSpaceDetail(id) {
+    const s = spacesState.spaces.find(x => x.id === id);
+    if (!s) return;
+    spacesState.currentId = id;
+    document.getElementById('space-detail-category').innerHTML = categoryIcon(s.category) + ' ' + categoryLabel(s.category);
+    document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
+    document.getElementById('space-detail-updated').textContent = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at);
+    document.getElementById('space-detail-body').innerHTML = renderMarkdown(s.body_markdown || '_No content yet._');
+    document.getElementById('space-detail-view').classList.remove('hidden');
+    document.getElementById('space-detail-edit').classList.add('hidden');
+    document.getElementById('space-detail-modal').classList.add('open');
+}
+
+function closeSpaceDetail() {
+    document.getElementById('space-detail-modal').classList.remove('open');
+    spacesState.currentId = null;
+}
+
+function enterSpaceEdit() {
+    const s = spacesState.spaces.find(x => x.id === spacesState.currentId);
+    if (!s) return;
+    document.getElementById('space-edit-title').value = s.title || '';
+    document.getElementById('space-edit-body').value = s.body_markdown || '';
+    document.getElementById('space-detail-view').classList.add('hidden');
+    document.getElementById('space-detail-edit').classList.remove('hidden');
+}
+
+function exitSpaceEdit() {
+    document.getElementById('space-detail-view').classList.remove('hidden');
+    document.getElementById('space-detail-edit').classList.add('hidden');
+}
+
+async function saveSpaceEdit() {
+    const id = spacesState.currentId;
+    if (!id) return;
+    const title = document.getElementById('space-edit-title').value.trim();
+    const body_markdown = document.getElementById('space-edit-body').value;
+    const btn = document.getElementById('space-edit-save');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+        await api('/api/spaces/' + id, {
+            method: 'PUT',
+            body: JSON.stringify({ title, body_markdown }),
+        });
+        await loadSpaces();
+        const updated = spacesState.spaces.find(x => x.id === id);
+        if (updated) openSpaceDetail(id);
+        else closeSpaceDetail();
+        showToast('Saved');
+    } catch (err) {
+        showToast('Save failed', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+    }
+}
+
+async function deleteCurrentSpace() {
+    const id = spacesState.currentId;
+    if (!id) return;
+    if (!confirm('Delete this Space? This cannot be undone.')) return;
+    try {
+        await api('/api/spaces/' + id, { method: 'DELETE' });
+        closeSpaceDetail();
+        await loadSpaces();
+        showToast('Deleted');
+    } catch (err) {
+        showToast('Delete failed', true);
+    }
+}
+
+function openSpaceCreate() {
+    spacesState.newCategory = spacesState.filter !== 'all' ? spacesState.filter : 'person';
+    renderCreateCategories();
+    document.getElementById('space-create-title').value = '';
+    document.getElementById('space-create-body').value = '';
+    document.getElementById('space-create-modal').classList.add('open');
+}
+
+function closeSpaceCreate() {
+    document.getElementById('space-create-modal').classList.remove('open');
+}
+
+function renderCreateCategories() {
+    const el = document.getElementById('space-create-categories');
+    el.innerHTML = SPACE_CATEGORIES.filter(c => c.key !== 'all').map(c => {
+        const active = c.key === spacesState.newCategory ? ' active' : '';
+        return `<button class="space-chip${active}" onclick="pickNewCategory('${c.key}')">
+            <span>${c.icon}</span><span>${c.label}</span>
+        </button>`;
+    }).join('');
+}
+
+function pickNewCategory(key) {
+    spacesState.newCategory = key;
+    renderCreateCategories();
+}
+
+async function saveSpaceCreate() {
+    const title = document.getElementById('space-create-title').value.trim();
+    const body_markdown = document.getElementById('space-create-body').value;
+    if (!title) {
+        showToast('Title is required', true);
+        return;
+    }
+    const btn = document.getElementById('space-create-save');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    try {
+        await api('/api/spaces', {
+            method: 'POST',
+            body: JSON.stringify({ title, category: spacesState.newCategory, body_markdown }),
+        });
+        closeSpaceCreate();
+        await loadSpaces();
+        showToast('Space created');
+    } catch (err) {
+        showToast('Create failed', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create';
+    }
+}
+
+// ========== VISION / ATTACH ==========
+
+async function handleFilePick(event, channel) {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        showToast('Please pick an image file', true);
+        return;
+    }
+    try {
+        const base64 = await resizeAndEncode(file);
+        await sendImage(base64, channel);
+    } catch (err) {
+        showToast('Could not read image', true);
+    }
+}
+
+function resizeAndEncode(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const img = new Image();
+            img.onload = () => {
+                const maxW = 1600;
+                const scale = img.width > maxW ? maxW / img.width : 1;
+                const w = Math.round(img.width * scale);
+                const h = Math.round(img.height * scale);
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                const base64 = dataUrl.split(',')[1];
+                resolve(base64);
+            };
+            img.onerror = () => reject(new Error('image decode failed'));
+            img.src = reader.result;
+        };
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function sendImage(base64, channel) {
+    if (channel === 'chat') {
+        switchTab('chat');
+        addChatMessage('📷 Sent a photo', true);
+        const typing = document.createElement('div');
+        typing.className = 'typing-indicator';
+        typing.id = 'typing';
+        typing.textContent = 'Memu is reading the photo...';
+        chatMessages.appendChild(typing);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    } else {
+        showToast('Reading photo...');
+    }
+    try {
+        const res = await api('/api/vision', {
+            method: 'POST',
+            body: JSON.stringify({ image: base64, mimeType: 'image/jpeg' }),
+        });
+        const data = await res.json();
+        const reply = data.response || 'Photo received.';
+        if (channel === 'chat') {
+            document.getElementById('typing')?.remove();
+            addChatMessage(reply, false);
+        } else {
+            showToast(reply.slice(0, 120) + (reply.length > 120 ? '…' : ''));
+            loadBrief();
+        }
+    } catch (err) {
+        if (channel === 'chat') {
+            document.getElementById('typing')?.remove();
+            addChatMessage('Something went wrong reading the photo.', false);
+        } else {
+            showToast('Vision failed', true);
+        }
     }
 }
 
