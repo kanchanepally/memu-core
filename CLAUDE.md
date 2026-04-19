@@ -497,6 +497,16 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Dogfood fix — list reconciler for Claude's hallucinated confirmations (2026-04-20)
+
+Bug 3 regression surfaced in Hareesh's first real-use of the APK: "buy some veg stock for the soup" → Claude replied "Done, I've added vegetable stock to your shopping list!" but nothing landed in the Lists tab. Root cause: the regex fast path in `src/intelligence/listCommands.ts` only catches explicit "add X to shopping list" phrasings; the `interactive_query` skill tells Claude to "Confirm confidently" so it confirmed a hallucinated add.
+
+Fix: post-reply reconciler `src/intelligence/listReconciler.ts` scans Claude's final real-names reply for past-tense ("added/put X to your shopping|task list") or future-tense ("I'll add X to your …") patterns and actually inserts the items via `addItem()`. Idempotent — dedupes against pending items on the list. Wired into the orchestrator as step 5b between `translateToReal` and the audit write. 13 tests (covers the exact Hareesh phrasing, multi-item joins, articles, task/to-do, no false positives on "add milk to your coffee"). Commit `9beb97d`.
+
+Long-term fix remains Claude tool-use via `skills/list_management/SKILL.md` — the reconciler is a robust safety net that closes the class of bug rather than the specific phrasing. See `memory/project_memu_first_use_bugs.md` and `backlog/INBOX.md` (2026-04-20 entry).
+
+**Next session (2026-04-21): Bug 6 — PDF / document ingestion.** Per `memu-platform/memu-build-plan.md` Part 0 and INBOX. Scope: document picker in chat → `skills/document_ingestion/SKILL.md` → pdf-parse + mammoth extraction → Twin anonymise → extraction skill for stream cards → synthesis skill for document Space. Original files to attachments dir; full text to `context_entries` for embedding retrieval; Space holds structured summary. Estimate ~2–3 hours.
+
 ### Milestone B2 — docker-compose.home.yml + Dockerfile tightening (2026-04-19)
 
 Second slice of Milestone B. `docker-compose.home.yml` was a stub carrying just the core env vars; B2 brings it up to the full surface required by Stories 1.2 / 1.4 / 1.5 / 3.1 / 3.3 / A3 before the B7 cutover.
