@@ -1,0 +1,129 @@
+# =============================================================================
+# memu-core — STANDALONE deployment on HP Z2 (Tier 2, B-live)
+# =============================================================================
+# Brings up memu-core as an ISOLATED stack — no touching memu-os:
+#   - Own pgvector Postgres container (not memu-os's memu_postgres)
+#   - Own Docker network `memu_core_net` (not memu-suite_memu_net)
+#   - Own data dir /mnt/memu-data/memu-core-standalone/ on the 4TB drive
+#
+# Immich (memu_photos), Synapse, Baikal, and memu-os's Postgres stay untouched.
+#
+# Preconditions (B-live-2 `scripts/preflight-standalone.sh` checks these):
+#   - /mnt/memu-data has >=50GB free.
+#   - Port 3100 free on the host.
+#   - Immich (memu_photos) healthy — we don't deploy onto a misbehaving Z2.
+#   - /mnt/memu-data/memu-core-standalone/{postgres,spaces,tmp,documents,auth_info_baileys,backups}/ exist.
+#
+# First boot on Z2:
+#   sudo mkdir -p /mnt/memu-data/memu-core-standalone/{postgres,spaces,tmp,documents,auth_info_baileys,backups}
+#   sudo chown -R $USER:$USER /mnt/memu-data/memu-core-standalone
+#   cp .env.standalone.example .env
+#   # Fill DB_PASSWORD, ANTHROPIC_API_KEY, GEMINI_API_KEY, MEMU_BYOK_ENCRYPTION_KEY
+#   docker compose -f docker-compose.standalone.yml up -d --build
+#
+# Update cycle (see memu-build-plan.md §9.1):
+#   git pull && docker compose -f docker-compose.standalone.yml up -d --build
+# =============================================================================
+
+services:
+  memu_core_standalone_db:
+    image: pgvector/pgvector:pg16
+    container_name: memu_core_standalone_db
+    environment:
+      - POSTGRES_USER=memu
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=memu_core
+      - TZ=Europe/London
+    volumes:
+      # Postgres data on the 4TB drive so it survives container rebuild
+      # AND lands in nightly backup coverage (B-live-4).
+      - /mnt/memu-data/memu-core-standalone/postgres:/var/lib/postgresql/data
+    networks:
+      - memu_core_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memu -d memu_core"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  memu_core_standalone_api:
+    build: .
+    container_name: memu_core_standalone_api
+    depends_on:
+      memu_core_standalone_db:
+        condition: service_healthy
+    ports:
+      - "3100:3100"
+    environment:
+      # ---- Core ----
+      - TZ=Europe/London
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://memu-hub:3100}
+
+      # ---- Database (own pgvector container, on internal network) ----
+      - DATABASE_URL=postgresql://memu:${DB_PASSWORD}@memu_core_standalone_db:5432/memu_core
+
+      # ---- LLM providers (router dispatches per skill) ----
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      # twin_translate is model: local. Without Ollama on this stack,
+      # route to haiku by default (override via env if a local model is wired).
+      - MEMU_MODEL_OVERRIDE_LOCAL=${MEMU_MODEL_OVERRIDE_LOCAL:-haiku}
+      - MEMU_MODEL_OVERRIDE_HAIKU=${MEMU_MODEL_OVERRIDE_HAIKU:-}
+      - MEMU_MODEL_OVERRIDE_SONNET=${MEMU_MODEL_OVERRIDE_SONNET:-}
+      - MEMU_BUDGET_PRESSURE=${MEMU_BUDGET_PRESSURE:-}
+
+      # ---- Privacy layer ----
+      - MEMU_TWIN_GUARD_MODE=${MEMU_TWIN_GUARD_MODE:-log_and_anonymize}
+      - MEMU_TWIN_NOVEL_MODE=${MEMU_TWIN_NOVEL_MODE:-auto}
+      - MEMU_BYOK_ENCRYPTION_KEY=${MEMU_BYOK_ENCRYPTION_KEY:-}
+
+      # ---- Identity (Solid-OIDC + WebID) ----
+      - MEMU_WEBID_BASE_URL=${MEMU_WEBID_BASE_URL:-http://memu-hub:3100}
+      - MEMU_OIDC_COOKIE_KEYS=${MEMU_OIDC_COOKIE_KEYS:-}
+
+      # ---- On-disk data roots (bind-mounted below) ----
+      - MEMU_SPACES_ROOT=/app/spaces
+      - MEMU_TMP_DIR=/app/tmp
+
+      # ---- Admin / optional channels ----
+      - ADMIN_WHATSAPP_NUMBER=${ADMIN_WHATSAPP_NUMBER:-}
+
+      # ---- Google OAuth (optional — Calendar + Sign-In) ----
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}
+      - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID:-}
+      - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID:-}
+      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}
+
+      # ---- Observers (off for standalone personal-use beta) ----
+      - ENABLE_CALENDAR=${ENABLE_CALENDAR:-false}
+      - ENABLE_EMAIL=${ENABLE_EMAIL:-false}
+      - ENABLE_PHOTOS=${ENABLE_PHOTOS:-false}
+    volumes:
+      # Synthesis Spaces — catastrophic-loss territory (docs/INTEGRATION_CONTRACTS.md §5).
+      - /mnt/memu-data/memu-core-standalone/spaces:/app/spaces
+      # Ephemeral snapshots + Article-20 export staging. Safe to clear.
+      - /mnt/memu-data/memu-core-standalone/tmp:/app/tmp
+      # Uploaded documents (photos, school newsletters) the bot processes.
+      - /mnt/memu-data/memu-core-standalone/documents:/app/documents
+      # Baileys WhatsApp session state — populated in B-live-5.
+      - /mnt/memu-data/memu-core-standalone/auth_info_baileys:/app/auth_info_baileys
+    networks:
+      - memu_core_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+networks:
+  memu_core_net:
+    name: memu_core_net
+    driver: bridge

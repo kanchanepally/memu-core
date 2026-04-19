@@ -12,7 +12,7 @@
 
 **What it is NOT:** A standalone product. It's one half of the Memu platform. The other half is memu-os (full self-hosted sovereignty). They compose together — memu-core can dock into memu-os, sharing infrastructure and gaining local AI, photos, and self-hosted chat.
 
-**Stage (2026-04-18):** Phases 1, 2, 3.1–3.4 complete. Mobile app personal-use ready post Indigo Sanctuary sprint. Active work: Milestone A (Gemini provider plumbing) → Milestone B (Tier-2 convergence with memu-os on Z2 + Pod drives) → Milestone C (Tier-1 hosted ready for ~20 Founding-50 beta families). Kickstarter June 2026 is **deferred**; commercial path is Founding-50 paid beta first. See `C:\Users\Lenovo\Code\memu-platform\memu-core-build-backlog 15 April 2026.md` Part 0 for the active milestone sequence.
+**Stage (2026-04-19):** Phases 1, 2, 3.1–3.4 complete. Mobile app personal-use ready post Indigo Sanctuary sprint. Milestone A done (Gemini provider plumbing + extraction → Gemini Flash). Milestone B1 + B2 done (preflight + db-init + docker-compose.home.yml — future scaffolding for B-dock). Active work reshaped into **B-live** (standalone-first on Z2 — own Postgres, own network, own data dir, no touching memu-os Immich/Synapse) → **B-dock** (merge into memu-os's Postgres once pgvecto-rs compatibility is verified) → **B-pod** (per-person LUKS drives in memu-os repo) → Milestone C (Tier-1 hosted for ~20 Founding-50 beta families). Kickstarter is **deferred**; commercial path is Founding-50 paid beta first. **Canonical:** `C:\Users\Lenovo\Code\memu-platform\memu-build-plan.md`.
 
 ---
 
@@ -30,7 +30,7 @@ Memu Core exists within a broader platform. Before building, read:
 | Pricing/GTM (canonical) | `C:\Users\Lenovo\Code\memu-platform\Pricing and economics\files\memu-gtm-pricing-funding-strategy.md` | Founding-50 + Family + Family+ + Self-hosted, SEIS funding path, Gemini economics, distribution funnel |
 | Privacy Framework | `C:\Users\Lenovo\Code\memu-platform\06-PRIVACY-SECURITY.md` | Privacy by design, Digital Twin, compliance |
 | Mobile App Spec | `C:\Users\Lenovo\Code\memu-platform\08-MOBILE-APP-SPEC.md` | Primary mobile surface specification |
-| Engineering backlog (cross-repo) | `C:\Users\Lenovo\Code\memu-platform\memu-core-build-backlog 15 April 2026.md` | **Read Part 0 first** — active milestone sequencing |
+| Engineering build plan (cross-repo, canonical) | `C:\Users\Lenovo\Code\memu-platform\memu-build-plan.md` | **Read Parts 0–4 first.** Supersedes the old backlog + supplement + deployment guide. Milestone B is now **B-live / B-dock / B-pod**; active slice is B-live-1 (standalone compose on Z2). |
 
 *Note: 07-AGENT-FRAMEWORK and the original Vision/Pricing/UX-Design-System docs have been archived under `_legacy_archive/` pending V3-style rewrites.*
 
