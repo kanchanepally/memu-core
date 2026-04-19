@@ -25,7 +25,7 @@
  *   6. git commit attributed to "Memu Migration <memu@localhost>".
  *
  * Usage (inside the memu_core container on Z2):
- *   docker exec -it memu_core_standalone_api npx tsx scripts/retro-translate-spaces.ts
+ *   docker exec -it memu_core_standalone_api node dist/scripts/retro-translate-spaces.js
  *
  * Idempotent: running twice is a no-op because translateToReal on a
  * fully-real string doesn't match any anonymous labels.
@@ -35,8 +35,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import matter from 'gray-matter';
-import { pool } from '../src/db/connection';
-import { translateToReal } from '../src/twin/translator';
+import { pool } from '../db/connection';
+import { translateToReal } from '../twin/translator';
 
 interface SpaceRow {
   id: string;
