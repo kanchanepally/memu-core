@@ -52,40 +52,64 @@ async function api(path, opts = {}) {
 </nav>
 
 <!-- ==================== TODAY TAB ==================== -->
-<div id="view-today" class="container" style="padding-bottom:80px;">
-    <div class="dashboard-header">
-        <div class="greeting" id="greeting"></div>
-        <div class="date-text" id="date-text"></div>
-    </div>
-
-    <div id="error-banner" class="error-banner hidden"></div>
-
-    <!-- Calendar -->
-    <div class="section">
-        <div class="section-label">&#x1F4C5; Today's Schedule</div>
-        <div id="calendar-section"></div>
-    </div>
-
-    <!-- Stream Cards -->
-    <div class="section" id="stream-section" style="display:none;">
-        <div class="section-label">&#x1F4A1; Intelligence</div>
-        <div id="stream-container"></div>
-    </div>
-
-    <!-- Shopping summary -->
-    <div id="shopping-summary" class="hidden" style="cursor:pointer;">
-        <div class="event-card" onclick="switchTab('today')">
-            <span>&#x1F6D2;</span>
-            <span class="event-title" id="shopping-text"></span>
-            <span class="text-muted">&#x203A;</span>
+<div id="view-today" class="today-grid">
+    <!-- Sidebar -->
+    <aside class="today-sidebar">
+        <div class="sidebar-card">
+            <div class="sidebar-card-header">
+                <div class="sidebar-card-title">
+                    <span>&#x1F6D2;</span> Shopping
+                </div>
+                <span class="sidebar-card-count" id="shopping-count">0</span>
+            </div>
+            <div id="shopping-list" class="shopping-list"></div>
+            <div id="shopping-empty" class="sidebar-empty hidden">
+                Nothing on the list yet.<br>
+                Say <em>"add milk to shopping"</em> below.
+            </div>
         </div>
-    </div>
 
-    <div class="privacy-footer">
-        <span>&#x1F441;</span>
-        All queries anonymised via Digital Twin
-        <a href="#" onclick="switchTab('ledger');return false;">See what Claude saw</a>
-    </div>
+        <div class="sidebar-card">
+            <div class="sidebar-card-header">
+                <div class="sidebar-card-title">
+                    <span>&#x1F441;</span> Privacy
+                </div>
+            </div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;">
+                All queries anonymised via Digital Twin.
+            </div>
+            <a href="#" onclick="switchTab('ledger');return false;" style="display:inline-block;margin-top:var(--space-sm);font-size:13px;color:var(--color-accent);font-weight:500;text-decoration:none;">See what Claude saw &#x203A;</a>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="today-main">
+        <header class="morning-briefing-header">
+            <div class="briefing-eyebrow">Morning briefing</div>
+            <div class="briefing-title" id="greeting"></div>
+            <div class="briefing-subtitle" id="date-text"></div>
+        </header>
+
+        <div id="error-banner" class="error-banner hidden"></div>
+
+        <!-- Calendar -->
+        <section class="section">
+            <div class="section-label">&#x1F4C5; Today's Schedule</div>
+            <div id="calendar-section"></div>
+        </section>
+
+        <!-- Stream Cards -->
+        <section class="section" id="stream-section" style="display:none;">
+            <div class="section-label">&#x1F4A1; Intelligence</div>
+            <div id="stream-container"></div>
+        </section>
+    </main>
+</div>
+
+<!-- Persistent quick composer (Today tab only) -->
+<div id="quick-composer" class="quick-composer">
+    <input type="text" class="chat-input" id="quick-input" placeholder="Ask Memu, or say 'add milk to shopping'..." maxlength="500" autocomplete="off">
+    <button class="send-btn" id="quick-send" onclick="sendQuick()" disabled>&#x27A4;</button>
 </div>
 
 <!-- ==================== CHAT TAB ==================== -->
@@ -287,6 +311,8 @@ function switchTab(tab) {
         document.getElementById('view-' + t).classList.toggle('hidden', t !== tab);
         document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     });
+    // Quick composer only on Today
+    document.getElementById('quick-composer').classList.toggle('hidden', tab !== 'today');
     // Load data on tab switch
     if (tab === 'today') loadBrief();
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
@@ -382,14 +408,25 @@ async function loadBrief() {
             streamSection.style.display = 'none';
         }
 
-        // Shopping
-        const shopEl = document.getElementById('shopping-summary');
-        if (data.shoppingItems && data.shoppingItems.length > 0) {
-            shopEl.classList.remove('hidden');
-            document.getElementById('shopping-text').textContent =
-                data.shoppingItems.length + ' item' + (data.shoppingItems.length !== 1 ? 's' : '') + ' on the shopping list';
+        // Shopping sidebar
+        const listEl = document.getElementById('shopping-list');
+        const emptyEl = document.getElementById('shopping-empty');
+        const countEl = document.getElementById('shopping-count');
+        const items = data.shoppingItems || [];
+        countEl.textContent = items.length;
+        if (items.length > 0) {
+            emptyEl.classList.add('hidden');
+            listEl.innerHTML = items.map(item => {
+                const title = esc(item.title || '');
+                const body = item.body && item.body !== item.title ? `<div class="shopping-item-body">${esc(item.body)}</div>` : '';
+                return `<div class="shopping-item">
+                    <div class="shopping-item-dot"></div>
+                    <div class="shopping-item-text">${title}${body}</div>
+                </div>`;
+            }).join('');
         } else {
-            shopEl.classList.add('hidden');
+            listEl.innerHTML = '';
+            emptyEl.classList.remove('hidden');
         }
 
         document.getElementById('error-banner').classList.add('hidden');
@@ -742,6 +779,49 @@ function showEl(id, text) {
 
 function hideEl(id) {
     document.getElementById(id).classList.add('hidden');
+}
+
+// ========== QUICK COMPOSER (Today tab) ==========
+
+const quickInput = document.getElementById('quick-input');
+const quickSend = document.getElementById('quick-send');
+let quickSending = false;
+
+quickInput.addEventListener('input', () => {
+    quickSend.disabled = !quickInput.value.trim() || quickSending;
+});
+
+quickInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !quickSending) {
+        e.preventDefault();
+        sendQuick();
+    }
+});
+
+async function sendQuick() {
+    const text = quickInput.value.trim();
+    if (!text || quickSending) return;
+    quickSending = true;
+    quickSend.disabled = true;
+    const originalPlaceholder = quickInput.placeholder;
+    quickInput.value = '';
+    quickInput.placeholder = 'Memu is thinking...';
+    try {
+        const res = await api('/api/message', {
+            method: 'POST',
+            body: JSON.stringify({ content: text }),
+        });
+        const data = await res.json();
+        showToast(data.response ? data.response.slice(0, 120) + (data.response.length > 120 ? '…' : '') : 'Sent');
+        loadBrief();
+    } catch (err) {
+        showToast('Message failed', true);
+    } finally {
+        quickSending = false;
+        quickSend.disabled = !quickInput.value.trim();
+        quickInput.placeholder = originalPlaceholder;
+        quickInput.focus();
+    }
 }
 
 // ========== INIT ==========
