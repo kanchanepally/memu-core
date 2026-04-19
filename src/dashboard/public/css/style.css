@@ -510,7 +510,7 @@ textarea.input {
 
 .today-sidebar {
   position: sticky;
-  top: 72px;
+  top: var(--space-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
@@ -1117,4 +1117,203 @@ textarea.input {
 @media (max-width: 640px) {
   .container-wide { max-width: 100%; }
   h1, .greeting { font-size: 24px; }
+}
+
+/* ==========================================================================
+   App shell + sidebar (Indigo Sanctuary — mirrors mobile SideDrawer)
+   ========================================================================== */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--color-surface);
+  border-right: 1px solid var(--border);
+  padding: var(--space-lg) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.sidebar-logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
+
+.sidebar-logo-text {
+  font-family: var(--font-headline);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  font-family: var(--font-family);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: var(--transition);
+}
+
+.sidebar-nav-item:hover {
+  background: var(--color-surface-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-nav-item.active {
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  font-weight: 600;
+}
+
+.sidebar-nav-item svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+
+.sidebar-divider {
+  margin: var(--space-sm) 0;
+  border-top: 1px solid var(--border);
+}
+
+.app-main {
+  min-width: 0;
+  position: relative;
+}
+
+/* Desktop: composer respects the sidebar column */
+@media (min-width: 769px) {
+  .quick-composer { left: 240px; }
+}
+
+@media (max-width: 768px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    padding: var(--space-xs) var(--space-sm);
+    border-right: none;
+    border-top: 1px solid var(--border);
+    gap: 0;
+    z-index: 100;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .sidebar-logo, .sidebar-divider { display: none; }
+  .sidebar-nav { flex: 1; flex-direction: row; justify-content: space-around; }
+  .sidebar-nav-item {
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    font-size: 11px;
+    text-align: center;
+  }
+  .sidebar-nav-item.active { background: transparent; }
+  .app-main { padding-bottom: 60px; }
+  .quick-composer { bottom: 56px; }
+  .today-grid { padding-bottom: 180px; }
+}
+
+/* ==========================================================================
+   Avatar — three-circle brand mark
+   ========================================================================== */
+
+.avatar-mark {
+  background: transparent;
+  padding: 0;
+  overflow: visible;
+}
+
+.avatar-mark svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+/* ==========================================================================
+   Markdown rendering inside chat bubbles
+   ========================================================================== */
+
+.bubble p { margin: 0; }
+
+.bubble p + p,
+.bubble p + ul,
+.bubble ul + p,
+.bubble h2 + p,
+.bubble h3 + p,
+.bubble h4 + p,
+.bubble hr + p {
+  margin-top: 8px;
+}
+
+.bubble h2,
+.bubble h3,
+.bubble h4 {
+  font-family: var(--font-headline);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 10px 0 4px;
+}
+
+.bubble h2 { font-size: 18px; }
+.bubble h3 { font-size: 16px; }
+.bubble h4 { font-size: 15px; }
+
+.bubble ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.bubble li { margin: 2px 0; }
+
+.bubble hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+.bubble strong { font-weight: 700; }
+.bubble em { font-style: italic; }
+
+.bubble-memu h2,
+.bubble-memu h3,
+.bubble-memu h4 {
+  color: var(--indigo-primary);
 }

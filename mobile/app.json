@@ -14,13 +14,19 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "digital.memu.app"
+      "bundleIdentifier": "digital.memu.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Memu uses the camera so you can send photos of notes, newsletters, and documents for Memu to read.",
+        "NSPhotoLibraryUsageDescription": "Memu reads photos you choose so it can extract tasks and events from notes, newsletters, and documents."
+      }
     },
     "android": {
       "package": "digital.memu.app",
       "usesCleartextTraffic": true,
       "permissions": [
-        "INTERNET"
+        "INTERNET",
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#5054B5",

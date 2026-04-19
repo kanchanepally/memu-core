@@ -7,6 +7,7 @@ import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
+import { processChatVisionInput } from './intelligence/vision';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
 import { generateAndPushMorningBriefing, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
 import { registerPushToken } from './channels/mobile';
@@ -228,6 +229,31 @@ server.post('/api/message', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Pipeline failed' });
+  }
+});
+
+// Chat Vision API — caller sends a base64 image + optional caption. The
+// vision skill extracts stream cards and we return a human-readable summary
+// for the chat bubble.
+server.post('/api/vision', async (request, reply) => {
+  const body = request.body as { image?: string; mimeType?: string; caption?: string };
+  if (!body?.image || typeof body.image !== 'string') {
+    return reply.code(400).send({ error: 'image (base64) required' });
+  }
+  const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'image/jpeg';
+  const caption = typeof body.caption === 'string' ? body.caption : '';
+  try {
+    const profileId = (request as any).profileId;
+    const messageId = `mobile-vi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const buffer = Buffer.from(body.image, 'base64');
+    if (buffer.length === 0) {
+      return reply.code(400).send({ error: 'image payload is empty' });
+    }
+    const result = await processChatVisionInput(profileId, buffer, mimeType, caption, messageId, 'mobile');
+    return { response: result.response, cards: result.cards };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Vision pipeline failed' });
   }
 });
 

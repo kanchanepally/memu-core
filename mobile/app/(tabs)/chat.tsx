@@ -1,12 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, Pressable, FlatList,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
 } from 'react-native';
 import type { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { sendMessage, getChatHistory, type Visibility } from '../../lib/api';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { sendMessage, sendVision, getChatHistory, type Visibility } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useToast } from '../../components/Toast';
@@ -58,6 +60,98 @@ export default function ChatScreen() {
       setLoadingHistory(false);
     })();
   }, []);
+
+  const sendImage = useCallback(async (base64: string, mimeType: string, caption: string) => {
+    const userMsg: Message = {
+      id: `user-img-${Date.now()}`,
+      text: caption ? `📷 ${caption}` : '📷 Photo',
+      fromMemu: false,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setSending(true);
+
+    const { data, error } = await sendVision(base64, mimeType, caption);
+    setSending(false);
+
+    if (error) toast.show(`Couldn't send photo — ${error}`, 'error');
+
+    const memuMsg: Message = {
+      id: `memu-img-${Date.now()}`,
+      text: error ? `Couldn't send photo: ${error}` : (data?.response || 'No response.'),
+      fromMemu: true,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, memuMsg]);
+  }, [toast]);
+
+  const handlePhotoPicked = useCallback(async (asset: ImagePicker.ImagePickerAsset) => {
+    try {
+      const caption = input.trim();
+      setInput('');
+      const manipulated = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1600 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      if (!manipulated.base64) {
+        toast.show("Couldn't read that photo.", 'error');
+        return;
+      }
+      await sendImage(manipulated.base64, 'image/jpeg', caption);
+    } catch (err) {
+      toast.show('Photo processing failed.', 'error');
+    }
+  }, [input, sendImage, toast]);
+
+  const pickFromLibrary = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      toast.show('Photo library permission is required.', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await handlePhotoPicked(result.assets[0]);
+    }
+  }, [handlePhotoPicked, toast]);
+
+  const takePhoto = useCallback(async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      toast.show('Camera permission is required.', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await handlePhotoPicked(result.assets[0]);
+    }
+  }, [handlePhotoPicked, toast]);
+
+  const handleAttach = useCallback(() => {
+    if (sending) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Take photo', 'Choose from library'], cancelButtonIndex: 0 },
+        idx => {
+          if (idx === 1) takePhoto();
+          else if (idx === 2) pickFromLibrary();
+        },
+      );
+    } else {
+      Alert.alert('Add photo', 'Where from?', [
+        { text: 'Camera', onPress: takePhoto },
+        { text: 'Library', onPress: pickFromLibrary },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [sending, takePhoto, pickFromLibrary]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -195,6 +289,18 @@ export default function ChatScreen() {
         <View style={styles.inputBarWrap}>
           <BlurView intensity={40} tint="light" style={styles.inputBarBlur}>
             <View style={styles.inputBar}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.attachButton,
+                  sending && styles.sendDisabled,
+                  pressed && { transform: [{ scale: 0.95 }] },
+                ]}
+                onPress={handleAttach}
+                disabled={sending}
+                accessibilityLabel="Attach photo"
+              >
+                <Ionicons name="camera-outline" size={20} color={colors.primary} />
+              </Pressable>
               <TextInput
                 style={styles.input}
                 placeholder="Ask Memu…"
@@ -364,6 +470,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2,
+  },
+  attachButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+    backgroundColor: 'transparent',
   },
   sendDisabled: {
     opacity: 0.35,

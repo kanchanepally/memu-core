@@ -150,6 +150,28 @@ export async function sendMessage(
   });
 }
 
+// Send a photo to Memu. Base64-encoded image body (no data: prefix).
+export interface VisionCard {
+  cardType: string;
+  title: string;
+  body: string;
+}
+export interface VisionResponse {
+  response: string;
+  cards: VisionCard[];
+}
+
+export async function sendVision(
+  imageBase64: string,
+  mimeType: string,
+  caption?: string,
+): Promise<ApiResponse<VisionResponse>> {
+  return request<VisionResponse>('/api/vision', {
+    method: 'POST',
+    body: JSON.stringify({ image: imageBase64, mimeType, caption: caption ?? '' }),
+  });
+}
+
 // Google Calendar OAuth
 export async function getGoogleAuthUrl(): Promise<ApiResponse<{ url: string }>> {
   return request<{ url: string }>('/api/auth/google?format=json');

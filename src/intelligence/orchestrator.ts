@@ -7,6 +7,7 @@ import { type Visibility } from './context';
 import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
+import { handleListCommand } from './listCommands';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
 import { processSynthesisUpdate } from './synthesis';
@@ -107,6 +108,20 @@ export async function processIntelligencePipeline(
   // 1. Twin Translation (Real -> Anonymous)
   const anonymousMsg = await translateToAnonymous(content);
   console.log(`[IN -> Translated]: ${anonymousMsg}`);
+
+  // 1.5 Deterministic list-command fast path. "Add milk to the shopping list"
+  // and friends skip retrieval/LLM — the LLM was inventing "added it" replies
+  // while extraction sometimes missed the user-directed command. Audit is
+  // preserved: the synthetic assistant response is anonymised and stored
+  // exactly like a real Claude reply so the Privacy Ledger and conversation
+  // history stay consistent.
+  const listResult = await handleListCommand(profileId, content, channel, messageId);
+  if (listResult) {
+    console.log(`[LIST -> ${listResult.kind}]: ${listResult.items.length} item(s)`);
+    const anonymousResponse = await translateToAnonymous(listResult.response);
+    await storeMessageAudit(profileId, content, anonymousMsg, anonymousResponse, listResult.response, channel, messageId);
+    return listResult.response;
+  }
 
   // 2. Synthesis-first retrieval — Story 2.1. Direct addressing and
   // catalogue matching pull from compiled Spaces; we only fall back to
