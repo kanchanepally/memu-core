@@ -8,6 +8,7 @@ import { processGroupMessageExtraction } from './extraction';
 import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
 import { handleListCommand } from './listCommands';
+import { reconcileListMentions } from './listReconciler';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
 import { processSynthesisUpdate } from './synthesis';
@@ -176,6 +177,24 @@ export async function processIntelligencePipeline(
 
   // 5. Reverse Translation (Anonymous -> Real)
   const realResponse = await translateToReal(claudeResponse);
+
+  // 5b. List-mention reconciliation. The interactive_query skill instructs
+  // Claude to confirm list additions confidently ("Done, I've added that").
+  // When the regex fast path at step 1.5 missed the phrasing, Claude's
+  // confirmation would otherwise be a lie — items never reach `list_items`.
+  // Scan Claude's real-names reply for explicit "added X to your shopping/
+  // task list" confirmations and persist the items. Idempotent against
+  // duplicates via pending-item dedup.
+  try {
+    const reconciled = await reconcileListMentions(profileId, realResponse, channel, messageId);
+    if (reconciled.addedShopping.length + reconciled.addedTask.length > 0) {
+      console.log(
+        `[LIST RECONCILE]: shopping=${reconciled.addedShopping.length} task=${reconciled.addedTask.length}`,
+      );
+    }
+  } catch (err) {
+    console.error('[LIST RECONCILE] failed:', err);
+  }
 
   // 6. Immutable Message Storage (Audit Trail)
   await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
