@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../lib/tokens';
+import { loadAuthState } from '../lib/auth';
 
 function formatTimestamp(iso: string): string {
   try {
@@ -18,13 +19,14 @@ export default function MemoryScreen() {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    // Basic fetch matching api.ts structure
-    const res = await fetch('http://localhost:3100/api/memory/recent', {
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-      }
-    });
+    const auth = await loadAuthState();
+    const baseUrl = auth.serverUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3100';
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    };
+    if (auth.apiKey) headers['Authorization'] = `Bearer ${auth.apiKey}`;
+    const res = await fetch(`${baseUrl}/api/memory/recent`, { headers });
     if (res.ok) {
       const data = await res.json();
       setEntries(data || []);
