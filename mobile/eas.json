@@ -18,7 +18,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://memu-hub:3100"
+        "EXPO_PUBLIC_API_URL": "https://memu-hub.tail5c57ce.ts.net:8443",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "399232780187-rm81s76fgfcful9gihn4gqfdb1q3sjq1.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "399232780187-h56thcalmkt8bam4lq3k3355r3cp2r03.apps.googleusercontent.com"
       }
     },
     "production": {

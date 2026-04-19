@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../lib/tokens';
 import { checkServerHealth, register, signInWithGoogle } from '../../lib/api';
 import { saveAuthState } from '../../lib/auth';
-import { useGoogleSignIn } from '../../lib/googleAuth';
+import { useGoogleSignIn, GOOGLE_ENABLED } from '../../lib/googleAuth';
 
 // Server URL baked in at build time via eas.json `env.EXPO_PUBLIC_API_URL`.
 // When present, the setup flow skips the "enter server address" step entirely
@@ -218,26 +218,30 @@ export default function SetupScreen() {
               </Text>
             </View>
 
-            <Pressable
-              style={[styles.googleButton, (googleLoading || !googleRequest) && styles.buttonDisabled]}
-              onPress={handleGoogleSignIn}
-              disabled={googleLoading || !googleRequest}
-            >
-              {googleLoading ? (
-                <ActivityIndicator color={colors.text} size="small" />
-              ) : (
-                <>
-                  <Ionicons name="logo-google" size={18} color={colors.text} />
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </>
-              )}
-            </Pressable>
+            {GOOGLE_ENABLED && (
+              <>
+                <Pressable
+                  style={[styles.googleButton, (googleLoading || !googleRequest) && styles.buttonDisabled]}
+                  onPress={handleGoogleSignIn}
+                  disabled={googleLoading || !googleRequest}
+                >
+                  {googleLoading ? (
+                    <ActivityIndicator color={colors.text} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-google" size={18} color={colors.text} />
+                      <Text style={styles.googleButtonText}>Continue with Google</Text>
+                    </>
+                  )}
+                </Pressable>
 
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or set up manually</Text>
-              <View style={styles.dividerLine} />
-            </View>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or set up manually</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+              </>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Your name</Text>

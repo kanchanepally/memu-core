@@ -19,8 +19,8 @@ export default function Logo({ width = 120, height = 36, scale = 0.3 }: LogoProp
       <Svg width={400 * scale} height={120 * scale} viewBox="0 0 400 120">
         <Defs>
           <LinearGradient id="memuGradient1" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#667eea" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#764ba2" stopOpacity="1" />
+            <Stop offset="0%" stopColor="#5054B5" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#9094FA" stopOpacity="1" />
           </LinearGradient>
         </Defs>
 
@@ -35,7 +35,7 @@ export default function Logo({ width = 120, height = 36, scale = 0.3 }: LogoProp
           y="75"
           fontFamily="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif"
           fontSize="48"
-          fontWeight="600"
+          fontWeight="800"
           fill="url(#memuGradient1)"
         >
           memu
@@ -48,8 +48,8 @@ export default function Logo({ width = 120, height = 36, scale = 0.3 }: LogoProp
           fontFamily="sans-serif"
           fontSize="24"
           fontWeight="400"
-          fill="#667eea"
-          opacity="0.6"
+          fill="#645A7A"
+          opacity="0.65"
         >
           మేము
         </SvgText>
@@ -69,8 +69,8 @@ export function LogoMark({ size = 28 }: { size?: number }) {
       <Svg width={80 * scale} height={80 * scale} viewBox="0 0 80 80">
         <Defs>
           <LinearGradient id="memuMarkGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor="#667eea" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#764ba2" stopOpacity="1" />
+            <Stop offset="0%" stopColor="#5054B5" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#9094FA" stopOpacity="1" />
           </LinearGradient>
         </Defs>
         <Circle cx="30" cy="50" r="22" fill="url(#memuMarkGradient)" opacity="0.9" />
