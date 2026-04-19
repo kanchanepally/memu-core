@@ -1,49 +1,72 @@
 /* ==========================================================================
-   Memu Design System — PWA (matches mobile tokens)
+   Memu Design System — PWA (Indigo Sanctuary)
+   Mirrors mobile/lib/tokens.ts. System fonts only; no Google Fonts.
    ========================================================================== */
 
 :root {
-  /* Warm backgrounds (matches mobile tokens.ts) */
-  --color-bg: #fafaf9;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f5f4f1;
+  /* ---- Indigo Sanctuary core ---- */
+  --indigo-primary: #5054B5;
+  --indigo-primary-dim: #4448A8;
+  --indigo-primary-container: #9094FA;
+  --indigo-secondary: #5B5993;
+  --indigo-secondary-container: #E2DFFF;
+  --indigo-tertiary: #645A7A;
+  --indigo-tertiary-container: #E4D7FD;
+  --indigo-on-primary: #FBF7FF;
 
-  /* Typography */
-  --text-primary: #1e293b;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --text-inverse: #ffffff;
+  /* ---- Surface tonal stack (depth via stacking, not borders) ---- */
+  --surface: #F9F9FB;
+  --surface-lowest: #FFFFFF;
+  --surface-low: #F2F4F6;
+  --surface-container: #ECEEF1;
+  --surface-high: #E6E8EC;
+  --surface-highest: #DFE3E7;
 
-  /* Brand accent — purple (matches mobile #667eea) */
-  --color-accent: #667eea;
-  --color-accent-end: #764ba2;
-  --color-accent-light: #ede9ff;
-  --color-accent-hover: #5a6fd6;
-  --gradient-primary: linear-gradient(135deg, #667eea, #764ba2);
+  /* ---- Text (on-surface scale) ---- */
+  --on-surface: #2E3336;
+  --on-surface-variant: #5B6063;
+  --outline: #777B7F;
+  --outline-variant: #AEB2B6;
 
-  /* Semantic */
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
+  /* ---- Legacy aliases (kept so existing HTML/inline-styles compile) ---- */
+  --color-bg: var(--surface);
+  --color-surface: var(--surface-lowest);
+  --color-surface-hover: var(--surface-low);
 
-  /* Source colours (stream card borders) */
-  --source-chat: #10b981;
-  --source-calendar: #3b82f6;
-  --source-email: #f59e0b;
-  --source-document: #8b5cf6;
-  --source-photo: #ec4899;
-  --source-manual: #94a3b8;
-  --source-proactive: #667eea;
+  --text-primary: var(--on-surface);
+  --text-secondary: var(--on-surface-variant);
+  --text-muted: var(--outline);
+  --text-inverse: var(--indigo-on-primary);
 
-  /* Borders & Shadows (purple-tinted, matches mobile) */
-  --border: #e2e8f0;
-  --border-focus: #667eea;
-  --shadow-sm: 0 1px 3px rgba(74, 63, 140, 0.06);
-  --shadow-md: 0 2px 6px rgba(74, 63, 140, 0.1);
-  --shadow-lg: 0 12px 32px rgba(74, 63, 140, 0.12);
+  --color-accent: var(--indigo-primary);
+  --color-accent-end: var(--indigo-primary-container);
+  --color-accent-light: var(--indigo-secondary-container);
+  --color-accent-hover: var(--indigo-primary-dim);
+  --gradient-primary: linear-gradient(135deg, #5054B5, #9094FA);
 
-  /* Spacing & Radius (matches mobile) */
+  /* ---- Semantic (sanctuary-muted, never alarm) ---- */
+  --color-success: #3A7D5C;
+  --color-warning: #B88843;
+  --color-error: #A8364B;
+  --color-info: var(--indigo-primary);
+
+  /* ---- Source colours (stream cards — aligned to mobile tokens) ---- */
+  --source-chat: var(--indigo-secondary);
+  --source-calendar: var(--indigo-primary);
+  --source-email: var(--color-warning);
+  --source-document: var(--indigo-tertiary);
+  --source-photo: var(--indigo-tertiary);
+  --source-manual: var(--indigo-primary);
+  --source-proactive: var(--indigo-secondary);
+
+  /* ---- Borders & Shadows (two-tier elevation; indigo glow reserved for AI) ---- */
+  --border: var(--surface-highest);
+  --border-focus: var(--indigo-primary);
+  --shadow-sm: 0 4px 12px rgba(46, 51, 54, 0.04);
+  --shadow-md: 0 8px 24px rgba(46, 51, 54, 0.06);
+  --shadow-lg: 0 20px 40px rgba(80, 84, 181, 0.08);
+
+  /* ---- Spacing: rhythm of slowness, favour high end ---- */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
@@ -51,13 +74,18 @@
   --space-xl: 32px;
   --space-2xl: 48px;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* ---- Radius: never 90deg, cards live in lg or xl ---- */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
   --radius-pill: 9999px;
 
+  /* ---- Typography: system stack, editorial tightness on headlines ---- */
   --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --font-headline: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+
+  /* ---- Motion: deliberate, never bouncy ---- */
   --transition: all 0.2s ease-in-out;
 }
 
@@ -76,9 +104,9 @@ body {
    Typography
    ========================================================================== */
 
-h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
-h2 { font-size: 24px; font-weight: 700; }
-h3 { font-size: 18px; font-weight: 600; }
+h1 { font-family: var(--font-headline); font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+h2 { font-family: var(--font-headline); font-size: 28px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.2; }
+h3 { font-family: var(--font-headline); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 
 /* ==========================================================================
    Buttons
@@ -133,13 +161,21 @@ h3 { font-size: 18px; font-weight: 600; }
 
 .card {
   background: var(--color-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 1px solid rgba(174, 178, 182, 0.35);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   padding: var(--space-lg);
+  transition: var(--transition);
 }
 
-.card:hover { box-shadow: var(--shadow-md); }
+.card:hover { box-shadow: var(--shadow-md); border-color: rgba(174, 178, 182, 0.55); }
+
+/* AI insight card — the one place indigo glow lives */
+.card-ai {
+  background: var(--indigo-tertiary-container);
+  border: 1px solid rgba(100, 90, 122, 0.22);
+  box-shadow: var(--shadow-lg);
+}
 
 /* ==========================================================================
    Form inputs
@@ -160,7 +196,7 @@ h3 { font-size: 18px; font-weight: 600; }
 
 .input:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  box-shadow: 0 0 0 3px rgba(80, 84, 181, 0.18);
 }
 
 .input::placeholder { color: var(--text-muted); }
