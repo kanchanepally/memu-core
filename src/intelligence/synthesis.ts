@@ -15,6 +15,7 @@ import { upsertSpace } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory, type SpaceDomain } from '../spaces/model';
 import { runPerMessageReflection } from '../reflection/reflection';
 import { listStandards, markCompleted } from '../care/standards';
+import { translateToReal } from '../twin/translator';
 
 export const SYNTHESIS_CATEGORIES = [...SPACE_CATEGORIES];
 
@@ -113,18 +114,33 @@ export async function processSynthesisUpdate(
     return;
   }
 
+  // De-anonymise LLM output before persisting. Spaces are local-only family
+  // data; they should contain real names. Without this, every Space row and
+  // every compiled .md file would carry anonymous labels like "Adult-1" or
+  // "Family-1776…-0" instead of "Rach", which is both wrong data and an
+  // alarming UX for the family reading their own Space.
+  const realTitle = await translateToReal(update.title);
+  const realBody = await translateToReal(update.markdown_body);
+  const realDescription = await translateToReal(update.description ?? '');
+  const realPeople = await Promise.all(
+    (update.people ?? []).map(p => translateToReal(p)),
+  );
+  const realTags = await Promise.all(
+    (update.tags ?? []).map(t => translateToReal(t)),
+  );
+
   try {
     const space = await upsertSpace({
       familyId: profileId,
       category: update.category,
-      name: update.title,
-      bodyMarkdown: update.markdown_body,
-      description: update.description ?? '',
+      name: realTitle,
+      bodyMarkdown: realBody,
+      description: realDescription,
       domains: update.domains ?? [],
-      people: update.people ?? [],
+      people: realPeople,
       visibility: (update.visibility as any) ?? 'family',
       confidence: update.confidence ?? 0.7,
-      tags: update.tags ?? [],
+      tags: realTags,
       actorProfileId: profileId,
     });
     console.log(`[SYNTHESIS] Upserted Space: ${space.uri}`);
