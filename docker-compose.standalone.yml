@@ -38,6 +38,10 @@ services:
       # Postgres data on the 4TB drive so it survives container rebuild
       # AND lands in nightly backup coverage (B-live-4).
       - /mnt/memu-data/memu-core-standalone/postgres:/var/lib/postgresql/data
+      # Base schema — runs ONCE on first init (empty data dir). Migrations in
+      # migrations/*.sql then ALTER the tables created here. Without this
+      # mount, migration 001 panics on missing `profiles` table.
+      - ./schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
     networks:
       - memu_core_net
     restart: unless-stopped
