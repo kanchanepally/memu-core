@@ -26,6 +26,16 @@ import {
   listProviderKeyStatus,
   type BYOKProvider,
 } from './security/byok';
+import {
+  addItem as addListItem,
+  listItems as listListItems,
+  completeItem as completeListItem,
+  reopenItem as reopenListItem,
+  deleteItem as deleteListItem,
+  updateItem as updateListItem,
+  type ListType,
+  type ListStatus,
+} from './lists/store';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import path from 'path';
@@ -763,13 +773,16 @@ server.get('/api/dashboard/brief', async (request, reply) => {
       [profileId]
     );
 
-    // 3. Fetch Shopping List
+    // 3. Fetch Shopping List from list_items (bug 3 — committed items live here, not stream_cards)
     const shoppingRes = await pool.query(
-      `SELECT * FROM stream_cards WHERE family_id = $1 AND status = 'active' AND card_type = 'shopping' ORDER BY created_at ASC`, 
+      `SELECT id, family_id, item_text AS title, note AS body, status, source, source_message_id, created_at
+         FROM list_items
+        WHERE family_id = $1 AND list_type = 'shopping' AND status = 'pending'
+        ORDER BY created_at ASC`,
       [profileId]
     );
 
-    return { 
+    return {
       events: todayEvents, // Maintaining backward compatibility for old endpoints
       todayEvents,
       futureEvents,
@@ -995,13 +1008,147 @@ server.post('/api/stream/edit', async (request, reply) => {
   }
 });
 
-// PWA: Move Card to Shopping List
+// PWA: Move Card to Shopping List — copies proposal into list_items, resolves the card.
 server.post('/api/stream/to-shopping', async (request, reply) => {
   const { cardId } = request.body as any;
   if (!cardId) return reply.code(400).send({ error: 'cardId required' });
-  
+
   try {
-    await pool.query("UPDATE stream_cards SET card_type = 'shopping' WHERE id = $1", [cardId]);
+    const profileId = (request as any).profileId;
+    const cardRes = await pool.query(
+      `SELECT * FROM stream_cards WHERE id = $1 AND family_id = $2`,
+      [cardId, profileId]
+    );
+    if (cardRes.rows.length === 0) return reply.code(404).send({ error: 'Card not found' });
+    const card = cardRes.rows[0];
+
+    const item = await addListItem({
+      familyId: profileId,
+      listType: 'shopping',
+      itemText: card.title,
+      note: card.body || null,
+      source: card.source || 'extraction',
+      sourceMessageId: card.source_message_id || null,
+      sourceStreamCardId: card.id,
+      createdBy: profileId,
+    });
+
+    await pool.query(
+      `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1`,
+      [cardId]
+    );
+
+    return { success: true, item };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
+// Lists API — unified shopping / task / custom list items (bug 3).
+server.get('/api/lists', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { list_type, status, limit } = request.query as {
+      list_type?: string;
+      status?: string;
+      limit?: string;
+    };
+    const parsedLimit = limit ? Math.min(500, Math.max(1, parseInt(limit, 10) || 200)) : 200;
+    const items = await listListItems({
+      familyId: profileId,
+      listType: list_type as ListType | undefined,
+      status: status as ListStatus | undefined,
+      limit: parsedLimit,
+    });
+    return { items };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch lists' });
+  }
+});
+
+server.post('/api/lists', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { list_type, item_text, note, list_name, source } = request.body as {
+      list_type?: string;
+      item_text?: string;
+      note?: string | null;
+      list_name?: string | null;
+      source?: string | null;
+    };
+    if (!list_type || !['shopping', 'task', 'custom'].includes(list_type)) {
+      return reply.code(400).send({ error: 'list_type must be shopping, task, or custom' });
+    }
+    if (!item_text || !item_text.trim()) {
+      return reply.code(400).send({ error: 'item_text required' });
+    }
+    const item = await addListItem({
+      familyId: profileId,
+      listType: list_type as ListType,
+      itemText: item_text.trim(),
+      note: note ?? null,
+      listName: list_name ?? null,
+      source: source ?? 'manual',
+      createdBy: profileId,
+    });
+    return { success: true, item };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to add item' });
+  }
+});
+
+server.post('/api/lists/:id/complete', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const item = await completeListItem(id, profileId);
+    if (!item) return reply.code(404).send({ error: 'Item not found' });
+    return { success: true, item };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
+server.post('/api/lists/:id/reopen', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const item = await reopenListItem(id, profileId);
+    if (!item) return reply.code(404).send({ error: 'Item not found' });
+    return { success: true, item };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
+server.patch('/api/lists/:id', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const { item_text, note } = request.body as { item_text?: string; note?: string | null };
+    const item = await updateListItem(id, profileId, {
+      itemText: item_text,
+      note,
+    });
+    if (!item) return reply.code(404).send({ error: 'Item not found' });
+    return { success: true, item };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed' });
+  }
+});
+
+server.delete('/api/lists/:id', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const ok = await deleteListItem(id, profileId);
+    if (!ok) return reply.code(404).send({ error: 'Item not found' });
     return { success: true };
   } catch (err) {
     server.log.error(err);

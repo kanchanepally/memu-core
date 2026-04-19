@@ -61,6 +61,14 @@ async function api(path, opts = {}) {
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"/></svg>
             <span>Spaces</span>
         </button>
+        <button class="sidebar-nav-item" id="tab-lists" onclick="switchTab('lists')">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <span>Lists</span>
+        </button>
+        <button class="sidebar-nav-item" id="tab-calendar" onclick="switchTab('calendar')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Calendar</span>
+        </button>
         <button class="sidebar-nav-item" id="tab-ledger" onclick="switchTab('ledger')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <span>Ledger</span>
@@ -145,6 +153,38 @@ async function api(path, opts = {}) {
     <button class="send-btn" id="quick-send" onclick="sendQuick()" disabled>&#x27A4;</button>
 </div>
 
+<!-- ==================== CALENDAR TAB ==================== -->
+<div id="view-calendar" class="container-wide hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+    <header class="morning-briefing-header">
+        <div class="briefing-eyebrow">The shape of your week</div>
+        <div class="briefing-title">Time, gently held.</div>
+        <div class="briefing-subtitle" id="calendar-date-meta">Loading...</div>
+    </header>
+
+    <div id="calendar-connect" class="connect-wrap hidden">
+        <div class="connect-card">
+            <div class="connect-glow"></div>
+            <div class="connect-icon-chip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <h2 class="connect-title">Connect Google Calendar</h2>
+            <p class="connect-subtitle">Memu will show your schedule here—and spot the quiet conflicts before they bite.</p>
+            <button class="btn btn-primary" onclick="handleCalendarConnect()">Connect calendar</button>
+            <p class="privacy-note">Your events stay on your server. Memu never shares them.</p>
+        </div>
+    </div>
+
+    <div id="calendar-active" class="hidden">
+        <div id="calendar-day-strip" class="calendar-day-strip"></div>
+        <div class="day-header">
+            <div id="calendar-selected-relative" class="day-header-eyebrow"></div>
+            <div id="calendar-selected-full" class="day-header-title"></div>
+            <div id="calendar-selected-meta" class="day-header-meta"></div>
+        </div>
+        <div id="calendar-events" class="calendar-events-list"></div>
+    </div>
+</div>
+
 <!-- ==================== CHAT TAB ==================== -->
 <div id="view-chat" class="container-wide hidden" style="max-width:700px;margin:0 auto;">
     <div class="chat-container">
@@ -226,6 +266,33 @@ async function api(path, opts = {}) {
             <button class="btn btn-primary btn-sm" id="space-create-save" onclick="saveSpaceCreate()">Create</button>
         </div>
     </div>
+</div>
+
+<!-- ==================== LISTS TAB ==================== -->
+<div id="view-lists" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;max-width:720px;margin:0 auto;">
+    <header class="spaces-masthead">
+        <div class="briefing-eyebrow">Lists</div>
+        <div class="briefing-title">What's on your plate</div>
+        <div class="briefing-subtitle">Tasks and shopping, committed.</div>
+    </header>
+
+    <div class="lists-segment" role="tablist">
+        <button class="lists-segment-btn active" id="lists-seg-tasks" onclick="switchListKind('task')" role="tab">
+            <span>Tasks</span><span class="lists-count-badge" id="lists-count-task">0</span>
+        </button>
+        <button class="lists-segment-btn" id="lists-seg-shopping" onclick="switchListKind('shopping')" role="tab">
+            <span>Shopping</span><span class="lists-count-badge" id="lists-count-shopping">0</span>
+        </button>
+    </div>
+
+    <form class="lists-add-row" onsubmit="event.preventDefault();addListItemSubmit();">
+        <input type="text" id="lists-add-input" class="input" placeholder="Add a task…" maxlength="200" autocomplete="off">
+        <button type="submit" class="btn btn-primary btn-sm" id="lists-add-btn">Add</button>
+    </form>
+    <div class="text-muted" style="font-size:12px;padding:0 4px 8px;">Type "milk, eggs and bread" — commas and "and" split into separate items.</div>
+
+    <div id="lists-items"></div>
+    <div id="lists-empty" class="empty-state hidden">Nothing here yet. Add one above, or just tell Memu in chat.</div>
 </div>
 
 <!-- ==================== LEDGER TAB ==================== -->
@@ -407,7 +474,7 @@ async function api(path, opts = {}) {
 // ========== TAB NAVIGATION ==========
 
 let currentTab = 'today';
-const tabs = ['today', 'chat', 'spaces', 'ledger', 'import', 'settings'];
+const tabs = ['today', 'chat', 'spaces', 'lists', 'calendar', 'ledger', 'import', 'settings'];
 
 function switchTab(tab) {
     currentTab = tab;
@@ -423,6 +490,8 @@ function switchTab(tab) {
     if (tab === 'today') loadBrief();
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
+    if (tab === 'lists') loadLists();
+    if (tab === 'calendar') loadCalendar();
     if (tab === 'ledger') loadLedger();
     if (tab === 'settings') loadSettings();
 }
@@ -722,6 +791,133 @@ async function sendMessage() {
         chatSending = false;
         chatSend.disabled = !chatInput.value.trim();
         chatInput.focus();
+    }
+}
+
+// ========== LISTS TAB ==========
+
+let listsKind = 'task';
+let listsCache = { task: [], shopping: [] };
+
+function splitListInput(raw) {
+    const cleaned = raw
+        .replace(/\s+and\s+/gi, ',')
+        .replace(/\s*&\s*/g, ',')
+        .replace(/\s+plus\s+/gi, ',');
+    return cleaned.split(',')
+        .map(s => s.trim().replace(/^(?:some|a|an|the)\s+/i, ''))
+        .filter(s => s.length > 0 && s.length <= 120);
+}
+
+function listsTitleCase(s) {
+    const body = s === s.toUpperCase() ? s.toLowerCase() : s;
+    return body.charAt(0).toUpperCase() + body.slice(1);
+}
+
+function switchListKind(kind) {
+    listsKind = kind;
+    document.getElementById('lists-seg-tasks').classList.toggle('active', kind === 'task');
+    document.getElementById('lists-seg-shopping').classList.toggle('active', kind === 'shopping');
+    const input = document.getElementById('lists-add-input');
+    input.placeholder = kind === 'task' ? 'Add a task\u2026' : 'Add groceries\u2026';
+    renderLists();
+}
+
+async function loadLists() {
+    try {
+        const [tasksRes, shoppingRes] = await Promise.all([
+            api('/api/lists?list_type=task&status=pending'),
+            api('/api/lists?list_type=shopping&status=pending'),
+        ]);
+        const [tasksData, shoppingData] = await Promise.all([tasksRes.json(), shoppingRes.json()]);
+        listsCache.task = tasksData.items || [];
+        listsCache.shopping = shoppingData.items || [];
+        document.getElementById('lists-count-task').textContent = listsCache.task.length;
+        document.getElementById('lists-count-shopping').textContent = listsCache.shopping.length;
+        renderLists();
+    } catch (err) {
+        console.error('loadLists', err);
+    }
+}
+
+function renderLists() {
+    const items = listsCache[listsKind] || [];
+    const wrap = document.getElementById('lists-items');
+    const empty = document.getElementById('lists-empty');
+    if (items.length === 0) {
+        wrap.innerHTML = '';
+        empty.classList.remove('hidden');
+        empty.textContent = listsKind === 'task'
+            ? 'Nothing on your plate. Add one above, or ask Memu in chat.'
+            : 'The basket is empty. Add groceries above, or say "add milk to shopping" in chat.';
+        return;
+    }
+    empty.classList.add('hidden');
+    wrap.innerHTML = items.map(item => {
+        const note = item.note ? `<div class="lists-item-note">${esc(item.note)}</div>` : '';
+        const src = item.source ? `<span class="lists-item-source">${esc(item.source)}</span>` : '';
+        return `
+        <div class="lists-item" data-id="${item.id}">
+            <button class="lists-checkbox" onclick="completeListItem('${item.id}')" title="Mark done">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <div class="lists-item-body">
+                <div class="lists-item-text">${esc(item.item_text)}</div>
+                ${note}
+                ${src}
+            </div>
+            <button class="lists-delete-btn" onclick="deleteListItemPrompt('${item.id}')" title="Delete">&#x2715;</button>
+        </div>`;
+    }).join('');
+}
+
+async function addListItemSubmit() {
+    const input = document.getElementById('lists-add-input');
+    const raw = (input.value || '').trim();
+    if (!raw) return;
+    const btn = document.getElementById('lists-add-btn');
+    btn.disabled = true;
+    input.value = '';
+    try {
+        const parts = splitListInput(raw).map(listsTitleCase);
+        for (const part of parts) {
+            await api('/api/lists', {
+                method: 'POST',
+                body: JSON.stringify({ list_type: listsKind, item_text: part, source: 'pwa' }),
+            });
+        }
+        await loadLists();
+    } catch (err) {
+        showToast('Failed to add', true);
+    } finally {
+        btn.disabled = false;
+        input.focus();
+    }
+}
+
+async function completeListItem(id) {
+    const row = document.querySelector(`.lists-item[data-id="${id}"]`);
+    if (row) row.style.opacity = '0.4';
+    try {
+        await api(`/api/lists/${id}/complete`, { method: 'POST' });
+        listsCache[listsKind] = listsCache[listsKind].filter(i => i.id !== id);
+        document.getElementById('lists-count-' + listsKind).textContent = listsCache[listsKind].length;
+        renderLists();
+    } catch (err) {
+        showToast('Failed', true);
+        if (row) row.style.opacity = '';
+    }
+}
+
+async function deleteListItemPrompt(id) {
+    if (!confirm('Delete this item?')) return;
+    try {
+        await api(`/api/lists/${id}`, { method: 'DELETE' });
+        listsCache[listsKind] = listsCache[listsKind].filter(i => i.id !== id);
+        document.getElementById('lists-count-' + listsKind).textContent = listsCache[listsKind].length;
+        renderLists();
+    } catch (err) {
+        showToast('Failed', true);
     }
 }
 
@@ -1284,6 +1480,155 @@ async function sendImage(base64, channel) {
             showToast('Vision failed', true);
         }
     }
+}
+
+// ========== CALENDAR TAB ==========
+
+let calendarState = {
+    connected: false,
+    selectedDay: new Date(new Date().setHours(0,0,0,0)),
+    allEvents: []
+};
+
+function sameDay(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function detectConflicts(events) {
+    const conflicts = new Set();
+    for (let i = 0; i < events.length; i++) {
+        const a = events[i];
+        if (!a.startTime || !a.endTime) continue;
+        const aStart = new Date(a.startTime).getTime();
+        const aEnd = new Date(a.endTime).getTime();
+        for (let j = i + 1; j < events.length; j++) {
+            const b = events[j];
+            if (!b.startTime || !b.endTime) continue;
+            const bStart = new Date(b.startTime).getTime();
+            const bEnd = new Date(b.endTime).getTime();
+            if (aStart < bEnd && bStart < aEnd) {
+                conflicts.add(i);
+                conflicts.add(j);
+            }
+        }
+    }
+    return conflicts;
+}
+
+async function handleCalendarConnect() {
+    try {
+        const res = await api('/api/calendar/auth-url');
+        const data = await res.json();
+        if (data.url) window.open(data.url, '_blank');
+    } catch (e) {
+        showToast('Connection failed', true);
+    }
+}
+
+async function loadCalendar() {
+    try {
+        const res = await api('/api/dashboard/brief');
+        const data = await res.json();
+        calendarState.connected = data.isCalendarConnected;
+        calendarState.allEvents = [...(data.todayEvents || data.events || []), ...(data.futureEvents || [])];
+
+        document.getElementById('calendar-connect').classList.toggle('hidden', calendarState.connected);
+        document.getElementById('calendar-active').classList.toggle('hidden', !calendarState.connected);
+
+        if (calendarState.connected) {
+            renderDayStrip();
+            renderSelectedDay();
+        }
+        document.getElementById('calendar-date-meta').textContent = calendarState.connected ? 'Synced and secure.' : 'Not connected.';
+    } catch (err) {
+        showToast('Failed to load calendar', true);
+    }
+}
+
+function renderDayStrip() {
+    const strip = document.getElementById('calendar-day-strip');
+    const base = new Date(new Date().setHours(0,0,0,0));
+    let html = '';
+    const counts = new Map();
+    calendarState.allEvents.forEach(e => {
+        if (!e.startTime) return;
+        const key = new Date(new Date(e.startTime).setHours(0,0,0,0)).toISOString();
+        counts.set(key, (counts.get(key) || 0) + 1);
+    });
+
+    for (let i = 0; i < 14; i++) {
+        const d = new Date(base);
+        d.setDate(base.getDate() + i);
+        const active = sameDay(d, calendarState.selectedDay);
+        const isToday = i === 0;
+        const key = d.toISOString();
+        const count = counts.get(key) || 0;
+
+        html += `
+            <div class="day-chip${active ? ' active' : ''}" onclick="selectCalendarDay('${d.toISOString()}')">
+                <div class="day-week">${d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
+                <div class="day-num">${d.getDate()}</div>
+                <div class="day-dot-row">
+                    ${count > 0 ? `<div class="day-dot"></div>` : ''}
+                </div>
+            </div>`;
+    }
+    strip.innerHTML = html;
+}
+
+function selectCalendarDay(iso) {
+    calendarState.selectedDay = new Date(iso);
+    renderDayStrip();
+    renderSelectedDay();
+}
+
+function relativeDayLabel(d) {
+    const today = new Date(new Date().setHours(0,0,0,0));
+    if (sameDay(d, today)) return 'Today';
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    if (sameDay(d, tomorrow)) return 'Tomorrow';
+    return null;
+}
+
+function renderSelectedDay() {
+    const d = calendarState.selectedDay;
+    const events = calendarState.allEvents.filter(e => e.startTime && sameDay(new Date(e.startTime), d))
+        .sort((a,b) => new Date(a.startTime) - new Date(b.startTime));
+    const conflicts = detectConflicts(events);
+
+    document.getElementById('calendar-selected-relative').textContent = relativeDayLabel(d) || '';
+    document.getElementById('calendar-selected-full').textContent = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    document.getElementById('calendar-selected-meta').textContent = events.length === 0 ? 'No events.' : `${events.length} event${events.length === 1 ? '' : 's'}${conflicts.size > 0 ? ` · ${conflicts.size / 2} overlap${conflicts.size / 2 === 1 ? '' : 's'}` : ''}`;
+
+    const listEl = document.getElementById('calendar-events');
+    if (events.length === 0) {
+        listEl.innerHTML = `
+            <div class="empty-state" style="margin-top:var(--space-md);">
+                &#x2600;&#65039; ${relativeDayLabel(d) === 'Today' ? 'A wide open day.' : 'Nothing scheduled for this day.'}
+            </div>`;
+        return;
+    }
+
+    listEl.innerHTML = events.map((e, i) => {
+        const conflicted = conflicts.has(i);
+        return `
+            <div class="event-card${conflicted ? ' event-card-conflict' : ''}">
+                <div class="event-time-chip">
+                    <span class="event-time-text">${formatTime(e.startTime)}</span>
+                    <span class="event-time-duration">${e.endTime ? formatTime(e.endTime) : ''}</span>
+                </div>
+                <div class="event-body">
+                    <div class="event-title">${esc(e.title)}</div>
+                    ${conflicted ? `
+                        <div class="conflict-row">
+                            <span style="color:var(--color-error);">&#x26A0;&#65039;</span>
+                            <span class="conflict-label">Overlap</span>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>`;
+    }).join('');
 }
 
 // ========== INIT ==========

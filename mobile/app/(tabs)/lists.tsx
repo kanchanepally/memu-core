@@ -4,7 +4,14 @@ import {
   ActivityIndicator, Animated, Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getTodayBrief, resolveCard, extractListCommand, type StreamCard } from '../../lib/api';
+import {
+  getLists,
+  addListItemApi,
+  completeListItemApi,
+  deleteListItemApi,
+  type ListItem as ListItemDto,
+  type ListItemType,
+} from '../../lib/api';
 import { colors, spacing, radius, typography, shadows, motion } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
@@ -12,7 +19,7 @@ import Masthead from '../../components/Masthead';
 
 type Tab = 'tasks' | 'shopping';
 
-const sourceColor = (src?: string) => {
+const sourceColor = (src?: string | null) => {
   switch (src) {
     case 'chat': return colors.sourceChat;
     case 'calendar': return colors.sourceCalendar;
@@ -22,7 +29,23 @@ const sourceColor = (src?: string) => {
   }
 };
 
-function ListItem({ item, onCheck }: { item: StreamCard; onCheck: (id: string) => void }) {
+function splitInputItems(raw: string): string[] {
+  const cleaned = raw
+    .replace(/\s+and\s+/gi, ',')
+    .replace(/\s*&\s*/g, ',')
+    .replace(/\s+plus\s+/gi, ',');
+  return cleaned
+    .split(',')
+    .map(s => s.trim().replace(/^(?:some|a|an|the)\s+/i, ''))
+    .filter(s => s.length > 0 && s.length <= 120);
+}
+
+function titleCase(s: string): string {
+  const body = s === s.toUpperCase() ? s.toLowerCase() : s;
+  return body.charAt(0).toUpperCase() + body.slice(1);
+}
+
+function ListRow({ item, onCheck }: { item: ListItemDto; onCheck: (id: string) => void }) {
   const checkScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const [checked, setChecked] = useState(false);
@@ -52,8 +75,8 @@ function ListItem({ item, onCheck }: { item: StreamCard; onCheck: (id: string) =
           ) : null}
         </Animated.View>
         <View style={styles.itemContent}>
-          <Text style={[styles.itemTitle, checked && styles.itemTitleChecked]}>{item.title}</Text>
-          {item.body ? <Text style={styles.itemBody}>{item.body}</Text> : null}
+          <Text style={[styles.itemTitle, checked && styles.itemTitleChecked]}>{item.item_text}</Text>
+          {item.note ? <Text style={styles.itemBody}>{item.note}</Text> : null}
           {item.source ? (
             <View style={styles.sourcePill}>
               <View style={[styles.sourceDot, { backgroundColor: sourceColor(item.source) }]} />
@@ -67,8 +90,8 @@ function ListItem({ item, onCheck }: { item: StreamCard; onCheck: (id: string) =
 }
 
 export default function ListsScreen() {
-  const [tasks, setTasks] = useState<StreamCard[]>([]);
-  const [shoppingItems, setShoppingItems] = useState<StreamCard[]>([]);
+  const [tasks, setTasks] = useState<ListItemDto[]>([]);
+  const [shoppingItems, setShoppingItems] = useState<ListItemDto[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -76,11 +99,12 @@ export default function ListsScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
 
   const loadItems = useCallback(async () => {
-    const { data } = await getTodayBrief();
-    if (data) {
-      setTasks(data.streamCards || []);
-      setShoppingItems(data.shoppingItems || []);
-    }
+    const [tasksRes, shoppingRes] = await Promise.all([
+      getLists({ listType: 'task', status: 'pending' }),
+      getLists({ listType: 'shopping', status: 'pending' }),
+    ]);
+    setTasks(tasksRes.data?.items || []);
+    setShoppingItems(shoppingRes.data?.items || []);
     setLoading(false);
   }, []);
 
@@ -94,10 +118,10 @@ export default function ListsScreen() {
     setRefreshing(false);
   }, [loadItems]);
 
-  const handleCheck = useCallback(async (cardId: string) => {
-    await resolveCard(cardId);
-    setTasks(prev => prev.filter(i => i.id !== cardId));
-    setShoppingItems(prev => prev.filter(i => i.id !== cardId));
+  const handleCheck = useCallback(async (id: string) => {
+    await completeListItemApi(id);
+    setTasks(prev => prev.filter(i => i.id !== id));
+    setShoppingItems(prev => prev.filter(i => i.id !== id));
   }, []);
 
   const handleSubmit = useCallback(async () => {
@@ -105,12 +129,14 @@ export default function ListsScreen() {
     if (!text) return;
     setIsProcessing(true);
     setNewItem('');
-    await extractListCommand(text);
-    setTimeout(async () => {
-      await loadItems();
-      setIsProcessing(false);
-    }, 1500);
-  }, [newItem, loadItems]);
+    const listType: ListItemType = activeTab === 'tasks' ? 'task' : 'shopping';
+    const parts = splitInputItems(text).map(titleCase);
+    for (const part of parts) {
+      await addListItemApi(listType, part);
+    }
+    await loadItems();
+    setIsProcessing(false);
+  }, [newItem, activeTab, loadItems]);
 
   const items = activeTab === 'tasks' ? tasks : shoppingItems;
   const otherCount = activeTab === 'tasks' ? shoppingItems.length : tasks.length;
@@ -172,7 +198,7 @@ export default function ListsScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder={activeTab === 'tasks' ? 'Add a task… or just describe it' : 'Add groceries…'}
+              placeholder={activeTab === 'tasks' ? 'Add a task…' : 'Add groceries…'}
               placeholderTextColor={colors.outline}
               value={newItem}
               onChangeText={setNewItem}
@@ -197,7 +223,7 @@ export default function ListsScreen() {
             </Pressable>
           </View>
           <Text style={styles.inputHint}>
-            Memu parses natural language — "buy milk and eggs" becomes two items.
+            Type "milk, eggs and bread" — Memu splits commas and "and" into separate items.
           </Text>
         </View>
 
@@ -230,7 +256,7 @@ export default function ListsScreen() {
             </View>
           ) : (
             items.map(item => (
-              <ListItem key={item.id} item={item} onCheck={handleCheck} />
+              <ListRow key={item.id} item={item} onCheck={handleCheck} />
             ))
           )}
         </View>

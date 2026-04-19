@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { addItem } from '../lists/store';
 
 export type ListKind = 'shopping' | 'task';
 
@@ -65,22 +65,18 @@ export async function handleListCommand(
   if (!parsed) return null;
 
   const { kind, items } = parsed;
-  const cardType = kind === 'shopping' ? 'shopping' : 'extraction';
+  const listType = kind === 'shopping' ? 'shopping' : 'task';
+  const source = channel === 'mobile' || channel === 'pwa' ? 'manual' : channel;
 
   for (let i = 0; i < items.length; i++) {
-    await pool.query(
-      `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        profileId,
-        cardType,
-        items[i],
-        '',
-        channel === 'mobile' || channel === 'pwa' ? 'manual' : channel,
-        `${messageId}-li-${i}`,
-        JSON.stringify([]),
-      ],
-    );
+    await addItem({
+      familyId: profileId,
+      listType,
+      itemText: items[i],
+      source,
+      sourceMessageId: `${messageId}-li-${i}`,
+      createdBy: profileId,
+    });
   }
 
   const listLabel = kind === 'shopping' ? 'shopping list' : 'task list';

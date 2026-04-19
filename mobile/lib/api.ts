@@ -248,6 +248,78 @@ export async function editCard(cardId: string, title: string, body: string) {
   });
 }
 
+// Lists (shopping / task / custom)
+export type ListItemType = 'shopping' | 'task' | 'custom';
+export type ListItemStatus = 'pending' | 'done';
+
+export interface ListItem {
+  id: string;
+  family_id: string;
+  list_type: ListItemType;
+  list_name: string | null;
+  item_text: string;
+  note: string | null;
+  status: ListItemStatus;
+  source: string | null;
+  source_message_id: string | null;
+  source_stream_card_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export async function getLists(params?: {
+  listType?: ListItemType;
+  status?: ListItemStatus;
+  limit?: number;
+}): Promise<ApiResponse<{ items: ListItem[] }>> {
+  const qs = new URLSearchParams();
+  if (params?.listType) qs.set('list_type', params.listType);
+  if (params?.status) qs.set('status', params.status);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request<{ items: ListItem[] }>(`/api/lists${suffix}`);
+}
+
+export async function addListItemApi(
+  listType: ListItemType,
+  itemText: string,
+  note?: string | null,
+): Promise<ApiResponse<{ success: boolean; item: ListItem }>> {
+  return request<{ success: boolean; item: ListItem }>('/api/lists', {
+    method: 'POST',
+    body: JSON.stringify({ list_type: listType, item_text: itemText, note, source: 'mobile' }),
+  });
+}
+
+export async function completeListItemApi(id: string) {
+  return request<{ success: boolean; item: ListItem }>(`/api/lists/${id}/complete`, {
+    method: 'POST',
+  });
+}
+
+export async function reopenListItemApi(id: string) {
+  return request<{ success: boolean; item: ListItem }>(`/api/lists/${id}/reopen`, {
+    method: 'POST',
+  });
+}
+
+export async function updateListItemApi(
+  id: string,
+  patch: { itemText?: string; note?: string | null },
+) {
+  return request<{ success: boolean; item: ListItem }>(`/api/lists/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ item_text: patch.itemText, note: patch.note }),
+  });
+}
+
+export async function deleteListItemApi(id: string) {
+  return request<{ success: boolean }>(`/api/lists/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 // Chat history
 export interface ChatHistoryMessage {
   id: string;
