@@ -9,6 +9,7 @@ import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
 import { handleListCommand } from './listCommands';
 import { reconcileListMentions } from './listReconciler';
+import { interactiveQueryTools } from './tools';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
 import { processSynthesisUpdate } from './synthesis';
@@ -163,8 +164,14 @@ export async function processIntelligencePipeline(
 
   // 4. LLM call — routed through the model router per skill frontmatter.
   // Digital Twin guarantees anonymity regardless of which provider handles the call.
+  //
+  // Tool-use: interactive_query dispatches with the local tool registry
+  // (`addToList`, `createSpace`, `updateSpace`). Claude can invoke these
+  // mid-turn to actually modify state, so a "I've added X" confirmation
+  // is the result of a successful tool call, not a post-hoc reconciliation.
+  // The listReconciler below stays as a safety net for the pre-tool flow.
   const contextBlock = buildContextBlock(anonymousRetrieval);
-  const { text: claudeResponse } = await dispatch({
+  const dispatchResult = await dispatch({
     skill: 'interactive_query',
     templateVars: { context_block: contextBlock },
     userMessage: anonymousMsg,
@@ -172,7 +179,21 @@ export async function processIntelligencePipeline(
     profileId,
     familyId: profileId,
     useBYOK: true,
+    tools: interactiveQueryTools,
+    toolContext: {
+      familyId: profileId,
+      profileId,
+      channel,
+      messageId,
+    },
   });
+  const claudeResponse = dispatchResult.text;
+  if (dispatchResult.toolCalls && dispatchResult.toolCalls.length > 0) {
+    const summary = dispatchResult.toolCalls
+      .map(c => `${c.name}:${c.ok ? 'ok' : 'fail'}`)
+      .join(' ');
+    console.log(`[TOOL-USE]: ${summary}`);
+  }
   console.log(`[LLM -> Raw]: ${claudeResponse}`);
 
   // 5. Reverse Translation (Anonymous -> Real)

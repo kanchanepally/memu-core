@@ -5,28 +5,57 @@ export interface ConversationMessage {
   content: string;
 }
 
+export type ClaudeContentBlock =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image';
+      source: { type: 'base64'; media_type: string; data: string };
+    }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | {
+      type: 'tool_result';
+      tool_use_id: string;
+      content: string | Array<{ type: 'text'; text: string }>;
+      is_error?: boolean;
+    };
+
+export interface ClaudeToolSchema {
+  name: string;
+  description: string;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
 export interface ClaudeCallInput {
   model: string;
   system?: string;
   messages: Array<{
     role: 'user' | 'assistant';
-    content:
-      | string
-      | Array<
-          | { type: 'text'; text: string }
-          | {
-              type: 'image';
-              source: { type: 'base64'; media_type: string; data: string };
-            }
-        >;
+    content: string | ClaudeContentBlock[];
   }>;
   maxTokens?: number;
   temperature?: number;
   apiKey?: string;
+  tools?: ClaudeToolSchema[];
+  toolChoice?: 'auto' | 'any' | 'none' | { type: 'tool'; name: string };
 }
+
+export type ClaudeStopReason =
+  | 'end_turn'
+  | 'max_tokens'
+  | 'stop_sequence'
+  | 'tool_use'
+  | 'pause_turn'
+  | 'refusal'
+  | null;
 
 export interface ClaudeCallResult {
   text: string;
+  content: ClaudeContentBlock[];
+  stopReason: ClaudeStopReason;
   tokensIn: number;
   tokensOut: number;
   latencyMs: number;
@@ -52,8 +81,11 @@ export async function callClaude(input: ClaudeCallInput): Promise<ClaudeCallResu
       const t = last.content.find(c => c.type === 'text') as { type: 'text'; text: string } | undefined;
       return t?.text ?? '';
     })();
+    const text = `[Dummy Mode: No API Key] I am the Chief of Staff. I hear you saying: "${userPrompt}". My anonymity is guaranteed.`;
     return {
-      text: `[Dummy Mode: No API Key] I am the Chief of Staff. I hear you saying: "${userPrompt}". My anonymity is guaranteed.`,
+      text,
+      content: [{ type: 'text', text }],
+      stopReason: 'end_turn',
       tokensIn: 0,
       tokensOut: 0,
       latencyMs: Date.now() - start,
@@ -69,15 +101,20 @@ export async function callClaude(input: ClaudeCallInput): Promise<ClaudeCallResu
     max_tokens: input.maxTokens ?? 1024,
     ...(input.system ? { system: input.system } : {}),
     ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+    ...(input.tools && input.tools.length > 0 ? { tools: input.tools as any } : {}),
+    ...(input.toolChoice ? { tool_choice: input.toolChoice as any } : {}),
     messages: input.messages as any,
   });
 
   const latency = Date.now() - start;
-  const first = msg.content[0] as any;
-  const text = first?.type === 'text' ? first.text : "I'm sorry, I couldn't form a response.";
+  const content = msg.content as ClaudeContentBlock[];
+  const firstText = content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
+  const text = firstText?.text ?? '';
 
   return {
     text,
+    content,
+    stopReason: msg.stop_reason as ClaudeStopReason,
     tokensIn: msg.usage?.input_tokens ?? 0,
     tokensOut: msg.usage?.output_tokens ?? 0,
     latencyMs: latency,
@@ -85,4 +122,3 @@ export async function callClaude(input: ClaudeCallInput): Promise<ClaudeCallResu
     dummy: false,
   };
 }
-

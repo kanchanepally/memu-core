@@ -1,9 +1,20 @@
 import { pool } from '../db/connection';
 import { getSkill, renderTemplate, type Skill, type SkillModel, type SkillCostTier } from './loader';
-import { callClaude, type ClaudeCallInput, type ConversationMessage } from '../intelligence/claude';
+import {
+  callClaude,
+  type ClaudeCallInput,
+  type ClaudeContentBlock,
+  type ConversationMessage,
+} from '../intelligence/claude';
 import { callGemini, toGeminiContents } from '../intelligence/gemini';
 import { resolveProviderKey, type BYOKProvider } from '../security/byok';
 import { enforceTwinInvariant, TwinViolationError } from '../twin/guard';
+import {
+  toolSchemas,
+  type ToolContext,
+  type ToolDefinition,
+  type ToolExecutionResult,
+} from '../intelligence/tools';
 
 export type ProviderName = 'claude' | 'gemini' | 'ollama';
 
@@ -49,6 +60,26 @@ export interface DispatchInput {
   temperature?: number;
 
   dryRun?: boolean;
+
+  /**
+   * Optional tool registry. When provided (and the resolved provider is
+   * Claude), the router runs a tool-use loop: Claude may emit tool_use
+   * blocks, each is executed via its definition's `execute()`, and the
+   * resulting tool_result blocks are fed back to Claude. Loop terminates
+   * on stop_reason !== 'tool_use' or on MAX_TOOL_ITERATIONS.
+   *
+   * Non-Claude providers (Gemini, local) ignore `tools` for now — they
+   * have different function-calling shapes and are deferred.
+   */
+  tools?: Record<string, ToolDefinition>;
+  toolContext?: ToolContext;
+}
+
+export interface ToolCallLogEntry {
+  name: string;
+  ok: boolean;
+  error?: string;
+  output?: Record<string, unknown>;
 }
 
 export interface DispatchResult {
@@ -60,7 +91,10 @@ export interface DispatchResult {
   ledgerId?: string;
   dummy: boolean;
   dryRun: boolean;
+  toolCalls?: ToolCallLogEntry[];
 }
+
+const MAX_TOOL_ITERATIONS = 5;
 
 // ----------------------------------------------------------------------------
 // Model alias → provider+concrete resolution
@@ -366,34 +400,100 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
 
   try {
     if (plan.provider === 'claude') {
-      const result = await callClaude({
-        model: plan.concreteModel,
-        system: effectiveSystemPrompt,
-        messages: buildClaudeMessages(
-          { ...input, history: effectiveHistory },
-          effectiveUserPrompt,
-        ),
-        maxTokens: input.maxTokens,
-        temperature: input.temperature,
-        apiKey: callKey.apiKey,
-      });
+      const messages = buildClaudeMessages(
+        { ...input, history: effectiveHistory },
+        effectiveUserPrompt,
+      );
+      const tools = input.tools;
+      const hasTools = !!(tools && Object.keys(tools).length > 0 && input.toolContext);
+      const schemas = hasTools ? toolSchemas(tools!) : undefined;
+
+      let totalIn = 0;
+      let totalOut = 0;
+      let totalLatency = 0;
+      let finalText = '';
+      let dummy = false;
+      const toolCalls: ToolCallLogEntry[] = [];
+
+      for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+        const result = await callClaude({
+          model: plan.concreteModel,
+          system: effectiveSystemPrompt,
+          messages,
+          maxTokens: input.maxTokens,
+          temperature: input.temperature,
+          apiKey: callKey.apiKey,
+          tools: schemas,
+        });
+        totalIn += result.tokensIn;
+        totalOut += result.tokensOut;
+        totalLatency += result.latencyMs;
+        dummy = dummy || result.dummy;
+        finalText = result.text;
+
+        if (!hasTools || result.stopReason !== 'tool_use' || result.dummy) {
+          break;
+        }
+
+        const toolUses = result.content.filter(
+          (b): b is Extract<ClaudeContentBlock, { type: 'tool_use' }> => b.type === 'tool_use',
+        );
+        if (toolUses.length === 0) break;
+
+        messages.push({ role: 'assistant', content: result.content });
+
+        const toolResults: ClaudeContentBlock[] = [];
+        for (const call of toolUses) {
+          const def = tools![call.name];
+          let execResult: ToolExecutionResult;
+          if (!def) {
+            execResult = { ok: false, error: `Unknown tool: ${call.name}` };
+          } else {
+            try {
+              execResult = await def.execute(call.input, input.toolContext!);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              execResult = { ok: false, error: `Tool threw: ${message}` };
+            }
+          }
+          toolCalls.push({
+            name: call.name,
+            ok: execResult.ok,
+            error: execResult.error,
+            output: execResult.output,
+          });
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: call.id,
+            content: JSON.stringify({
+              ok: execResult.ok,
+              ...(execResult.output ? { ...execResult.output } : {}),
+              ...(execResult.error ? { error: execResult.error } : {}),
+            }),
+            is_error: !execResult.ok,
+          });
+        }
+        messages.push({ role: 'user', content: toolResults });
+      }
+
       const ledgerId = await writeLedger(plan, input, callKey.keyIdentifier, {
-        tokensIn: result.tokensIn,
-        tokensOut: result.tokensOut,
-        latencyMs: result.latencyMs,
-        status: result.dummy ? 'dummy' : 'ok',
+        tokensIn: totalIn,
+        tokensOut: totalOut,
+        latencyMs: totalLatency,
+        status: dummy ? 'dummy' : 'ok',
         twinVerified,
         twinViolations,
       });
       return {
-        text: result.text,
+        text: finalText,
         plan,
-        tokensIn: result.tokensIn,
-        tokensOut: result.tokensOut,
-        latencyMs: result.latencyMs,
+        tokensIn: totalIn,
+        tokensOut: totalOut,
+        latencyMs: totalLatency,
         ledgerId,
-        dummy: result.dummy,
+        dummy,
         dryRun: false,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     }
 
