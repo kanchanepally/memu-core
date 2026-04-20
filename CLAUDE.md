@@ -497,6 +497,22 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Tool-use wire-up Session 1 — local `addToList` / `createSpace` / `updateSpace` (2026-04-20 evening)
+
+Ships the architectural fix for the whole class of bug that the list reconciler papered over. `interactive_query` can now invoke three local tools mid-turn; tool execution is the source of truth for confirmations.
+
+**Harness.** `src/intelligence/claude.ts` gained `ClaudeToolSchema`, `ClaudeContentBlock` (tool_use / tool_result variants), and passthrough of `tools` + `tool_choice` to the Anthropic SDK. `callClaude()` now returns the full content array + `stop_reason` so the router can loop. `src/skills/router.ts` got a multi-turn tool loop (`MAX_TOOL_ITERATIONS = 5`) that executes tool_use blocks via `ToolDefinition.execute()`, feeds `tool_result` blocks back to Claude, and accumulates tokens/latency across turns. `dispatch({ ..., tools, toolContext })` is the new threading surface; unknown tools return `{ok: false, error: 'unknown tool'}` as a tool_result rather than crashing the loop.
+
+**Tools.** `src/intelligence/tools.ts` registers three executors. `addToList` validates list ∈ {shopping, task}, sanitises items (strips leading "some/a/an/the", caps at 120 chars), calls `translateToReal` per item before `addItem()`. `createSpace` validates title/category/body, translates through Twin, calls `upsertSpace` with confidence=0.6 and `sourceReferences=[message:${messageId}]`. `updateSpace` finds by URI or category+slug, verifies `familyId` match, preserves existing visibility/domains/people/tags, bumps confidence by 0.05. Returns stay structural (`{ok, id, uri, slug, category}`) — real names never flow back into the Claude loop.
+
+**Skill prompt v2.** `skills/interactive_query/SKILL.md` bumped to v2 with an explicit "Your role" section framing Memu as an active knowledge manager (not a chatbot), a "Capabilities" section documenting the three tools with when-to-use examples, and a new Rule 5: "Tool-call success is the source of truth" — replaces the old "Confirm confidently" rule that caused the hallucinated-add regression in commit `9beb97d`'s backstory. Added Rule 9: prefer in-platform over external tools (no more "I should put this in Notion" suggestions when a Space does the job).
+
+**Orchestrator wire-up.** `src/intelligence/orchestrator.ts` passes `interactiveQueryTools` + `toolContext` to `dispatch()` for the interactive_query path and logs tool-call summary as `[TOOL-USE]: addToList:ok createSpace:ok`. `listReconciler` (commit `9beb97d`) stays as a safety net during transition.
+
+**Tests.** `src/intelligence/tools.test.ts` adds 21 tests covering tool-registry shape, schema required-field enums, and validation-branch coverage for all three executors (missing input, unknown list/category, empty items, missing body, no-uri/slug lookup fallback to "Space not found"). DB-touching happy paths covered by manual QA per the project convention. Full suite: **323 tests passing across 22 files** (was 302). TypeScript clean. Commit `3e038b5`.
+
+**Session 2 queued.** Anthropic's first-party `web_search_20250305` tool lands next once Session 1 is deploy-verified on the Z2. Open questions: Twin guard of search *results* (ephemeral context, not persisted to `context_entries`), cost gating via `cost_tier` + budget-pressure, and capabilities-block rule on when Claude should reach for search vs. stay local.
+
 ### Dogfood fix — list reconciler for Claude's hallucinated confirmations (2026-04-20)
 
 Bug 3 regression surfaced in Hareesh's first real-use of the APK: "buy some veg stock for the soup" → Claude replied "Done, I've added vegetable stock to your shopping list!" but nothing landed in the Lists tab. Root cause: the regex fast path in `src/intelligence/listCommands.ts` only catches explicit "add X to shopping list" phrasings; the `interactive_query` skill tells Claude to "Confirm confidently" so it confirmed a hallucinated add.
