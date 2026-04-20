@@ -34,6 +34,35 @@ the resolution. The Anthropic `web_search_20250305` half of the split is
 queued as Session 2 — re-add here once deploy validates that Session 1
 delivers the behaviour improvement Hareesh flagged.
 
+- 2026-04-20 (H, bug) [post-tool-use-deploy, session 1.5 candidate]: Claude
+  has no way to find an existing Space when retrieval misses it. Observed
+  behaviour: "These two items from memu feedback log are complete" → Claude
+  correctly reached for `updateSpace` but the "Memu feedback log" Space was
+  not in the context block. With no discovery tool, Claude fell back to
+  asking for the URI ("Could you share the URI or just confirm the
+  slug/title so I can update it accurately?") — a poor experience when the
+  Space demonstrably exists in the Spaces tab. Fix: add a fourth tool
+  `findSpaces({ query })` returning a short list of
+  `{uri, title, category, slug, description}` so Claude can self-recover
+  when the synthesis-first retrieval misses. Plus (a) update
+  `skills/interactive_query/SKILL.md` so Claude calls `findSpaces` before
+  asking the user or offering to create, and (b) consider making
+  `updateSpace` accept `title` as a fuzzy-lookup fallback when no URI and
+  no exact slug are known. More load-bearing than Session 2 (web search)
+  because it directly unblocks dogfood flow; schedule as **Session 1.5**
+  before Session 2. Related: catalogue/matcher in `src/spaces/retrieval.ts`
+  also worth a look — why did the feedback-log Space not render into the
+  context block? Could be a matcher miss, a visibility mis-tag, or a
+  catalogue rendering path issue.
+- 2026-04-20 (H, obs) [post-tool-use-deploy]: first-turn misinterpretation.
+  Same chat above — Claude's first reply treated "These two items from memu
+  feedback log are complete" as a literal list-add intent ("your message
+  just has the text but no items attached"). Likely a prompt-level issue
+  where ambiguous referrals bias toward `addToList`. Revisit alongside
+  `findSpaces` work: the capabilities section in `SKILL.md` may need a hint
+  that past-tense "X is complete / done" on something referenced by name
+  is almost always a Space update, not a new list item.
+
 - 2026-04-20 (H, feature): chat history incomplete + uncurated. Memu chat
   doesn't hold full history; no way to label/group chats like named
   conversations; no search across chat history. Thin slice candidate:
