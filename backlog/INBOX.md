@@ -26,7 +26,55 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
-### From 2026-04-20 dogfood session
+### From 2026-04-20 dogfood running list (afternoon)
+
+**Cluster note.** Items 1 + 3 + 4 are three views of one root cause: Claude has
+no tool-use wire-up for Space/list operations, and `interactive_query`'s
+system prompt has no explicit capabilities block. They move together as one
+work chunk — the `skills/list_management/SKILL.md` + Claude tool-use line in
+the first-use bugs section. Strongest post-B-live-4 candidate because it
+fixes the "chatbot, not Chief of Staff" self-model in one move.
+
+- 2026-04-20 (H, bug) [cluster: tool-use]: named Space creation not
+  proactively prompted. When chat references a named space (e.g. "gardening
+  project"), Memu should offer to create that Space rather than silently
+  adding a to-do item — or at least flag that manual Space creation is
+  needed. First-time-referenced Spaces should feel seamless.
+- 2026-04-20 (H, bug) [cluster: tool-use]: LLM doesn't know its own
+  capabilities. The chat skill presents as a helpful chatbot, not an active
+  knowledge manager. `skills/interactive_query/SKILL.md` needs an explicit
+  **capabilities** section: create Spaces, update Spaces (add info, correct
+  facts, mark items complete), add to shopping/task lists, search across
+  Spaces, link between Spaces. Should never suggest Notion/Trello when the
+  capability exists in-platform. North-star test: Chief of Staff that
+  actively manages family knowledge, vs chatbot that happens to have Spaces
+  in the background. Climbing-frame Space proves the synthesis pipeline
+  already works — the gap is the LLM's self-model.
+- 2026-04-20 (H, bug) [cluster: tool-use]: Space create/update not exposed
+  as explicit tool calls. Today, Space work only happens as a post-message
+  synthesis side-effect — the LLM can't invoke it mid-turn. Wire
+  `createSpace({ title, category, content })` and
+  `updateSpace({ id, changes })` as Claude tool-use functions so "create a
+  gardening project Space" or "mark the climbing frame bolts as purchased"
+  work immediately and explicitly.
+- 2026-04-20 (H, bug) [verify vs `9beb97d`]: LLM confirms task captures
+  that haven't actually landed in the to-do list. Confirmation should only
+  happen when the write succeeded; if it fails, Memu should say so.
+  **Cross-reference:** today's `listReconciler.ts` (commit `9beb97d`) covers
+  past-tense "added/put X to your shopping|task list" for both list types.
+  If Hareesh is still seeing this after the APK carrying `9beb97d` lands on
+  his phone, there's a phrasing the regex misses — fold it into the
+  reconciler's test set. Otherwise this resolves when the tool-use cluster
+  ships (confirmation then comes from the tool result, not the LLM's
+  self-reported success).
+- 2026-04-20 (H, feature): chat history incomplete + uncurated. Memu chat
+  doesn't hold full history; no way to label/group chats like named
+  conversations; no search across chat history. Thin slice candidate:
+  chat-session labels + search over `messages` (full-text + pgvector). Fits
+  Part 11 v1.5 "semantic search across Spaces" in shape — may extend that
+  work to cover messages too.
+
+### From 2026-04-20 dogfood session (morning)
 
 - 2026-04-20 (H, bug, ✅ fixed same session): chat "buy some veg stock for the
   soup" — Claude replied "Done, I've added vegetable stock to your shopping
