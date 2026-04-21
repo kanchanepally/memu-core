@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, Pressable,
   Modal, TextInput, KeyboardAvoidingView, Platform,
@@ -87,6 +88,14 @@ export default function TodayScreen() {
     const { data } = await getSynthesis();
     if (data?.synthesis) setSynthesis(data.synthesis);
   }, []);
+
+  // Refresh whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadBrief();
+      loadSynthesis();
+    }, [loadBrief, loadSynthesis])
+  );
 
   useEffect(() => {
     loadBrief();

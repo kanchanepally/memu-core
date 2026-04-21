@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, Pressable, TextInput,
   ActivityIndicator, Animated, Easing,
@@ -97,16 +98,34 @@ export default function ListsScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [newItem, setNewItem] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
+  const [error, setError] = useState<string | null>(null);
 
   const loadItems = useCallback(async () => {
+    console.log('[Lists] Fetching items...');
     const [tasksRes, shoppingRes] = await Promise.all([
       getLists({ listType: 'task', status: 'pending' }),
       getLists({ listType: 'shopping', status: 'pending' }),
     ]);
-    setTasks(tasksRes.data?.items || []);
-    setShoppingItems(shoppingRes.data?.items || []);
+    
+    if (tasksRes.error || shoppingRes.error) {
+      const err = tasksRes.error || shoppingRes.error || 'Unknown error';
+      console.error('[Lists] Fetch failed:', err);
+      setError(err);
+    } else {
+      console.log(`[Lists] Success: ${tasksRes.data?.items.length || 0} tasks, ${shoppingRes.data?.items.length || 0} shopping`);
+      setTasks(tasksRes.data?.items || []);
+      setShoppingItems(shoppingRes.data?.items || []);
+      setError(null);
+    }
     setLoading(false);
   }, []);
+
+  // Refresh whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadItems();
+    }, [loadItems])
+  );
 
   useEffect(() => {
     loadItems();
@@ -151,6 +170,13 @@ export default function ListsScreen() {
           headline="Small tasks, gently carried."
           accent="gently"
         />
+
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={16} color={colors.onErrorContainer} />
+            <Text style={styles.errorText}>Sync Error: {error}</Text>
+          </View>
+        ) : null}
 
         {/* Segmented control */}
         <View style={styles.segmentWrap}>
@@ -479,5 +505,23 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.wide,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: '#FFEEF0',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#FFD1D6',
+  },
+  errorText: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.bodyMedium,
+    color: '#D32F2F',
+    flex: 1,
   },
 });

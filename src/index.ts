@@ -1061,6 +1061,10 @@ server.get('/api/lists', async (request, reply) => {
       status: status as ListStatus | undefined,
       limit: parsedLimit,
     });
+
+    // Diagnostic logging
+    server.log.info({ profileId, list_type, status, count: items.length }, 'List API requested');
+
     return { items };
   } catch (err) {
     server.log.error(err);

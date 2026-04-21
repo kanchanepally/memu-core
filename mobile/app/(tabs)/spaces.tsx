@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, Pressable, Modal, ScrollView,
   KeyboardAvoidingView, Platform, TextInput, Share,
@@ -60,6 +61,13 @@ export default function SpacesScreen() {
     if (data) setSpaces(data.spaces);
     setLoading(false);
   }, []);
+
+  // Refresh whenever the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadSpaces();
+    }, [loadSpaces])
+  );
 
   useEffect(() => {
     loadSpaces();
