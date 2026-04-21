@@ -679,6 +679,13 @@ server.delete<{ Params: { id: string } }>('/api/twin/registry/:id', async (reque
 
 // OAuth: Initiate Google Sign In — uses authenticated profile
 server.get('/api/auth/google', async (request, reply) => {
+  // CONFIG CHECK: Ensure Google OAuth secrets are actually set on the server
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return reply.code(400).send({ 
+       error: 'Google Calendar is not configured on this server. Please add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env file on the Z2.' 
+    });
+  }
+
   const profileId = (request as any).profileId;
   const query = request.query as any;
   const source = query.source || 'pwa';

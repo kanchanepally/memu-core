@@ -647,8 +647,8 @@ async function toggleCalendarConnect() {
             await api('/api/auth/google', { method: 'DELETE' });
             isCalendarConnected = false;
             renderCalendarSettings(false);
-            loadBrief(); // Refresh lists and calendar views
             alert('Disconnected successfully.');
+            window.location.reload(); // Refresh everything to be safe
         } catch (e) {
             alert('Failed to disconnect.');
         }
@@ -661,11 +661,19 @@ async function handleCalendarConnect() {
     try {
         const res = await api('/api/auth/google?format=json');
         const data = await res.json();
+        
+        if (!res.ok) {
+            throw new Error(data.error || `Server error: ${res.status}`);
+        }
+
         if (data.url) {
             window.location.href = data.url;
+        } else {
+            throw new Error('Server returned a successful response but no auth URL was found.');
         }
     } catch (e) {
-        alert('Could not initiate Google Auth.');
+        console.error('Calendar connect error:', e);
+        alert('Could not initiate Google Auth: ' + e.message);
     }
 }
 
