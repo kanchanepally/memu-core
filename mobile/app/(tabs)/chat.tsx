@@ -210,7 +210,10 @@ export default function ChatScreen() {
 
       <View style={[styles.bubbleWrap, item.fromMemu ? { alignItems: 'flex-start' } : { alignItems: 'flex-end' }]}>
         <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
-          <Text style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}>
+          <Text 
+            selectable={true}
+            style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}
+          >
             {item.text}
           </Text>
         </View>

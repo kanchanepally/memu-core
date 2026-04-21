@@ -46,12 +46,7 @@ improvements Hareesh flagged.
   Claude is falling back to prose confirmation — prompt-level fix in
   SKILL.md needed. Needs one concrete repro to diagnose.
 
-- 2026-04-21 (H, bug) [mobile UX]: cannot copy text from Memu's messages
-  in the mobile chat. React Native Gifted Chat renders message bubbles
-  without `selectable={true}` on the text. Small fix: pass
-  `textStyle={{ left: { userSelect: 'text' }, right: { ... } }}` or use
-  Gifted Chat's `renderMessageText` override with `<Text selectable>`.
-  Separate class from tool-use — mobile-side fix only.
+- 2026-04-21 (H, bug) [mobile UX]: cannot copy text from Memu's messages in the mobile chat. ✅ fixed (commit `86f5ffe`+) — added `selectable={true}` to bubble text.
 
 - 2026-04-20 (H, feature): chat history incomplete + uncurated. Memu chat
   doesn't hold full history; no way to label/group chats like named
