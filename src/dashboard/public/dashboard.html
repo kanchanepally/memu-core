@@ -1579,15 +1579,6 @@ function detectConflicts(events) {
     return conflicts;
 }
 
-async function handleCalendarConnect() {
-    try {
-        const res = await api('/api/calendar/auth-url');
-        const data = await res.json();
-        if (data.url) window.open(data.url, '_blank');
-    } catch (e) {
-        showToast('Connection failed', true);
-    }
-}
 
 async function loadCalendar() {
     try {
