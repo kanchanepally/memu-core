@@ -29,39 +29,12 @@ slice immediately. Still log here for the retrospective.
 ### From 2026-04-20 dogfood running list (afternoon)
 
 Tool-use cluster (items 1 + 3 + 4 + the capabilities half of item 2) shipped
-2026-04-20 evening in commit `3e038b5`. See the Shipped section below for
-the resolution. The Anthropic `web_search_20250305` half of the split is
-queued as Session 2 — re-add here once deploy validates that Session 1
-delivers the behaviour improvement Hareesh flagged.
-
-- 2026-04-20 (H, bug) [session 1.5 — ACTIVE]: Claude has no way to find
-  an existing Space when retrieval misses it. Observed behaviour:
-  "These two items from memu feedback log are complete" → Claude correctly
-  reached for `updateSpace` but the "Memu feedback log" Space was not in
-  the context block. With no discovery tool, Claude fell back to asking
-  for the URI — a poor experience when the Space demonstrably exists.
-  **Concrete evidence: 2026-04-21 Robin duplicate.** Telling Memu "Robin
-  is my son, he's 7" in one chat and "Robin goes to cricket club on
-  Fridays" in a separate chat resulted in two Spaces being created —
-  one slug "Robin", one slug "Robins" (typo). Claude had no way to know
-  the Robin Space existed from chat #1 when chat #2 opened. Fix: add
-  `findSpaces({ query })` returning a short list of
-  `{uri, title, category, slug, description}`. Update
-  `skills/interactive_query/SKILL.md` with rule: **call `findSpaces`
-  before `createSpace` for any person/project/routine reference** — if a
-  near match comes back, prefer `updateSpace` on it (typo tolerance +
-  dedup). More load-bearing than Session 2 (web search); ship first.
-  Related: catalogue/matcher in `src/spaces/retrieval.ts` also worth a
-  look later — why did the feedback-log Space not render into the context
-  block?
-- 2026-04-20 (H, obs) [post-tool-use-deploy, folded into session 1.5]:
-  first-turn misinterpretation. Same chat above — Claude's first reply
-  treated "These two items from memu feedback log are complete" as a
-  literal list-add intent ("your message just has the text but no items
-  attached"). Prompt-level bias toward `addToList`. Folding into 1.5: the
-  capabilities section in `SKILL.md` needs a hint that past-tense
-  "X is complete / done" on something referenced by name is almost always
-  a Space update, not a new list item.
+2026-04-20 evening in commit `3e038b5`. See the Shipped section below.
+Session 1.5 (`findSpaces` + `addCalendarEvent` + SKILL.md v3) shipped
+2026-04-21 — also in the Shipped section. The Anthropic
+`web_search_20250305` half of the split is queued as Session 2 — re-add
+here once deploy validates that Session 1 + 1.5 deliver the behaviour
+improvements Hareesh flagged.
 
 - 2026-04-21 (H, bug) [verify vs Session 1 deploy]: Item 5 in Hareesh's
   feedback log — LLM confirms task captures that have not actually landed
@@ -72,14 +45,6 @@ delivers the behaviour improvement Hareesh flagged.
   reading stale `list_items` — refresh behaviour; (c) if tool didn't fire,
   Claude is falling back to prose confirmation — prompt-level fix in
   SKILL.md needed. Needs one concrete repro to diagnose.
-
-- 2026-04-21 (H, feature) [session 1.5 — ACTIVE]: calendar writing
-  capability. Memu has Google Calendar read (briefing) but no write.
-  Add `addCalendarEvent({ title, start, end, location?, notes? })` as
-  fifth tool-use function. Uses existing `src/channels/calendar/google.ts`
-  OAuth. Adult-only (children can't schedule). Returns event id + optional
-  html link. Fits cleanly alongside `findSpaces` in the Session 1.5
-  ship — same harness, same capabilities-section update.
 
 - 2026-04-21 (H, bug) [mobile UX]: cannot copy text from Memu's messages
   in the mobile chat. React Native Gifted Chat renders message bubbles

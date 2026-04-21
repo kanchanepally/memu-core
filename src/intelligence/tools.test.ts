@@ -11,17 +11,19 @@ const ctx: ToolContext = {
 };
 
 describe('interactiveQueryTools registry', () => {
-  it('exposes the three expected tools', () => {
+  it('exposes the five expected tools', () => {
     expect(Object.keys(interactiveQueryTools).sort()).toEqual([
+      'addCalendarEvent',
       'addToList',
       'createSpace',
+      'findSpaces',
       'updateSpace',
     ]);
   });
 
   it('toolSchemas() returns one schema per tool with required Claude fields', () => {
     const schemas = toolSchemas(interactiveQueryTools);
-    expect(schemas).toHaveLength(3);
+    expect(schemas).toHaveLength(5);
     for (const s of schemas) {
       expect(typeof s.name).toBe('string');
       expect(typeof s.description).toBe('string');
@@ -156,4 +158,96 @@ describe('updateSpace executor — validation branches', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/space not found/i);
   });
+});
+
+describe('findSpaces schema', () => {
+  it('declares query as the only required field', () => {
+    const schema = interactiveQueryTools.findSpaces.schema;
+    expect(schema.input_schema.required).toEqual(['query']);
+  });
+
+  it('optional category enumerates SPACE_CATEGORIES', () => {
+    const schema = interactiveQueryTools.findSpaces.schema;
+    const cat = schema.input_schema.properties.category as { enum: string[] };
+    expect(cat.enum).toEqual([...SPACE_CATEGORIES]);
+  });
+});
+
+describe('findSpaces executor — validation branches', () => {
+  const exec = interactiveQueryTools.findSpaces.execute;
+
+  it('rejects missing input object', async () => {
+    const r = await exec(null, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/missing input/i);
+  });
+
+  it('rejects missing query', async () => {
+    const r = await exec({}, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/query/i);
+  });
+
+  it('rejects whitespace-only query', async () => {
+    const r = await exec({ query: '   ' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/query/i);
+  });
+
+  it('rejects an unknown category', async () => {
+    const r = await exec({ query: 'robin', category: 'project' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/category/i);
+  });
+});
+
+describe('addCalendarEvent schema', () => {
+  it('requires title + start + end', () => {
+    const schema = interactiveQueryTools.addCalendarEvent.schema;
+    expect(schema.input_schema.required).toEqual(['title', 'start', 'end']);
+  });
+
+  it('exposes optional location and notes', () => {
+    const schema = interactiveQueryTools.addCalendarEvent.schema;
+    expect(schema.input_schema.properties.location).toBeDefined();
+    expect(schema.input_schema.properties.notes).toBeDefined();
+  });
+});
+
+describe('addCalendarEvent executor — validation branches', () => {
+  const exec = interactiveQueryTools.addCalendarEvent.execute;
+
+  it('rejects missing input object', async () => {
+    const r = await exec(null, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/missing input/i);
+  });
+
+  it('rejects missing title', async () => {
+    const r = await exec(
+      { start: '2026-04-22T15:00:00+01:00', end: '2026-04-22T16:00:00+01:00' },
+      ctx,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/title/i);
+  });
+
+  it('rejects whitespace-only title', async () => {
+    const r = await exec(
+      { title: '   ', start: '2026-04-22T15:00:00+01:00', end: '2026-04-22T16:00:00+01:00' },
+      ctx,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/title/i);
+  });
+
+  it('rejects missing start/end', async () => {
+    const r = await exec({ title: 'Dentist' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/start.*end/i);
+  });
+
+  // DB-touching happy / insert paths (not_connected, invalid_time,
+  // insufficient_scope) covered by manual QA against Z2, per the project
+  // convention also used by the updateSpace tests above.
 });

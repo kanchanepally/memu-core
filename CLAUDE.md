@@ -497,6 +497,20 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Tool-use Session 1.5 — `findSpaces` + `addCalendarEvent` (2026-04-21)
+
+Two bugs from the 2026-04-20 → 2026-04-21 dogfood pass shipped together as the second local-tools slice. Same harness as Session 1 (router tool loop, Twin invariant, capabilities-first SKILL.md); added two tools and bumped `interactive_query` to v3.
+
+**`findSpaces({ query, category? })`** — closes the class of bug that surfaced as the **Robin/Robins duplicate** (2026-04-21) and the **"Memu feedback log" Space not found** (2026-04-20). When retrieval misses a Space, Claude had no way to discover it and would either (a) give up and ask the user for a URI, or (b) create a second duplicate under a slightly different slug. The tool runs `getCatalogue(familyId, profileId)` (visibility-filtered, same source of truth as the retrieval matcher), translates the anonymous query back through the Twin, case-insensitive substring match across name/slug/description, returns the top 10 as `{uri, title, category, slug, description}` with title+description passed through `translateToAnonymous` before returning to Claude (Twin invariant — outputs stay in the anonymous namespace). SKILL.md v3 rule: **call `findSpaces` before `createSpace` for any person/project/routine the user names by word** — the near-match path (Robin ≈ Robins) is the whole point.
+
+**`addCalendarEvent({ title, start, end, location?, notes? })`** — Memu had Google Calendar **read** (morning briefing) but no write. Added `insertCalendarEvent()` in `src/channels/calendar/google.ts` returning a discriminated union `{ok: true, eventId, htmlLink} | {ok: false, reason: 'not_connected' | 'insufficient_scope' | 'invalid_time' | 'api_error', message}`. OAuth scope extended to include `calendar.events` write — existing tokens (readonly-only) will return `insufficient_scope` and the tool tells the user to reconnect in Settings. ISO 8601 start/end required; title and (location/notes if present) translate through `translateToReal` before the API call. Adult-only today — children's profiles shouldn't schedule events (not explicitly blocked yet; will land with the broader child-role guard next cycle).
+
+**SKILL.md v3.** Capabilities section rewritten for five tools. Added an explicit past-tense-completion rule to `addToList` ("X is done" on a named Space is `updateSpace`, not `addToList`) that folds in the first-turn-misinterpretation observation from 2026-04-20. `findSpaces` block includes the Robin/Robins dedup-by-near-match example verbatim.
+
+**Tests.** `src/intelligence/tools.test.ts` extended from 21 → 33 tests. New coverage: registry now asserts five tools (alphabetical), `findSpaces` schema + four validation branches (missing input, missing query, whitespace-only query, unknown category), `addCalendarEvent` schema (required title/start/end, optional location/notes) + four validation branches (missing input, missing/whitespace title, missing start/end). DB-touching happy paths for both tools deferred to manual QA per the same convention as `updateSpace`. Full suite: **335 tests passing across 22 files** (was 323). TypeScript clean.
+
+**Session 2 (`web_search_20250305`) still queued** behind Session 1 + 1.5 deploy verification on Z2.
+
 ### Tool-use wire-up Session 1 — local `addToList` / `createSpace` / `updateSpace` (2026-04-20 evening)
 
 Ships the architectural fix for the whole class of bug that the list reconciler papered over. `interactive_query` can now invoke three local tools mid-turn; tool execution is the source of truth for confirmations.

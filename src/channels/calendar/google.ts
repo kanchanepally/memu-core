@@ -19,7 +19,10 @@ export function getGoogleAuthUrl(profileId: string) {
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar.readonly'],
+    scope: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/calendar.events',
+    ],
     state: profileId // Associate the auth callback with the requesting profile
   });
 }
@@ -82,6 +85,67 @@ export async function fetchUpcomingEvents(profileId: string): Promise<calendar_v
   } catch (err) {
     console.error('Error fetching Google Calendar events:', err);
     return [];
+  }
+}
+
+export interface InsertEventInput {
+  summary: string;
+  startISO: string;
+  endISO: string;
+  location?: string;
+  description?: string;
+}
+
+export type InsertEventResult =
+  | { ok: true; eventId: string; htmlLink: string | null }
+  | { ok: false; reason: 'not_connected' | 'insufficient_scope' | 'invalid_time' | 'api_error'; message: string };
+
+export async function insertCalendarEvent(profileId: string, input: InsertEventInput): Promise<InsertEventResult> {
+  const res = await pool.query(
+    `SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`,
+    [profileId],
+  );
+  if (res.rows.length === 0) {
+    return { ok: false, reason: 'not_connected', message: 'Google Calendar is not connected for this profile.' };
+  }
+
+  const start = new Date(input.startISO);
+  const end = new Date(input.endISO);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+    return { ok: false, reason: 'invalid_time', message: 'startISO/endISO must be valid ISO 8601 with end after start.' };
+  }
+
+  const tokens = res.rows[0].credentials;
+  const oauth2Client = getGoogleOAuthClient();
+  oauth2Client.setCredentials(tokens);
+
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+  try {
+    const created = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: input.summary,
+        location: input.location,
+        description: input.description,
+        start: { dateTime: start.toISOString() },
+        end: { dateTime: end.toISOString() },
+      },
+    });
+    return {
+      ok: true,
+      eventId: created.data.id || '',
+      htmlLink: created.data.htmlLink || null,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/insufficient|scope|permission/i.test(message)) {
+      return {
+        ok: false,
+        reason: 'insufficient_scope',
+        message: 'Calendar write scope not granted. Reconnect Google Calendar in Settings.',
+      };
+    }
+    return { ok: false, reason: 'api_error', message };
   }
 }
 

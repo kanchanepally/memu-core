@@ -23,10 +23,12 @@
  */
 
 import type { ClaudeToolSchema } from './claude';
-import { translateToReal } from '../twin/translator';
+import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { addItem, type ListType } from '../lists/store';
 import { upsertSpace, findSpaceByUri, findSpaceBySlug } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from '../spaces/model';
+import { getCatalogue } from '../spaces/catalogue';
+import { insertCalendarEvent } from '../channels/calendar/google';
 
 export interface ToolContext {
   familyId: string;
@@ -352,6 +354,187 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
 }
 
 // ---------------------------------------------------------------------------
+// findSpaces
+// ---------------------------------------------------------------------------
+
+const FIND_SPACES_SCHEMA: ClaudeToolSchema = {
+  name: 'findSpaces',
+  description:
+    'Search for existing Spaces by name, slug, or description. Call this BEFORE createSpace ' +
+    'whenever the user references a person, project, routine, or household topic by name — ' +
+    'the Space may already exist under a slightly different slug (typo, singular/plural) and ' +
+    'you would not have seen it if retrieval missed it. Returns up to 10 visibility-filtered ' +
+    'matches as {uri, title, category, slug, description}. If the result count is 0, it is safe ' +
+    'to createSpace. If there is a near match (e.g. you searched "robin" and got "robins"), ' +
+    'prefer updateSpace on the existing one over creating a duplicate.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description:
+          'The name, slug, or topic to search for. Case-insensitive substring match against ' +
+          'title, slug, and description. Use singular forms; partial matches are fine.',
+      },
+      category: {
+        type: 'string',
+        enum: [...SPACE_CATEGORIES],
+        description: 'Optional category filter. Omit to search across all categories.',
+      },
+    },
+    required: ['query'],
+  },
+};
+
+interface FindSpacesInput {
+  query: string;
+  category?: SpaceCategory;
+}
+
+const FIND_SPACES_LIMIT = 10;
+
+async function executeFindSpaces(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const input = rawInput as Partial<FindSpacesInput>;
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'missing input object' };
+  }
+  if (typeof input.query !== 'string' || input.query.trim().length === 0) {
+    return { ok: false, error: 'query is required' };
+  }
+  if (input.category !== undefined && !SPACE_CATEGORIES.includes(input.category as SpaceCategory)) {
+    return { ok: false, error: `category must be one of: ${SPACE_CATEGORIES.join(', ')}` };
+  }
+
+  try {
+    const realQuery = (await translateToReal(input.query.trim())).toLowerCase();
+    const catalogue = await getCatalogue(ctx.familyId, ctx.profileId);
+
+    const filtered = catalogue.filter(entry => {
+      if (input.category && entry.category !== input.category) return false;
+      const haystack = [entry.name, entry.slug, entry.description].join(' ').toLowerCase();
+      return haystack.includes(realQuery);
+    });
+
+    const hits = filtered.slice(0, FIND_SPACES_LIMIT);
+
+    const spaces = await Promise.all(
+      hits.map(async entry => ({
+        uri: entry.uri,
+        title: await translateToAnonymous(entry.name),
+        category: entry.category,
+        slug: entry.slug,
+        description: entry.description ? await translateToAnonymous(entry.description) : '',
+      })),
+    );
+
+    return {
+      ok: true,
+      output: {
+        count: spaces.length,
+        truncated: filtered.length > FIND_SPACES_LIMIT,
+        spaces,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `findSpaces failed: ${message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// addCalendarEvent
+// ---------------------------------------------------------------------------
+
+const ADD_CALENDAR_EVENT_SCHEMA: ClaudeToolSchema = {
+  name: 'addCalendarEvent',
+  description:
+    "Add an event to the user's connected Google Calendar. Use this when the user asks to " +
+    'schedule, book, or put something on the calendar — e.g. "book a dentist appointment for ' +
+    'Tuesday 3pm" or "put swimming class on the calendar every Thursday 4–5pm" (for a one-off ' +
+    'instance; recurrence is not yet supported — create one event). Times must be full ISO 8601 ' +
+    'with timezone. If the user gives a vague time ("tomorrow afternoon"), resolve to a concrete ' +
+    'time using the current date context, and mention the chosen time when you confirm. Returns ' +
+    "ok=false with reason='not_connected' if Google Calendar is not set up — tell the user to " +
+    'connect it in Settings.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: {
+        type: 'string',
+        description: 'Event title/summary, shown in the calendar. Concise.',
+      },
+      start: {
+        type: 'string',
+        description: 'ISO 8601 start datetime with timezone, e.g. "2026-04-22T15:00:00+01:00"',
+      },
+      end: {
+        type: 'string',
+        description: 'ISO 8601 end datetime with timezone. Must be after start.',
+      },
+      location: {
+        type: 'string',
+        description: 'Optional location string (address or place name).',
+      },
+      notes: {
+        type: 'string',
+        description: 'Optional longer description / notes attached to the event.',
+      },
+    },
+    required: ['title', 'start', 'end'],
+  },
+};
+
+interface AddCalendarEventInput {
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  notes?: string;
+}
+
+async function executeAddCalendarEvent(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const input = rawInput as Partial<AddCalendarEventInput>;
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'missing input object' };
+  }
+  if (typeof input.title !== 'string' || input.title.trim().length === 0) {
+    return { ok: false, error: 'title is required' };
+  }
+  if (typeof input.start !== 'string' || typeof input.end !== 'string') {
+    return { ok: false, error: 'start and end (ISO 8601) are required' };
+  }
+
+  try {
+    const title = await translateToReal(input.title.trim());
+    const location = input.location ? await translateToReal(input.location) : undefined;
+    const description = input.notes ? await translateToReal(input.notes) : undefined;
+
+    const result = await insertCalendarEvent(ctx.profileId, {
+      summary: title,
+      startISO: input.start,
+      endISO: input.end,
+      location,
+      description,
+    });
+
+    if (!result.ok) {
+      return { ok: false, error: `${result.reason}: ${result.message}` };
+    }
+
+    return {
+      ok: true,
+      output: {
+        eventId: result.eventId,
+        htmlLink: result.htmlLink,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `addCalendarEvent failed: ${message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -360,6 +543,10 @@ export const interactiveQueryTools: Record<string, ToolDefinition> = {
     schema: ADD_TO_LIST_SCHEMA,
     execute: executeAddToList,
   },
+  findSpaces: {
+    schema: FIND_SPACES_SCHEMA,
+    execute: executeFindSpaces,
+  },
   createSpace: {
     schema: CREATE_SPACE_SCHEMA,
     execute: executeCreateSpace,
@@ -367,6 +554,10 @@ export const interactiveQueryTools: Record<string, ToolDefinition> = {
   updateSpace: {
     schema: UPDATE_SPACE_SCHEMA,
     execute: executeUpdateSpace,
+  },
+  addCalendarEvent: {
+    schema: ADD_CALENDAR_EVENT_SCHEMA,
+    execute: executeAddCalendarEvent,
   },
 };
 
