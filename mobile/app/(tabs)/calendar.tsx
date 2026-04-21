@@ -113,7 +113,7 @@ export default function CalendarScreen() {
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
-    const { data } = await getGoogleAuthUrl();
+    const { data } = await getGoogleAuthUrl('mobile');
     setConnecting(false);
     if (data?.url) {
       await Linking.openURL(data.url);

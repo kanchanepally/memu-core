@@ -680,8 +680,9 @@ server.delete<{ Params: { id: string } }>('/api/twin/registry/:id', async (reque
 // OAuth: Initiate Google Sign In — uses authenticated profile
 server.get('/api/auth/google', async (request, reply) => {
   const profileId = (request as any).profileId;
-  const url = getGoogleAuthUrl(profileId);
   const query = request.query as any;
+  const source = query.source || 'pwa';
+  const url = getGoogleAuthUrl(profileId, source);
   if (query.format === 'json') {
     return { url };
   }
@@ -694,7 +695,16 @@ server.get('/api/auth/google/callback', async (request, reply) => {
   if (!code || !state) return reply.code(400).send({ error: 'Invalid callback' });
   
   try {
-    await handleGoogleCallback(code, state);
+    // Unpack state: "profileId:source"
+    const [profileId, source] = state.split(':');
+    if (!profileId) throw new Error('Missing profileId in state');
+
+    await handleGoogleCallback(code, profileId);
+    
+    // Redirect based on source
+    if (source === 'mobile') {
+      return reply.redirect('memu://auth/callback?connected=true');
+    }
     return reply.redirect('/?connected=true');
   } catch (err: any) {
     server.log.error(err);
@@ -703,6 +713,21 @@ server.get('/api/auth/google/callback', async (request, reply) => {
        message: err.message, 
        stack: err.stack 
     });
+  }
+});
+
+// OAuth: Disconnect Google Calendar
+server.delete('/api/auth/google', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    await pool.query(
+      `DELETE FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`,
+      [profileId]
+    );
+    return { success: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to disconnect calendar' });
   }
 });
 

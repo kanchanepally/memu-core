@@ -173,8 +173,14 @@ export async function sendVision(
 }
 
 // Google Calendar OAuth
-export async function getGoogleAuthUrl(): Promise<ApiResponse<{ url: string }>> {
-  return request<{ url: string }>('/api/auth/google?format=json');
+export async function getGoogleAuthUrl(source: string = 'pwa'): Promise<ApiResponse<{ url: string }>> {
+  return request<{ url: string }>(`/api/auth/google?format=json&source=${encodeURIComponent(source)}`);
+}
+
+export async function disconnectGoogleCalendar() {
+  return request<{ success: boolean }>('/api/auth/google', {
+    method: 'DELETE',
+  });
 }
 
 // Today's briefing

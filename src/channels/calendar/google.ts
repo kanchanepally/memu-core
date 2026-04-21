@@ -14,7 +14,7 @@ export function getGoogleOAuthClient() {
   );
 }
 
-export function getGoogleAuthUrl(profileId: string) {
+export function getGoogleAuthUrl(profileId: string, source: string = 'pwa') {
   const oauth2Client = getGoogleOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -23,7 +23,8 @@ export function getGoogleAuthUrl(profileId: string) {
       'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/calendar.events',
     ],
-    state: profileId // Associate the auth callback with the requesting profile
+    // Pack profileId and source into state so callback can route correctly
+    state: `${profileId}:${source}`
   });
 }
 

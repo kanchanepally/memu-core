@@ -391,6 +391,14 @@ async function api(path, opts = {}) {
                 <div class="setting-subtitle" id="settings-server"></div>
             </div>
         </div>
+        <div class="setting-row" id="settings-calendar-row" onclick="toggleCalendarConnect()">
+            <div class="setting-icon">&#x1F4C5;</div>
+            <div class="setting-content">
+                <div class="setting-title">Google Calendar</div>
+                <div class="setting-subtitle" id="settings-calendar-status">Check connection...</div>
+            </div>
+            <div id="settings-calendar-action"></div>
+        </div>
     </div>
 
     <div class="section-label">Context</div>
@@ -606,10 +614,58 @@ async function loadBrief() {
         }
 
         document.getElementById('error-banner').classList.add('hidden');
+        renderCalendarSettings(data.isCalendarConnected);
     } catch (err) {
         const banner = document.getElementById('error-banner');
         banner.textContent = "Can't reach Memu. Check your connection.";
         banner.classList.remove('hidden');
+    }
+}
+
+let isCalendarConnected = false;
+
+function renderCalendarSettings(connected) {
+    isCalendarConnected = connected;
+    const statusEl = document.getElementById('settings-calendar-status');
+    const actionEl = document.getElementById('settings-calendar-action');
+    
+    if (connected) {
+        statusEl.textContent = 'Connected (Syncing events)';
+        statusEl.style.color = 'var(--color-success)';
+        actionEl.innerHTML = '<span style="color:var(--color-error);font-size:12px;font-weight:600;">Disconnect</span>';
+    } else {
+        statusEl.textContent = 'Not connected';
+        statusEl.style.color = 'var(--text-muted)';
+        actionEl.innerHTML = '<span class="setting-chevron">&#x203A;</span>';
+    }
+}
+
+async function toggleCalendarConnect() {
+    if (isCalendarConnected) {
+        if (!confirm('Disconnect Google Calendar? Memu will no longer be able to see or manage your events.')) return;
+        try {
+            await api('/api/auth/google', { method: 'DELETE' });
+            isCalendarConnected = false;
+            renderCalendarSettings(false);
+            loadBrief(); // Refresh lists and calendar views
+            alert('Disconnected successfully.');
+        } catch (e) {
+            alert('Failed to disconnect.');
+        }
+    } else {
+        handleCalendarConnect();
+    }
+}
+
+async function handleCalendarConnect() {
+    try {
+        const res = await api('/api/auth/google?format=json');
+        const data = await res.json();
+        if (data.url) {
+            window.location.href = data.url;
+        }
+    } catch (e) {
+        alert('Could not initiate Google Auth.');
     }
 }
 

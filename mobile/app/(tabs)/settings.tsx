@@ -81,6 +81,10 @@ export default function SettingsScreen() {
   const [exporting, setExporting] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
 
+  // Calendar state
+  const [isCalendarConnected, setIsCalendarConnected] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
   // BYOK state
   const [byokAnthropic, setByokAnthropic] = useState<BYOKKeyStatus | null>(null);
   const [byokIsChild, setByokIsChild] = useState(false);
@@ -89,17 +93,23 @@ export default function SettingsScreen() {
   const [byokSaving, setByokSaving] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [authState, loadedPrefs, byok] = await Promise.all([
+    const [authState, loadedPrefs, byok, brief] = await Promise.all([
       loadAuthState(),
       loadPrefs(),
       getBYOKStatus(),
+      import('../../lib/api').then(m => m.getTodayBrief()),
     ]);
     setAuth({ serverUrl: authState.serverUrl, displayName: authState.displayName });
     setPrefs(loadedPrefs);
+    
     if (byok.data) {
       setByokIsChild(!!byok.data.reason);
       const anthropic = byok.data.keys.find(k => k.provider === 'anthropic');
       setByokAnthropic(anthropic ?? { provider: 'anthropic', hasKey: false, enabled: false });
+    }
+
+    if (brief.data) {
+      setIsCalendarConnected(brief.data.isCalendarConnected);
     }
   }, []);
 
@@ -155,9 +165,34 @@ export default function SettingsScreen() {
   };
 
   const handleConnectCalendar = async () => {
-    const { data, error } = await getGoogleAuthUrl();
+    const { data, error } = await getGoogleAuthUrl('mobile');
     if (error) return Alert.alert('Could not start auth', error);
     if (data?.url) await Linking.openURL(data.url);
+  };
+
+  const handleDisconnectCalendar = async () => {
+    Alert.alert(
+      'Disconnect Google Calendar?',
+      'Memu will no longer be able to see or manage your events.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: async () => {
+            setDisconnecting(true);
+            const { error } = await import('../../lib/api').then(m => m.disconnectGoogleCalendar());
+            setDisconnecting(false);
+            if (error) {
+              Alert.alert('Could not disconnect', error);
+            } else {
+              setIsCalendarConnected(false);
+              Alert.alert('Disconnected', 'Google Calendar has been un-linked.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleExportData = async () => {
@@ -314,8 +349,11 @@ export default function SettingsScreen() {
           <Row
             icon="logo-google"
             title="Google Calendar"
-            subtitle="Connect to sync events"
-            onPress={handleConnectCalendar}
+            subtitle={isCalendarConnected ? 'Connected (Syncing events)' : 'Connect to sync events'}
+            onPress={isCalendarConnected ? handleDisconnectCalendar : handleConnectCalendar}
+            destructive={isCalendarConnected}
+            disabled={disconnecting}
+            right={disconnecting ? <ActivityIndicator size="small" color={colors.error} /> : undefined}
           />
         </View>
 
