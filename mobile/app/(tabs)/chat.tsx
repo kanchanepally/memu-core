@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TextInput, Pressable, FlatList,
   KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import type { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -18,6 +19,7 @@ interface Message {
   text: string;
   fromMemu: boolean;
   timestamp: Date;
+  channel?: string;
 }
 
 const WELCOME: Message = {
@@ -47,12 +49,14 @@ export default function ChatScreen() {
             text: msg.userMessage,
             fromMemu: false,
             timestamp: new Date(msg.timestamp),
+            channel: msg.channel,
           });
           restored.push({
             id: `hist-memu-${msg.id}`,
             text: msg.memuResponse,
             fromMemu: true,
             timestamp: new Date(msg.timestamp),
+            channel: msg.channel,
           });
         }
         setMessages(restored);
@@ -197,30 +201,62 @@ export default function ChatScreen() {
   const formatTime = (d: Date) =>
     d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const renderMessage = useCallback(({ item }: { item: Message }) => (
-    <View style={[styles.row, item.fromMemu ? styles.rowMemu : styles.rowUser]}>
-      {item.fromMemu ? (
-        <View style={styles.avatarWrap}>
-          <View style={styles.avatarGlow} />
-          <View style={styles.avatar}>
-            <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+  const renderMessage = useCallback(({ item }: { item: Message }) => {
+    const isWhatsApp = item.channel === 'whatsapp';
+    
+    return (
+      <View style={[styles.row, item.fromMemu ? styles.rowMemu : styles.rowUser]}>
+        {item.fromMemu ? (
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatarGlow} />
+            <View style={styles.avatar}>
+              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+            </View>
+          </View>
+        ) : null}
+
+        <View style={[styles.bubbleWrap, item.fromMemu ? { alignItems: 'flex-start' } : { alignItems: 'flex-end' }]}>
+          {isWhatsApp && !item.fromMemu && (
+            <View style={styles.contextBadge}>
+              <Ionicons name="logo-whatsapp" size={12} color="#25D366" />
+              <Text style={styles.contextBadgeText}>From WhatsApp</Text>
+            </View>
+          )}
+          {isWhatsApp && item.fromMemu && (
+            <View style={styles.contextBadge}>
+              <Ionicons name="pencil" size={12} color={colors.outline} />
+              <Text style={styles.contextBadgeText}>WhatsApp Draft</Text>
+            </View>
+          )}
+
+          <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
+            <Text 
+              selectable={true}
+              style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}
+            >
+              {item.text}
+            </Text>
+          </View>
+          
+          <View style={styles.metaRow}>
+            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+            {isWhatsApp && item.fromMemu && (
+              <Pressable 
+                onPress={() => {
+                  Clipboard.setStringAsync(item.text);
+                  toast.show('Draft copied to clipboard', 'success');
+                }}
+                style={styles.copyButton}
+              >
+                <Ionicons name="copy-outline" size={12} color={colors.primary} />
+                <Text style={styles.copyText}>Copy</Text>
+              </Pressable>
+            )}
           </View>
         </View>
-      ) : null}
-
-      <View style={[styles.bubbleWrap, item.fromMemu ? { alignItems: 'flex-start' } : { alignItems: 'flex-end' }]}>
-        <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
-          <Text 
-            selectable={true}
-            style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}
-          >
-            {item.text}
-          </Text>
-        </View>
-        <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
       </View>
-    </View>
-  ), []);
+    );
+  }, [toast]);
 
   return (
     <View style={styles.container}>
@@ -411,10 +447,44 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 10,
     color: colors.outline,
-    marginTop: 4,
-    paddingHorizontal: 6,
     fontFamily: typography.families.label,
     letterSpacing: typography.tracking.wide,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    paddingHorizontal: 6,
+    gap: 12,
+  },
+  contextBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+    paddingHorizontal: 6,
+  },
+  contextBadgeText: {
+    fontSize: 10,
+    color: colors.outline,
+    fontFamily: typography.families.label,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: radius.xs,
+  },
+  copyText: {
+    fontSize: 10,
+    color: colors.primary,
+    fontFamily: typography.families.label,
+    textTransform: 'uppercase',
   },
 
   typingRow: {
