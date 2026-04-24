@@ -68,7 +68,7 @@ export async function connectToWhatsApp() {
               await handleIncomingMessage(sock!, msg);
             } else {
               // Silently drop messages from non-consented chats to preserve privacy.
-              logger.debug(`Dropped message from non-consented chat: ${msg.key.remoteJid}`);
+              console.log(`[WHATSAPP] Dropped message from non-consented chat: ${msg.key.remoteJid}`);
             }
           } catch (err) {
             console.error('[WHATSAPP CONSENT] Error checking chat consent:', err);
