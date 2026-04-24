@@ -61,7 +61,11 @@ export async function connectToWhatsApp() {
             // Guardrail 2: WhatsApp Consent Architecture
             // Only process messages from chats that have been explicitly connected in settings,
             // OR if the user is messaging themselves (Note to Self).
-            const isNoteToSelf = msg.key.remoteJid === sock!.user?.id || msg.key.remoteJid?.startsWith(sock!.user?.id?.split(':')[0] || 'unknown');
+            const isNoteToSelf = 
+              msg.key.remoteJid === sock!.user?.id || 
+              msg.key.remoteJid?.startsWith(sock!.user?.id?.split(':')[0] || 'unknown') ||
+              msg.key.remoteJid?.endsWith('@lid'); // WhatsApp multi-device uses @lid for "Message Yourself"
+
             
             const consentCheck = await pool.query(
               `SELECT 1 FROM whatsapp_connected_chats WHERE chat_jid = $1`,
