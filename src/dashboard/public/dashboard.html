@@ -568,7 +568,8 @@ async function loadBrief() {
                 let actions = '';
                 if (card.actions && Array.isArray(card.actions) && card.actions.length > 0) {
                     card.actions.forEach(act => {
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('dynamic','${card.id}','${act.id || act.label}')">${esc(act.label)}</button>`;
+                        const actionType = act.type || 'dynamic';
+                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('${actionType}','${card.id}','${act.id || act.label}')">${esc(act.label)}</button>`;
                     });
                 } else {
                     if (card.card_type !== 'shopping') {

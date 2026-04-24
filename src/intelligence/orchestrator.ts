@@ -327,13 +327,24 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
 }
 
 async function lookupOrCreateProfile(jid: string): Promise<string> {
-  const res = await pool.query('SELECT profile_id FROM profile_channels WHERE channel_identifier = $1', [jid]);
-  if (res.rows.length > 0) {
-    return res.rows[0].profile_id;
+  // PERSONAL ASSISTANT OVERRIDE:
+  // Since Memu is connected to the user's personal WhatsApp (not a generic bot number),
+  // we do not want to create separate isolated dashboards for every person who texts them.
+  // We route all intercepted intelligence directly to the primary Hub Owner's dashboard
+  // so they can actually see the tasks, stream cards, and drafts.
+  
+  try {
+    const ownerRes = await pool.query('SELECT id FROM profiles ORDER BY created_at ASC LIMIT 1');
+    if (ownerRes.rows.length > 0) {
+      return ownerRes.rows[0].id;
+    }
+  } catch (err) {
+    console.error('Error finding primary profile:', err);
   }
 
+  // Fallback if DB is empty (should not happen in a running hub)
   console.log(`Creating test profile for new number: ${jid}`);
-  const idRes = await pool.query('INSERT INTO profiles (display_name, role) VALUES ($1, $2) RETURNING id', ['Test WhatsApp User', 'adult']);
+  const idRes = await pool.query('INSERT INTO profiles (display_name, role) VALUES ($1, $2) RETURNING id', ['Hub Owner', 'adult']);
   const newProfileId = idRes.rows[0].id;
 
   await pool.query('INSERT INTO profile_channels (profile_id, channel, channel_identifier) VALUES ($1, $2, $3)', [newProfileId, 'whatsapp', jid]);
