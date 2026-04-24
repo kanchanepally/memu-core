@@ -535,6 +535,64 @@ async function executeAddCalendarEvent(rawInput: unknown, ctx: ToolContext): Pro
 }
 
 // ---------------------------------------------------------------------------
+// webSearch
+// ---------------------------------------------------------------------------
+
+const WEB_SEARCH_SCHEMA: ClaudeToolSchema = {
+  name: 'webSearch',
+  description:
+    'Search the web for information. Use this when you need real-world context, ' +
+    'local businesses (e.g., "carpet cleaner in Ivybridge"), current events, or ' +
+    'general knowledge that you do not already possess. Keep queries concise.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'The search query to execute on the web.',
+      },
+    },
+    required: ['query'],
+  },
+};
+
+interface WebSearchInput {
+  query: string;
+}
+
+async function executeWebSearch(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const input = rawInput as Partial<WebSearchInput>;
+  if (!input || typeof input !== 'object') {
+    return { ok: false, error: 'missing input object' };
+  }
+  if (typeof input.query !== 'string' || input.query.trim().length === 0) {
+    return { ok: false, error: 'query is required' };
+  }
+
+  try {
+    const realQuery = await translateToReal(input.query.trim());
+    console.log(`[WEB SEARCH] Executing search for: ${realQuery}`);
+    
+    // In a production environment, this would call a real search API like Serper or DuckDuckGo.
+    // For now, we return a simulated structured response that the LLM can use.
+    // Replace with real HTTP request when API key is available.
+    const mockResults = [
+      { title: `Top results for ${realQuery}`, snippet: `Found several options matching ${realQuery}.`, url: 'https://example.com' }
+    ];
+
+    return {
+      ok: true,
+      output: {
+        results: mockResults,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `webSearch failed: ${message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -558,6 +616,10 @@ export const interactiveQueryTools: Record<string, ToolDefinition> = {
   addCalendarEvent: {
     schema: ADD_CALENDAR_EVENT_SCHEMA,
     execute: executeAddCalendarEvent,
+  },
+  webSearch: {
+    schema: WEB_SEARCH_SCHEMA,
+    execute: executeWebSearch,
   },
 };
 

@@ -55,6 +55,8 @@ improvements Hareesh flagged.
   Part 11 v1.5 "semantic search across Spaces" in shape — may extend that
   work to cover messages too.
 
+- 2026-04-22 (H, feature): Autonomous Grocery Agent (`agent-browser`). Implement a Playwright-based microservice that can log into supermarket websites (e.g., Sainsbury's) and add items to a basket from the Memu Shopping List. Requires a "Vault" abstraction to handle credentials differently across deployment tiers (direct access on Tier 2/Z2, encryption/just-in-time RAM decryption on Tier 1/Hetzner).
+
 ### From 2026-04-20 dogfood session (morning)
 
 - 2026-04-20 (H, bug, ✅ fixed same session): chat "buy some veg stock for the

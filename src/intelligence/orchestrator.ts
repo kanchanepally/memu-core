@@ -306,7 +306,20 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
 
     // Direct Message — full intelligence pipeline
     const realResponse = await processIntelligencePipeline(profileId, content, 'whatsapp', msg.key?.id || 'unknown');
-    await sock.sendMessage(senderJid, { text: realResponse });
+    
+    // Guardrail 3: Human-in-the-Middle & No Auto-Replies
+    // Since Baileys runs as the user's linked device, sending a message here means
+    // Memu would impersonate the user to their partner/friend. We explicitly do NOT
+    // auto-reply. The intelligence pipeline has processed the message, updated Spaces,
+    // and generated a response that will be visible as a draft in the Memu app's Threaded Chat.
+    
+    // If the user is messaging their *own* number (Note to Self), we can reply.
+    const isNoteToSelf = senderJid === sock.user?.id || senderJid.startsWith(sock.user?.id?.split(':')[0] || 'unknown');
+    if (isNoteToSelf) {
+      await sock.sendMessage(senderJid, { text: realResponse });
+    } else {
+      console.log(`[WHATSAPP] Silently ingested DM from ${senderJid}. Draft generated in Memu, but not auto-replying.`);
+    }
   } catch (err) {
     console.error('Error handling incoming message:', err);
     await sock.sendMessage(senderJid, { text: "Sorry, I encountered an internal error processing that." });

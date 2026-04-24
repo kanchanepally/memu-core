@@ -24,6 +24,7 @@ import { dispatch } from '../skills/router';
 import { getCatalogue, renderCatalogueForPrompt, type CatalogueEntry } from '../spaces/catalogue';
 import { findSpaceByUri } from '../spaces/store';
 import type { Space } from '../spaces/model';
+import { translateToReal } from '../twin/translator';
 import { evaluateStandards, type CareStandard } from '../care/standards';
 import { computeDomainStates } from '../domains/health';
 
@@ -130,6 +131,9 @@ async function persistFinding(
     return 'duplicate';
   }
 
+  const realTitle = await translateToReal(finding.title);
+  const realBody = await translateToReal(formatFindingBody(finding));
+
   const cardRes = await pool.query<{ id: string }>(
     `INSERT INTO stream_cards (family_id, card_type, title, body, source, actions)
      VALUES ($1, $2, $3, $4, 'proactive', $5)
@@ -137,8 +141,8 @@ async function persistFinding(
     [
       familyId,
       CARD_TYPE_BY_KIND[finding.kind],
-      finding.title,
-      formatFindingBody(finding),
+      realTitle,
+      realBody,
       JSON.stringify([{ label: 'Resolve', type: 'dismiss' }]),
     ],
   );

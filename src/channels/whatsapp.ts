@@ -3,6 +3,7 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { handleIncomingMessage } from '../intelligence/orchestrator';
 import qrcode from 'qrcode-terminal';
+import { pool } from '../db/connection';
 
 // Silent logger for Baileys to avoid polluting console with connection spam
 const logger = pino({ level: 'silent' });
@@ -54,8 +55,24 @@ export async function connectToWhatsApp() {
         // Allow messages from the user's phone, but filter out messages sent by Memu (Baileys generates IDs starting with BAE5 or 3E0B depending on version)
         const isFromBot = msg.key.fromMe && (msg.key.id?.startsWith('BAE5') || msg.key.id?.length === 22);
         
-        if (msg.message && !isFromBot) {
-          await handleIncomingMessage(sock!, msg);
+        if (msg.message && !isFromBot && msg.key.remoteJid) {
+          try {
+            // Guardrail 2: WhatsApp Consent Architecture
+            // Only process messages from chats that have been explicitly connected in settings.
+            const consentCheck = await pool.query(
+              `SELECT 1 FROM whatsapp_connected_chats WHERE chat_jid = $1`,
+              [msg.key.remoteJid]
+            );
+            
+            if (consentCheck.rows.length > 0) {
+              await handleIncomingMessage(sock!, msg);
+            } else {
+              // Silently drop messages from non-consented chats to preserve privacy.
+              logger.debug(`Dropped message from non-consented chat: ${msg.key.remoteJid}`);
+            }
+          } catch (err) {
+            console.error('[WHATSAPP CONSENT] Error checking chat consent:', err);
+          }
         }
       }
     }

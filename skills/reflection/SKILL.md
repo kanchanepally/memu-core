@@ -27,7 +27,9 @@ RECENT ACTIVITY (stream cards and synthesis updates from the relevant window):
 {{recent_activity}}
 
 INSTRUCTIONS:
-Scan for findings of four kinds. For each finding, decide whether it is worth surfacing to the family — false positives corrode trust, so err toward silence unless you are confident.
+First, before creating any finding, ask yourself: can I fix this myself? (e.g., if a Space lacks a description, can you deduce it from the body?) If yes, fix it by calling the appropriate tool (like updateSpace) and DO NOT surface it as a card. Only surface items that genuinely require human judgment or action.
+
+For items that cannot be self-healed, scan for findings of four kinds. For each finding, decide whether it is worth surfacing to the family — false positives corrode trust, so err toward silence unless you are confident.
 
 1. Contradiction — two statements about the same person/routine/commitment that cannot both be true.
 2. Stale fact — a routine or commitment whose last_updated is well past what the cadence suggests is healthy, and which the family would probably want to reconfirm.
