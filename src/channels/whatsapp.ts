@@ -52,8 +52,9 @@ export async function connectToWhatsApp() {
   sock.ev.on('messages.upsert', async (m) => {
     if (m.type === 'notify') {
       for (const msg of m.messages) {
-        // Allow messages from the user's phone, but filter out messages sent by Memu (Baileys generates IDs starting with BAE5 or 3E0B depending on version)
-        const isFromBot = msg.key.fromMe && (msg.key.id?.startsWith('BAE5') || msg.key.id?.length === 22);
+        // Allow messages from the user's phone, but filter out messages sent by Memu 
+        // (Baileys v6+ generates IDs starting with BAE5)
+        const isFromBot = msg.key.fromMe && msg.key.id?.startsWith('BAE5');
         
         if (msg.message && !isFromBot && msg.key.remoteJid) {
           try {
