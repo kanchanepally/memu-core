@@ -59,13 +59,16 @@ export async function connectToWhatsApp() {
         if (msg.message && !isFromBot && msg.key.remoteJid) {
           try {
             // Guardrail 2: WhatsApp Consent Architecture
-            // Only process messages from chats that have been explicitly connected in settings.
+            // Only process messages from chats that have been explicitly connected in settings,
+            // OR if the user is messaging themselves (Note to Self).
+            const isNoteToSelf = msg.key.remoteJid === sock!.user?.id || msg.key.remoteJid?.startsWith(sock!.user?.id?.split(':')[0] || 'unknown');
+            
             const consentCheck = await pool.query(
               `SELECT 1 FROM whatsapp_connected_chats WHERE chat_jid = $1`,
               [msg.key.remoteJid]
             );
             
-            if (consentCheck.rows.length > 0) {
+            if (isNoteToSelf || consentCheck.rows.length > 0) {
               await handleIncomingMessage(sock!, msg);
             } else {
               // Silently drop messages from non-consented chats to preserve privacy.
