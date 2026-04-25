@@ -38,7 +38,12 @@ export async function getTokensForProfile(profileId: string): Promise<string[]> 
 }
 
 export async function sendPush(tokens: string[], payload: PushPayload): Promise<void> {
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) {
+    console.log('[PUSH] sendPush called with 0 tokens — skipping');
+    return;
+  }
+
+  console.log(`[PUSH] Sending "${payload.title}" to ${tokens.length} token(s) — body length=${payload.body.length}`);
 
   const messages = tokens.map(to => ({
     to,
@@ -60,20 +65,34 @@ export async function sendPush(tokens: string[], payload: PushPayload): Promise<
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      console.error('[PUSH] Expo rejected batch:', body);
+      console.error(`[PUSH] Expo rejected batch — HTTP ${res.status}:`, JSON.stringify(body));
       return;
     }
-    const data = (body as any).data as Array<{ status: string; message?: string; details?: { error?: string } }> | undefined;
-    if (!Array.isArray(data)) return;
-    // Drop tokens Expo marked DeviceNotRegistered — no point keeping them.
+    const data = (body as any).data as Array<{ status: string; id?: string; message?: string; details?: { error?: string } }> | undefined;
+    if (!Array.isArray(data)) {
+      console.warn('[PUSH] Expo response had no data array:', JSON.stringify(body));
+      return;
+    }
+
+    let okCount = 0;
+    let errCount = 0;
+    let removedDead = 0;
     for (let i = 0; i < data.length; i++) {
       const receipt = data[i];
-      if (receipt.status === 'error' && receipt.details?.error === 'DeviceNotRegistered') {
+      if (receipt.status === 'ok') {
+        okCount++;
+        continue;
+      }
+      errCount++;
+      const errCode = receipt.details?.error || 'unknown';
+      console.error(`[PUSH] Token #${i} rejected: ${errCode} — ${receipt.message || ''}`);
+      if (errCode === 'DeviceNotRegistered') {
         await pool.query('DELETE FROM push_tokens WHERE token = $1', [tokens[i]]).catch(() => {});
-        console.log(`[PUSH] Removed dead token for index ${i}`);
+        removedDead++;
       }
     }
+    console.log(`[PUSH] Result: ${okCount} accepted, ${errCount} rejected${removedDead > 0 ? `, ${removedDead} dead tokens removed` : ''}`);
   } catch (err) {
-    console.error('[PUSH] Failed to deliver:', err);
+    console.error('[PUSH] Failed to deliver (network/exception):', err);
   }
 }

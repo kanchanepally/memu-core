@@ -6,10 +6,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import {
   getTodayBrief, getSynthesis, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
-  type BriefEvent, type StreamCard as StreamCardData,
+  executeAddToListAction, executeAddCalendarEventAction, executeUpdateSpaceAction, ackReplyDraftAction,
+  completeCareStandard,
+  type BriefEvent, type StreamCard as StreamCardData, type StreamCardAction,
 } from '../../lib/api';
+import { useToast } from '../../components/Toast';
 import { loadAuthState } from '../../lib/auth';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
@@ -117,6 +121,10 @@ export default function TodayScreen() {
   const [editBody, setEditBody] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Reply-draft preview state — surfaced for any briefing action of kind reply_draft
+  const [replyPreview, setReplyPreview] = useState<{ cardId: string; actionIndex: number; draftText: string; recipient?: string } | null>(null);
+  const toast = useToast();
+
   const handleResolve = useCallback(async (cardId: string) => {
     await resolveCard(cardId);
     setCards(prev => prev.filter(c => c.id !== cardId));
@@ -155,6 +163,129 @@ export default function TodayScreen() {
     }
     setEditingCard(null);
   }, [editingCard, editTitle, editBody]);
+
+  // Maps the persisted action union to the UI-facing { label, icon, variant, onPress }
+  // shape that StreamCard expects. Briefing actions go through their kind-specific
+  // backend endpoint; reflection/standard actions use their own paths. Returns null
+  // for entries we don't know how to handle (forward-compat: a future kind landing
+  // server-side won't crash the mobile app).
+  const mapCardActions = useCallback((card: StreamCardData): React.ComponentProps<typeof StreamCard>['actions'] => {
+    const persisted = (card.actions || []) as StreamCardAction[];
+    const onSuccess = (cardId: string, message?: string) => {
+      setCards(prev => prev.filter(c => c.id !== cardId));
+      if (message) toast.show(message);
+    };
+
+    return persisted
+      .map((action, index): NonNullable<React.ComponentProps<typeof StreamCard>['actions']>[number] | null => {
+        // Briefing actions carry { kind, label, payload }
+        if ('kind' in action) {
+          if (action.kind === 'add_to_list') {
+            return {
+              label: action.label || 'Add to list',
+              icon: 'basket-outline',
+              variant: 'primary',
+              onPress: async () => {
+                const { data, error: err } = await executeAddToListAction(card.id, index);
+                if (err) toast.show(err, 'error');
+                else onSuccess(card.id, `Added ${data?.added ?? 0} item${data?.added === 1 ? '' : 's'}`);
+              },
+            };
+          }
+          if (action.kind === 'add_calendar_event') {
+            return {
+              label: action.label || 'Add to calendar',
+              icon: 'calendar-outline',
+              variant: 'primary',
+              onPress: async () => {
+                const { error: err } = await executeAddCalendarEventAction(card.id, index);
+                if (err) toast.show(err, 'error');
+                else onSuccess(card.id, 'Event added to calendar');
+              },
+            };
+          }
+          if (action.kind === 'update_space') {
+            return {
+              label: action.label || 'Update Space',
+              icon: 'document-text-outline',
+              variant: 'primary',
+              onPress: async () => {
+                const { error: err } = await executeUpdateSpaceAction(card.id, index);
+                if (err) toast.show(err, 'error');
+                else onSuccess(card.id, 'Space updated');
+              },
+            };
+          }
+          if (action.kind === 'reply_draft') {
+            return {
+              label: action.label || 'Draft reply',
+              icon: 'chatbubble-outline',
+              variant: 'primary',
+              onPress: () => {
+                setReplyPreview({
+                  cardId: card.id,
+                  actionIndex: index,
+                  draftText: action.payload?.draft_text || '',
+                  recipient: action.payload?.to_anonymous_label,
+                });
+              },
+            };
+          }
+          return null;
+        }
+        // Legacy actions: { type, label, ... }
+        if (action.type === 'dismiss') {
+          return {
+            label: action.label || 'Dismiss',
+            variant: 'ghost',
+            onPress: async () => {
+              await dismissCard(card.id);
+              onSuccess(card.id);
+            },
+          };
+        }
+        if (action.type === 'standard_complete') {
+          return {
+            label: action.label || 'Mark done',
+            icon: 'checkmark',
+            variant: 'primary',
+            onPress: async () => {
+              const { error: err } = await completeCareStandard(action.standardId);
+              if (err) toast.show(err, 'error');
+              else {
+                await resolveCard(card.id);
+                onSuccess(card.id, 'Marked complete');
+              }
+            },
+          };
+        }
+        if (action.type === 'open_space') {
+          return {
+            label: action.label || 'Open Space',
+            icon: 'arrow-forward',
+            variant: 'secondary',
+            onPress: () => {
+              router.push('/(tabs)/spaces');
+            },
+          };
+        }
+        return null;
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+  }, [router, toast]);
+
+  const handleReplyDraftCopy = useCallback(async () => {
+    if (!replyPreview) return;
+    await Clipboard.setStringAsync(replyPreview.draftText);
+    await ackReplyDraftAction(replyPreview.cardId, replyPreview.actionIndex);
+    setCards(prev => prev.filter(c => c.id !== replyPreview.cardId));
+    setReplyPreview(null);
+    toast.show('Draft copied');
+  }, [replyPreview, toast]);
+
+  const handleReplyDraftSkip = useCallback(() => {
+    setReplyPreview(null);
+  }, []);
 
   if (loading) {
     return (
@@ -233,38 +364,47 @@ export default function TodayScreen() {
         {cards.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Stream</Text>
-            {cards.map(card => (
-              <StreamCard
-                key={card.id}
-                id={card.id}
-                cardType={card.card_type}
-                title={card.title}
-                body={card.body}
-                source={card.source}
-                onDismiss={() => handleDismiss(card.id)}
-                onEdit={() => openEdit(card)}
-                actions={[
-                  card.card_type !== 'shopping' ? {
-                    label: 'Calendar',
-                    icon: 'calendar-outline' as const,
-                    variant: 'secondary' as const,
-                    onPress: () => handleAddToCalendar(card.id),
-                  } : null,
-                  card.card_type !== 'shopping' ? {
-                    label: 'List',
-                    icon: 'basket-outline' as const,
-                    variant: 'secondary' as const,
-                    onPress: () => handleAddToShopping(card.id),
-                  } : null,
-                  {
-                    label: 'Done',
-                    icon: 'checkmark' as const,
-                    variant: 'primary' as const,
-                    onPress: () => handleResolve(card.id),
-                  },
-                ].filter(Boolean) as NonNullable<React.ComponentProps<typeof StreamCard>['actions']>}
-              />
-            ))}
+            {cards.map(card => {
+              // Data-driven: if the card was persisted with structured actions
+              // (briefing, reflection, care standards), render those. Fall back
+              // to the legacy Calendar/List/Done triplet only for cards from
+              // the old extraction path that have no actions[] yet.
+              const persistedActions = mapCardActions(card);
+              const hasPersisted = persistedActions && persistedActions.length > 0;
+              const fallbackActions: NonNullable<React.ComponentProps<typeof StreamCard>['actions']> = hasPersisted ? [] : [
+                ...(card.card_type !== 'shopping' ? [{
+                  label: 'Calendar',
+                  icon: 'calendar-outline' as const,
+                  variant: 'secondary' as const,
+                  onPress: () => handleAddToCalendar(card.id),
+                }] : []),
+                ...(card.card_type !== 'shopping' ? [{
+                  label: 'List',
+                  icon: 'basket-outline' as const,
+                  variant: 'secondary' as const,
+                  onPress: () => handleAddToShopping(card.id),
+                }] : []),
+                {
+                  label: 'Done',
+                  icon: 'checkmark' as const,
+                  variant: 'primary' as const,
+                  onPress: () => handleResolve(card.id),
+                },
+              ];
+              return (
+                <StreamCard
+                  key={card.id}
+                  id={card.id}
+                  cardType={card.card_type}
+                  title={card.title}
+                  body={card.body}
+                  source={card.source}
+                  onDismiss={() => handleDismiss(card.id)}
+                  onEdit={() => openEdit(card)}
+                  actions={hasPersisted ? persistedActions : fallbackActions}
+                />
+              );
+            })}
           </View>
         ) : null}
 
@@ -327,6 +467,33 @@ export default function TodayScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Reply-draft preview — opens for any briefing action of kind reply_draft.
+          v1: read-only preview with Copy + Skip. No autonomous send. */}
+      <Modal visible={!!replyPreview} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Draft reply</Text>
+            {replyPreview?.recipient ? (
+              <Text style={styles.modalLabel}>To: {replyPreview.recipient}</Text>
+            ) : null}
+            <Text style={[styles.modalInput, styles.modalInputMultiline, { textAlignVertical: 'top' }]}>
+              {replyPreview?.draftText || ''}
+            </Text>
+            <View style={styles.modalActions}>
+              <GradientButton
+                label="Skip"
+                onPress={handleReplyDraftSkip}
+                variant="ghost"
+              />
+              <GradientButton
+                label="Copy"
+                onPress={handleReplyDraftCopy}
+              />
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );

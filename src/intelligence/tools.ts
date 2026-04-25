@@ -543,13 +543,19 @@ const WEB_SEARCH_SCHEMA: ClaudeToolSchema = {
   description:
     'Search the web for information. Use this when you need real-world context, ' +
     'local businesses (e.g., "carpet cleaner in Ivybridge"), current events, or ' +
-    'general knowledge that you do not already possess. Keep queries concise.',
+    'general knowledge that you do not already possess. Keep queries concise. ' +
+    'IMPORTANT: queries are sent verbatim to a public search engine — they MUST ' +
+    'use public terms only (postcodes, place names, generic categories). Never ' +
+    'put a personal anonymous token (Adult-1, Child-2, Person-N) into a query — ' +
+    'the search engine cannot resolve them and the result will be useless.',
   input_schema: {
     type: 'object',
     properties: {
       query: {
         type: 'string',
-        description: 'The search query to execute on the web.',
+        description:
+          'The search query to execute on the web. Use only public terms — ' +
+          'no personal anonymous tokens, no internal labels.',
       },
     },
     required: ['query'],
@@ -560,7 +566,10 @@ interface WebSearchInput {
   query: string;
 }
 
-async function executeWebSearch(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+// Anonymous-token shape used by the Twin: Adult-1, Child-2, Person-3, Place-4...
+const ANON_TOKEN_RE = /\b(?:Adult|Child|Person|Place|Institution|Detail)-\d+\b/;
+
+async function executeWebSearch(rawInput: unknown, _ctx: ToolContext): Promise<ToolExecutionResult> {
   const input = rawInput as Partial<WebSearchInput>;
   if (!input || typeof input !== 'object') {
     return { ok: false, error: 'missing input object' };
@@ -569,73 +578,73 @@ async function executeWebSearch(rawInput: unknown, ctx: ToolContext): Promise<To
     return { ok: false, error: 'query is required' };
   }
 
+  const query = input.query.trim();
+
+  // Privacy invariant: never translate anonymous tokens back to real names
+  // before sending to a third-party search engine. The query is sent verbatim.
+  // If Claude emitted an anonymous token by mistake, refuse rather than leak.
+  if (ANON_TOKEN_RE.test(query)) {
+    return {
+      ok: false,
+      error:
+        'query contains an anonymous token (e.g. Adult-1). Rephrase using public terms only — ' +
+        'place names, postcodes, generic categories.',
+    };
+  }
+
   try {
-    const realQuery = await translateToReal(input.query.trim());
-    console.log(`[WEB SEARCH] Executing search for: ${realQuery}`);
-    
-    // Live Search via DuckDuckGo Lite HTML (Keyless scraper for testing/prototyping)
+    console.log(`[WEB SEARCH] Query: ${query}`);
+
     const response = await fetch('https://lite.duckduckgo.com/lite/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
-      body: `q=${encodeURIComponent(realQuery)}`
+      body: `q=${encodeURIComponent(query)}`,
     });
-    
+
     if (!response.ok) {
-       return { ok: false, error: `Search failed with status ${response.status}` };
+      return { ok: false, error: `search failed with status ${response.status}` };
     }
 
     const html = await response.text();
-    const results: { title: string, snippet: string, url: string }[] = [];
+    const results: { title: string; snippet: string; url: string }[] = [];
     const rows = html.split('<tr');
     let currentTitle = '';
     let currentUrl = '';
 
     for (const row of rows) {
       if (row.includes('class="result-snippet"')) {
-         const snippetMatch = row.match(/class="result-snippet"[^>]*>(.*?)<\/td>/);
-         if (snippetMatch && currentTitle) {
-           results.push({
-             title: currentTitle,
-             url: currentUrl,
-             snippet: snippetMatch[1].replace(/<[^>]*>?/gm, '').trim()
-           });
-           currentTitle = '';
-         }
+        const snippetMatch = row.match(/class="result-snippet"[^>]*>(.*?)<\/td>/);
+        if (snippetMatch && currentTitle) {
+          results.push({
+            title: currentTitle,
+            url: currentUrl,
+            snippet: snippetMatch[1].replace(/<[^>]*>?/gm, '').trim(),
+          });
+          currentTitle = '';
+        }
       } else if (row.includes('class="result-title"')) {
-         const titleMatch = row.match(/class="result-title"[^>]*>(.*?)<\/a>/);
-         const urlMatch = row.match(/href="(.*?)"/);
-         if (titleMatch) currentTitle = titleMatch[1].replace(/<[^>]*>?/gm, '').trim();
-         if (urlMatch) currentUrl = urlMatch[1];
+        const titleMatch = row.match(/class="result-title"[^>]*>(.*?)<\/a>/);
+        const urlMatch = row.match(/href="(.*?)"/);
+        if (titleMatch) currentTitle = titleMatch[1].replace(/<[^>]*>?/gm, '').trim();
+        if (urlMatch) currentUrl = urlMatch[1];
       }
     }
 
-    // Limit to top 4 results to save context window
     const topResults = results.slice(0, 4);
 
     if (topResults.length === 0) {
-       console.log('[WEB SEARCH] Scraper returned 0 results (likely hit a captcha). Using simulated fallback.');
-       return { 
-         ok: true, 
-         output: { 
-           results: [
-             { 
-               title: `Top Local Results for ${realQuery}`, 
-               snippet: `1. Sparkle Clean (Rated 4.8/5) - Available this Thursday. \n2. Fresh Carpets Ltd - £45 per room. \n3. Elite Carpet Care - Call 07700 900000.`,
-               url: 'https://example.com/search' 
-             }
-           ] 
-         } 
-       };
+      // Honest no-result. Never invent fake businesses — that would damage
+      // trust the moment the user tried to call one.
+      console.log('[WEB SEARCH] No results parsed (rate limit, captcha, or genuine empty).');
+      return { ok: false, error: 'no_results' };
     }
 
     return {
       ok: true,
-      output: {
-        results: topResults,
-      },
+      output: { results: topResults },
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

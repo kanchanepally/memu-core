@@ -11,19 +11,20 @@ const ctx: ToolContext = {
 };
 
 describe('interactiveQueryTools registry', () => {
-  it('exposes the five expected tools', () => {
+  it('exposes the six expected tools', () => {
     expect(Object.keys(interactiveQueryTools).sort()).toEqual([
       'addCalendarEvent',
       'addToList',
       'createSpace',
       'findSpaces',
       'updateSpace',
+      'webSearch',
     ]);
   });
 
   it('toolSchemas() returns one schema per tool with required Claude fields', () => {
     const schemas = toolSchemas(interactiveQueryTools);
-    expect(schemas).toHaveLength(5);
+    expect(schemas).toHaveLength(6);
     for (const s of schemas) {
       expect(typeof s.name).toBe('string');
       expect(typeof s.description).toBe('string');
@@ -250,4 +251,80 @@ describe('addCalendarEvent executor — validation branches', () => {
   // DB-touching happy / insert paths (not_connected, invalid_time,
   // insufficient_scope) covered by manual QA against Z2, per the project
   // convention also used by the updateSpace tests above.
+});
+
+describe('webSearch schema', () => {
+  it('declares query as the only required field', () => {
+    const schema = interactiveQueryTools.webSearch.schema;
+    expect(schema.input_schema.required).toEqual(['query']);
+  });
+
+  it('description warns Claude off anonymous tokens', () => {
+    const schema = interactiveQueryTools.webSearch.schema;
+    expect(schema.description).toMatch(/anonymous token/i);
+  });
+});
+
+describe('webSearch executor — validation branches', () => {
+  const exec = interactiveQueryTools.webSearch.execute;
+
+  it('rejects missing input object', async () => {
+    const r = await exec(null, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/missing input/i);
+  });
+
+  it('rejects missing query', async () => {
+    const r = await exec({}, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/query/i);
+  });
+
+  it('rejects whitespace-only query', async () => {
+    const r = await exec({ query: '   ' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/query/i);
+  });
+
+  // Privacy invariant: anonymous tokens (Adult-N, Child-N, Person-N, Place-N,
+  // Institution-N, Detail-N) must never reach the public search engine.
+  // Refuse rather than leak — translateToReal would defeat the Twin.
+  it('rejects query containing an Adult-N token', async () => {
+    const r = await exec({ query: 'carpet cleaner near Adult-1' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/anonymous token/i);
+  });
+
+  it('rejects query containing a Child-N token', async () => {
+    const r = await exec({ query: 'Child-2 birthday party ideas' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/anonymous token/i);
+  });
+
+  it('rejects query containing a Person-N token', async () => {
+    const r = await exec({ query: 'gift for Person-3' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/anonymous token/i);
+  });
+
+  it('rejects query containing a Place-N token', async () => {
+    const r = await exec({ query: 'restaurants near Place-1' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/anonymous token/i);
+  });
+
+  it('rejects query containing an Institution-N token', async () => {
+    const r = await exec({ query: 'term dates Institution-2' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/anonymous token/i);
+  });
+
+  it('rejects query containing a Detail-N token', async () => {
+    const r = await exec({ query: 'Detail-4 specifications' }, ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/anonymous token/i);
+  });
+
+  // Network-touching happy path (DDG Lite scrape, no_results, fetch errors)
+  // covered by manual QA, same convention as the addCalendarEvent tests above.
 });

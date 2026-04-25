@@ -8,7 +8,7 @@ import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { processChatVisionInput } from './intelligence/vision';
-import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent } from './channels/calendar/google';
+import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent, insertCalendarEvent } from './channels/calendar/google';
 import { generateAndPushMorningBriefing, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
 import { registerPushToken } from './channels/mobile';
 import { requireAuth, registerProfile } from './auth';
@@ -36,6 +36,8 @@ import {
   type ListType,
   type ListStatus,
 } from './lists/store';
+import { upsertSpace, findSpaceBySlug } from './spaces/store';
+import { SPACE_CATEGORIES, type SpaceCategory } from './spaces/model';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import path from 'path';
@@ -1078,6 +1080,186 @@ server.post('/api/stream/to-shopping', async (request, reply) => {
   }
 });
 
+// Briefing-action endpoints — execute the structured payload that the briefing
+// skill drafted and we persisted on stream_cards.actions[]. Each handler takes
+// {cardId, actionIndex}, looks up the persisted action, runs the matching
+// executor against the action's payload (already in real names — translation
+// happened at briefing-persist time via deepTranslateToReal), then resolves the
+// card. The kind discriminator on the action validates it matches the route.
+type LoadActionResult =
+  | { kind: 'error'; error: string; status: number }
+  | { kind: 'ok'; card: any; action: any };
+
+async function loadBriefingAction(cardId: string, actionIndex: number, profileId: string): Promise<LoadActionResult> {
+  const res = await pool.query(
+    `SELECT id, family_id, actions FROM stream_cards WHERE id = $1`,
+    [cardId],
+  );
+  if (res.rows.length === 0) return { kind: 'error', error: 'Card not found', status: 404 };
+  const card = res.rows[0];
+  if (card.family_id !== profileId) return { kind: 'error', error: 'Card belongs to a different family', status: 403 };
+  const actions = Array.isArray(card.actions) ? card.actions : [];
+  const action = actions[actionIndex];
+  if (!action) return { kind: 'error', error: 'Action not found at index', status: 404 };
+  return { kind: 'ok', card, action };
+}
+
+async function resolveCard(cardId: string) {
+  await pool.query(
+    `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1`,
+    [cardId],
+  );
+}
+
+server.post('/api/stream/action/add-to-list', async (request, reply) => {
+  const { cardId, actionIndex } = request.body as { cardId?: string; actionIndex?: number };
+  if (!cardId || typeof actionIndex !== 'number') {
+    return reply.code(400).send({ error: 'cardId and actionIndex required' });
+  }
+  const profileId = (request as any).profileId;
+  const loaded = await loadBriefingAction(cardId, actionIndex, profileId);
+  if (loaded.kind === 'error') return reply.code(loaded.status).send({ error: loaded.error });
+
+  const { action } = loaded;
+  if (action.kind !== 'add_to_list') {
+    return reply.code(400).send({ error: `action kind is ${action.kind}, not add_to_list` });
+  }
+  const payload = action.payload || {};
+  if (payload.list !== 'shopping' && payload.list !== 'task') {
+    return reply.code(400).send({ error: 'payload.list must be "shopping" or "task"' });
+  }
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    return reply.code(400).send({ error: 'payload.items must be a non-empty array' });
+  }
+
+  try {
+    const inserted: string[] = [];
+    for (const item of payload.items) {
+      if (typeof item !== 'string' || item.trim().length === 0) continue;
+      const row = await addListItem({
+        familyId: profileId,
+        listType: payload.list as ListType,
+        itemText: item.trim(),
+        source: `briefing-action:${cardId}`,
+        sourceStreamCardId: cardId,
+        createdBy: profileId,
+      });
+      inserted.push(row.id);
+    }
+    await resolveCard(cardId);
+    return { success: true, added: inserted.length };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'add-to-list failed' });
+  }
+});
+
+server.post('/api/stream/action/add-calendar-event', async (request, reply) => {
+  const { cardId, actionIndex } = request.body as { cardId?: string; actionIndex?: number };
+  if (!cardId || typeof actionIndex !== 'number') {
+    return reply.code(400).send({ error: 'cardId and actionIndex required' });
+  }
+  const profileId = (request as any).profileId;
+  const loaded = await loadBriefingAction(cardId, actionIndex, profileId);
+  if (loaded.kind === 'error') return reply.code(loaded.status).send({ error: loaded.error });
+
+  const { action } = loaded;
+  if (action.kind !== 'add_calendar_event') {
+    return reply.code(400).send({ error: `action kind is ${action.kind}, not add_calendar_event` });
+  }
+  const payload = action.payload || {};
+  if (typeof payload.title !== 'string' || typeof payload.start_iso !== 'string' || typeof payload.end_iso !== 'string') {
+    return reply.code(400).send({ error: 'payload requires title, start_iso, end_iso' });
+  }
+
+  try {
+    const result = await insertCalendarEvent(profileId, {
+      summary: payload.title,
+      startISO: payload.start_iso,
+      endISO: payload.end_iso,
+      location: payload.location,
+      description: payload.notes,
+    });
+    if (!result.ok) {
+      return reply.code(400).send({ error: result.message, reason: result.reason });
+    }
+    await resolveCard(cardId);
+    return { success: true, eventId: result.eventId, htmlLink: result.htmlLink };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'add-calendar-event failed' });
+  }
+});
+
+server.post('/api/stream/action/update-space', async (request, reply) => {
+  const { cardId, actionIndex } = request.body as { cardId?: string; actionIndex?: number };
+  if (!cardId || typeof actionIndex !== 'number') {
+    return reply.code(400).send({ error: 'cardId and actionIndex required' });
+  }
+  const profileId = (request as any).profileId;
+  const loaded = await loadBriefingAction(cardId, actionIndex, profileId);
+  if (loaded.kind === 'error') return reply.code(loaded.status).send({ error: loaded.error });
+
+  const { action } = loaded;
+  if (action.kind !== 'update_space') {
+    return reply.code(400).send({ error: `action kind is ${action.kind}, not update_space` });
+  }
+  const payload = action.payload || {};
+  if (typeof payload.slug !== 'string' || typeof payload.category !== 'string' || typeof payload.body_markdown !== 'string') {
+    return reply.code(400).send({ error: 'payload requires slug, category, body_markdown' });
+  }
+  if (!SPACE_CATEGORIES.includes(payload.category as SpaceCategory)) {
+    return reply.code(400).send({ error: `category must be one of: ${SPACE_CATEGORIES.join(', ')}` });
+  }
+
+  try {
+    const existing = await findSpaceBySlug(profileId, payload.category as SpaceCategory, payload.slug);
+    if (!existing) {
+      return reply.code(404).send({ error: `Space not found: ${payload.category}/${payload.slug}` });
+    }
+    const space = await upsertSpace({
+      familyId: existing.familyId,
+      category: existing.category,
+      slug: existing.slug,
+      name: existing.name,
+      bodyMarkdown: payload.body_markdown,
+      description: existing.description,
+      domains: existing.domains,
+      people: existing.people,
+      visibility: existing.visibility,
+      confidence: Math.min(1, existing.confidence + 0.05),
+      sourceReferences: [...existing.sourceReferences, `briefing-action:${cardId}`],
+      tags: existing.tags,
+      actorProfileId: profileId,
+    });
+    await resolveCard(cardId);
+    return { success: true, uri: space.uri };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'update-space failed' });
+  }
+});
+
+// reply_draft is a no-op endpoint — the user clicked Copy in the inline preview
+// and the draft was copied to their clipboard client-side. We resolve the card
+// so the action doesn't keep nagging, and log it for the privacy ledger.
+server.post('/api/stream/action/reply-draft', async (request, reply) => {
+  const { cardId, actionIndex } = request.body as { cardId?: string; actionIndex?: number };
+  if (!cardId || typeof actionIndex !== 'number') {
+    return reply.code(400).send({ error: 'cardId and actionIndex required' });
+  }
+  const profileId = (request as any).profileId;
+  const loaded = await loadBriefingAction(cardId, actionIndex, profileId);
+  if (loaded.kind === 'error') return reply.code(loaded.status).send({ error: loaded.error });
+
+  if (loaded.action.kind !== 'reply_draft') {
+    return reply.code(400).send({ error: `action kind is ${loaded.action.kind}, not reply_draft` });
+  }
+  await resolveCard(cardId);
+  console.log(`[BRIEFING ACTION] reply_draft acked for card=${cardId} index=${actionIndex}`);
+  return { success: true };
+});
+
 // Lists API — unified shopping / task / custom list items (bug 3).
 server.get('/api/lists', async (request, reply) => {
   try {
@@ -1301,6 +1483,33 @@ server.get('/api/admin/trigger-briefing', async (request, reply) => {
   } catch (err: any) {
     server.log.error(err);
     return reply.code(500).send({ error: err.message || 'Failed' });
+  }
+});
+
+// On-demand briefing for the caller. The 07:00 cron is the default cadence;
+// this endpoint is what the mobile "Run briefing now" button hits when the
+// user wants to absorb a fresh batch of WhatsApp inbox or recompose mid-day.
+// Adults only — children's profiles do not get briefings.
+server.post('/api/briefing/run-now', async (request, reply) => {
+  try {
+    const profile = (request as any).profile;
+    const profileId = (request as any).profileId;
+    if (!profileId) {
+      return reply.code(401).send({ error: 'Authentication required' });
+    }
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'Children do not receive briefings' });
+    }
+    const { channel } = (request.body ?? {}) as { channel?: 'app' | 'push' };
+    if (channel === 'push') {
+      const briefing = await pushMorningBriefingToMobile(profileId);
+      return { success: true, briefing, channel: 'push' };
+    }
+    const briefing = await generateAndPushMorningBriefing(profileId);
+    return { success: true, briefing, channel: 'app' };
+  } catch (err: any) {
+    server.log.error(err);
+    return reply.code(500).send({ error: err.message || 'Failed to run briefing' });
   }
 });
 
@@ -1754,15 +1963,17 @@ const start = async () => {
       }
     }, { timezone: 'Europe/London' });
 
-    // Story 2.2 — reflection cadences. Daily walks the catalogue at
-    // 03:15 so findings land before the 07:00 morning briefing; weekly
-    // pattern detection runs Sunday night. Both skip families that
-    // have reflection_enabled = false.
-    cron.schedule('15 3 * * *', async () => {
-      server.log.info('Running daily reflection pass across all families');
-      const { runReflectionForAllFamilies } = await import('./reflection/reflection');
-      const results = await runReflectionForAllFamilies('daily');
-      server.log.info({ results }, 'Daily reflection complete');
+    // Daily maintenance at 06:30 — standards check + domain health recompute.
+    // Runs before the 07:00 briefing so the domain header is fresh. The daily
+    // LLM reflection scan was retired 2026-04-25 (duplicated work the briefing
+    // already does and was the primary noise source in stream cards). Weekly
+    // pattern detection on Sunday night and per_message contradiction checks
+    // remain. Both skip families with reflection_enabled = false.
+    cron.schedule('30 6 * * *', async () => {
+      server.log.info('Running daily maintenance (standards + domain health) across all families');
+      const { runDailyMaintenanceForAllFamilies } = await import('./reflection/reflection');
+      const results = await runDailyMaintenanceForAllFamilies();
+      server.log.info({ results }, 'Daily maintenance complete');
     }, { timezone: 'Europe/London' });
 
     cron.schedule('0 23 * * 0', async () => {

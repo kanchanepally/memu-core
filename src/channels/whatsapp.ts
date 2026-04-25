@@ -63,7 +63,7 @@ export async function connectToWhatsApp() {
             // The batched Chief of Staff engine will sort through them later.
             await handleIncomingMessage(sock!, msg);
           } catch (err) {
-            console.error('[WHATSAPP CONSENT] Error checking chat consent:', err);
+            console.error('[WHATSAPP] Error handling incoming message:', err);
           }
         }
       }

@@ -12,12 +12,14 @@ import { loadPrefs, setAIMode, setBriefingEnabled, setBriefingTime, type AIMode,
 import {
   updateProfile, clearChatHistory, exportData, getGoogleAuthUrl,
   getBYOKStatus, setBYOKKey, revokeBYOKKey, toggleBYOKKey,
+  runBriefingNow,
   type BYOKKeyStatus,
 } from '../../lib/api';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
 import GradientButton from '../../components/GradientButton';
+import { useToast } from '../../components/Toast';
 
 interface RowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -78,8 +80,11 @@ export default function SettingsScreen() {
   const [aiModeModal, setAiModeModal] = useState(false);
   const [briefingModal, setBriefingModal] = useState(false);
   const [editedTime, setEditedTime] = useState('07:00');
+  const [sendingTest, setSendingTest] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [clearingChat, setClearingChat] = useState(false);
+
+  const toast = useToast();
 
   // Calendar state
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
@@ -148,6 +153,17 @@ export default function SettingsScreen() {
   const openBriefingEditor = () => {
     setEditedTime(prefs.briefingTime);
     setBriefingModal(true);
+  };
+
+  const handleSendTestPush = async () => {
+    setSendingTest(true);
+    const { error } = await runBriefingNow('push');
+    setSendingTest(false);
+    if (error) {
+      toast.show(error.length > 80 ? 'Could not send test briefing' : error, 'error');
+      return;
+    }
+    toast.show('Test briefing sent — check your notifications');
   };
 
   const handleSaveBriefing = async (enabled: boolean, time: string) => {
@@ -647,6 +663,22 @@ export default function SettingsScreen() {
               keyboardType="numbers-and-punctuation"
               maxLength={5}
             />
+
+            <View style={styles.testRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.testLabel}>Send a test briefing now</Text>
+                <Text style={styles.testHint}>
+                  Runs the full briefing pipeline and pushes it to this device.
+                </Text>
+              </View>
+              <GradientButton
+                label={sendingTest ? 'Sending…' : 'Send test'}
+                variant="ghost"
+                loading={sendingTest}
+                onPress={handleSendTestPush}
+              />
+            </View>
+
             <View style={styles.modalActions}>
               <GradientButton
                 label="Turn off"
@@ -787,6 +819,28 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.lg,
+  },
+
+  testRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceContainerLow,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginTop: spacing.lg,
+  },
+  testLabel: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+  },
+  testHint: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+    lineHeight: 16,
   },
 
   optionStack: {

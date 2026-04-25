@@ -110,11 +110,20 @@ export function findingHash(kind: FindingKind, title: string, spaceRefs: string[
   return crypto.createHash('sha256').update(`${kind}|${title}|${sorted}`).digest('hex');
 }
 
+// Findings below this threshold are dropped. Raised from 0.5 → 0.7 on
+// 2026-04-25 after dogfooding showed too many low-confidence "patterns"
+// landing as cards.
+const REFLECTION_MIN_CONFIDENCE = 0.7;
+
 async function persistFinding(
   familyId: string,
   cadence: Cadence,
   finding: ReflectionFinding,
-): Promise<'new' | 'duplicate'> {
+): Promise<'new' | 'duplicate' | 'dropped'> {
+  if (finding.confidence < REFLECTION_MIN_CONFIDENCE) {
+    return 'dropped';
+  }
+
   const hash = findingHash(finding.kind, finding.title, finding.space_refs);
 
   const existing = await pool.query(
@@ -134,6 +143,27 @@ async function persistFinding(
   const realTitle = await translateToReal(finding.title);
   const realBody = await translateToReal(formatFindingBody(finding));
 
+  // Action set depends on kind. The old "Resolve → dismiss" was a UX
+  // dead-end (clicking it just removed the card, didn't act). Stale facts
+  // and unfinished business now offer "Update Space" (opens detail) or
+  // "Not relevant" (dismiss). Patterns and contradictions are observation-
+  // only — the right response is for the user to decide and act
+  // elsewhere, so they get "Got it" + "Not relevant".
+  const actions = finding.kind === 'stale_fact' || finding.kind === 'unfinished_business'
+    ? finding.space_refs.length > 0
+      ? [
+          { label: 'Open Space', type: 'open_space', uri: finding.space_refs[0] },
+          { label: 'Not relevant', type: 'dismiss' },
+        ]
+      : [
+          { label: 'Got it', type: 'dismiss' },
+          { label: 'Not relevant', type: 'dismiss' },
+        ]
+    : [
+        { label: 'Got it', type: 'dismiss' },
+        { label: 'Not relevant', type: 'dismiss' },
+      ];
+
   const cardRes = await pool.query<{ id: string }>(
     `INSERT INTO stream_cards (family_id, card_type, title, body, source, actions)
      VALUES ($1, $2, $3, $4, 'proactive', $5)
@@ -143,7 +173,7 @@ async function persistFinding(
       CARD_TYPE_BY_KIND[finding.kind],
       realTitle,
       realBody,
-      JSON.stringify([{ label: 'Resolve', type: 'dismiss' }]),
+      JSON.stringify(actions),
     ],
   );
   const cardId = cardRes.rows[0].id;
@@ -221,7 +251,7 @@ export interface ReflectionResult {
  * anything that has just gone overdue. Idempotent via reflection_findings
  * like the other cadences.
  */
-async function runStandardsCheck(familyId: string): Promise<{ checked: number; lapsed: number }> {
+export async function runStandardsCheck(familyId: string): Promise<{ checked: number; lapsed: number }> {
   const standards = await evaluateStandards(familyId);
   let lapsed = 0;
   for (const standard of standards) {
@@ -285,7 +315,8 @@ export async function runReflection(cadence: Cadence, familyId: string): Promise
     if (cadence !== 'weekly' && finding.kind === 'pattern') continue; // pattern is weekly-only
     const outcome = await persistFinding(familyId, cadence, finding);
     if (outcome === 'new') raised++;
-    else deduped++;
+    else if (outcome === 'duplicate') deduped++;
+    // 'dropped' (low confidence) silently skipped
   }
 
   // Story 2.3 — the fourth pass runs alongside the daily LLM scan.
@@ -358,7 +389,8 @@ export async function runPerMessageReflection(familyId: string, touched: Space):
     if (finding.kind !== 'contradiction') continue; // per-message is contradiction-only
     const outcome = await persistFinding(familyId, 'per_message', finding);
     if (outcome === 'new') raised++;
-    else deduped++;
+    else if (outcome === 'duplicate') deduped++;
+    // 'dropped' (low confidence) silently skipped
   }
   return { cadence: 'per_message', familyId, findingsRaised: raised, findingsDeduped: deduped };
 }
@@ -371,6 +403,55 @@ export async function runReflectionForAllFamilies(cadence: Cadence): Promise<Ref
       results.push(await runReflection(cadence, familyId));
     } catch (err) {
       console.error(`[REFLECTION] ${cadence} pass failed for family ${familyId}:`, err);
+    }
+  }
+  return results;
+}
+
+/**
+ * Lightweight daily maintenance — standards check + domain health recompute,
+ * with NO LLM reflection scan. The daily LLM scan was retired 2026-04-25
+ * because it duplicated work the morning briefing already does and was the
+ * primary noise source in stream cards. Per_message contradiction checks
+ * (synchronous) and the weekly pattern detector remain. This pass runs at
+ * 06:30 so domain states are fresh for the 07:00 briefing.
+ */
+export interface DailyMaintenanceResult {
+  familyId: string;
+  standardsChecked: number;
+  standardsLapsed: number;
+  domainsRecomputed: number;
+  skipped?: 'disabled';
+}
+
+export async function runDailyMaintenance(familyId: string): Promise<DailyMaintenanceResult> {
+  if (!(await reflectionEnabled(familyId))) {
+    return { familyId, standardsChecked: 0, standardsLapsed: 0, domainsRecomputed: 0, skipped: 'disabled' };
+  }
+  const check = await runStandardsCheck(familyId);
+  let domainsRecomputed = 0;
+  try {
+    const states = await computeDomainStates(familyId);
+    domainsRecomputed = states.length;
+  } catch (err) {
+    console.error('[MAINTENANCE] domain health recompute failed:', err);
+  }
+  return {
+    familyId,
+    standardsChecked: check.checked,
+    standardsLapsed: check.lapsed,
+    domainsRecomputed,
+  };
+}
+
+export async function runDailyMaintenanceForAllFamilies(): Promise<DailyMaintenanceResult[]> {
+  const families = await listFamilyIds();
+  const results: DailyMaintenanceResult[] = [];
+  for (const familyId of families) {
+    try {
+      results.push(await runDailyMaintenance(familyId));
+    } catch (err) {
+      console.error(`[MAINTENANCE] daily maintenance failed for family ${familyId}:`, err);
     }
   }
   return results;

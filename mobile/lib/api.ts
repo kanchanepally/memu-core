@@ -190,6 +190,18 @@ export interface BriefEvent {
   endTime: string | null;
 }
 
+// Persisted action types on stream_cards.actions[]. Briefing skill emits
+// add_to_list / add_calendar_event / update_space / reply_draft. Reflection
+// emits dismiss / open_space. Care standards emit standard_complete.
+export type StreamCardAction =
+  | { kind: 'add_to_list'; label: string; payload: { list: 'shopping' | 'task'; items: string[] } }
+  | { kind: 'add_calendar_event'; label: string; payload: { title: string; start_iso: string; end_iso: string; location?: string; notes?: string } }
+  | { kind: 'update_space'; label: string; payload: { slug: string; category: string; body_markdown: string } }
+  | { kind: 'reply_draft'; label: string; payload: { to_anonymous_label?: string; draft_text: string } }
+  | { type: 'dismiss'; label: string }
+  | { type: 'open_space'; label: string; uri: string }
+  | { type: 'standard_complete'; label: string; standardId: string };
+
 export interface StreamCard {
   id: string;
   card_type: string;
@@ -197,7 +209,7 @@ export interface StreamCard {
   body: string;
   source: string;
   status: string;
-  actions: unknown[];
+  actions: StreamCardAction[] | null;
   created_at: string;
 }
 
@@ -251,6 +263,52 @@ export async function editCard(cardId: string, title: string, body: string) {
   return request<{ success: boolean; card: StreamCard }>('/api/stream/edit', {
     method: 'POST',
     body: JSON.stringify({ cardId, title, body }),
+  });
+}
+
+// Briefing-action handlers — execute the persisted payload at index `actionIndex`.
+export async function executeAddToListAction(cardId: string, actionIndex: number) {
+  return request<{ success: boolean; added: number }>('/api/stream/action/add-to-list', {
+    method: 'POST',
+    body: JSON.stringify({ cardId, actionIndex }),
+  });
+}
+
+export async function executeAddCalendarEventAction(cardId: string, actionIndex: number) {
+  return request<{ success: boolean; eventId: string; htmlLink: string | null }>('/api/stream/action/add-calendar-event', {
+    method: 'POST',
+    body: JSON.stringify({ cardId, actionIndex }),
+  });
+}
+
+export async function executeUpdateSpaceAction(cardId: string, actionIndex: number) {
+  return request<{ success: boolean; uri: string }>('/api/stream/action/update-space', {
+    method: 'POST',
+    body: JSON.stringify({ cardId, actionIndex }),
+  });
+}
+
+export async function ackReplyDraftAction(cardId: string, actionIndex: number) {
+  return request<{ success: boolean }>('/api/stream/action/reply-draft', {
+    method: 'POST',
+    body: JSON.stringify({ cardId, actionIndex }),
+  });
+}
+
+export async function completeCareStandard(standardId: string) {
+  return request<{ success: boolean }>(`/api/care-standards/${encodeURIComponent(standardId)}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+// Manually trigger a briefing for the calling profile. channel='app' surfaces
+// it as a Today-tab card; channel='push' fires the Expo push pipeline (used
+// to verify push tokens + Expo connectivity from Settings).
+export async function runBriefingNow(channel: 'app' | 'push' = 'app') {
+  return request<{ success: boolean; briefing: string | null; channel: string }>('/api/briefing/run-now', {
+    method: 'POST',
+    body: JSON.stringify({ channel }),
   });
 }
 
