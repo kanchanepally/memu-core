@@ -58,26 +58,10 @@ export async function connectToWhatsApp() {
         
         if (msg.message && !isFromBot && msg.key.remoteJid) {
           try {
-            // Guardrail 2: WhatsApp Consent Architecture
-            // Only process messages from chats that have been explicitly connected in settings,
-            // OR if the user is messaging themselves (Note to Self).
-            const isNoteToSelf = 
-              msg.key.remoteJid === sock!.user?.id || 
-              msg.key.remoteJid?.startsWith(sock!.user?.id?.split(':')[0] || 'unknown') ||
-              msg.key.remoteJid?.endsWith('@lid'); // WhatsApp multi-device uses @lid for "Message Yourself"
-
-            
-            const consentCheck = await pool.query(
-              `SELECT 1 FROM whatsapp_connected_chats WHERE chat_jid = $1`,
-              [msg.key.remoteJid]
-            );
-            
-            if (isNoteToSelf || consentCheck.rows.length > 0) {
-              await handleIncomingMessage(sock!, msg);
-            } else {
-              // Silently drop messages from non-consented chats to preserve privacy.
-              console.log(`[WHATSAPP] Dropped message from non-consented chat: ${msg.key.remoteJid}`);
-            }
+            // Phase 1: Omnivorous Ingestion
+            // We now ingest ALL messages (except from bots) and dump them into the Raw Inbox Queue.
+            // The batched Chief of Staff engine will sort through them later.
+            await handleIncomingMessage(sock!, msg);
           } catch (err) {
             console.error('[WHATSAPP CONSENT] Error checking chat consent:', err);
           }

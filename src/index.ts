@@ -125,6 +125,7 @@ server.addHook('preHandler', async (request, reply) => {
     url === '/health' ||
     url === '/api/register' ||
     url === '/api/auth/google/signin' ||
+    url === '/api/admin/trigger-briefing' ||
     url.startsWith('/api/auth/google/callback') ||
     !url.startsWith('/api/')
   ) {
@@ -1287,12 +1288,19 @@ server.get('/api/ledger', async (request, reply) => {
 // ADMIN: Manually Trigger Morning Briefing
 server.get('/api/admin/trigger-briefing', async (request, reply) => {
   try {
-    const profileId = (request as any).profileId;
+    let profileId = (request as any).profileId;
+    if (!profileId) {
+       const res = await pool.query('SELECT id FROM profiles LIMIT 1');
+       if (res.rows.length === 0) {
+          return reply.code(400).send({ error: 'No profiles exist to run briefing for' });
+       }
+       profileId = res.rows[0].id;
+    }
     const message = await generateAndPushMorningBriefing(profileId);
     return { success: true, messagePushed: message };
-  } catch (err) {
+  } catch (err: any) {
     server.log.error(err);
-    return reply.code(500).send({ error: 'Failed' });
+    return reply.code(500).send({ error: err.message || 'Failed' });
   }
 });
 

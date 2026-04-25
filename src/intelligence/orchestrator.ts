@@ -258,7 +258,6 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const urls = content.match(urlRegex);
   if (urls && urls.length > 0) {
-    await sock.sendMessage(senderJid, { text: "Reading link..." });
     for (const url of urls) {
       const scraped = await scrapeUrlContent(url);
       if (scraped) {
@@ -273,7 +272,6 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
 
     // Document Ingestion (Vision)
     if (isImage) {
-      await sock.sendMessage(senderJid, { text: "Scanning document..." });
 
       const buffer = await downloadMediaMessage(
         msg as import('@whiskeysockets/baileys').WAMessage,
@@ -290,9 +288,9 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
         const itemsFound = await processVisualDocumentExtraction(profileId, buffer as Buffer, mimeType, content, msg.key?.id || 'unknown');
 
         if (itemsFound && itemsFound > 0) {
-          await sock.sendMessage(senderJid, { text: `Got it. I extracted ${itemsFound} action item(s) and logged them to your Intelligence Stream.` });
+          console.log(`[VISION] Extracted ${itemsFound} action item(s) from image`);
         } else {
-          await sock.sendMessage(senderJid, { text: "I couldn't find any actionable deadlines or events in that image." });
+          console.log(`[VISION] Couldn't find actionable deadlines in image`);
         }
       }
       return;
@@ -304,25 +302,24 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
       return;
     }
 
-    // Direct Message — full intelligence pipeline
-    const realResponse = await processIntelligencePipeline(profileId, content, 'whatsapp', msg.key?.id || 'unknown');
-    
-    // Guardrail 3: Human-in-the-Middle & No Auto-Replies
-    // Since Baileys runs as the user's linked device, sending a message here means
-    // Memu would impersonate the user to their partner/friend. We explicitly do NOT
-    // auto-reply. The intelligence pipeline has processed the message, updated Spaces,
-    // and generated a response that will be visible as a draft in the Memu app's Threaded Chat.
-    
-    // If the user is messaging their *own* number (Note to Self), we can reply.
-    const isNoteToSelf = senderJid === sock.user?.id || senderJid.startsWith(sock.user?.id?.split(':')[0] || 'unknown');
-    if (isNoteToSelf) {
-      await sock.sendMessage(senderJid, { text: realResponse });
-    } else {
-      console.log(`[WHATSAPP] Silently ingested DM from ${senderJid}. Draft generated in Memu, but not auto-replying.`);
+    // Phase 1: Omnivorous Batched Ingestion
+    // We log the raw message to the new inbox queue. The batched Chief of Staff engine will process it later.
+    const messageId = msg.key?.id || `msg-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO inbox_messages (id, profile_id, channel, sender_jid, content, is_image) 
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO NOTHING`,
+      [messageId, profileId, 'whatsapp', senderJid, content, isImage]
+    );
+    console.log(`[INBOX] Logged message ${messageId} from ${senderJid} for batched processing.`);
+
+    // Fast-path: We still run the regex list extractor so direct commands ("add milk to shopping") work instantly
+    const listResult = await handleListCommand(profileId, content, 'whatsapp', messageId);
+    if (listResult) {
+      console.log(`[LIST FAST-PATH]: Extracted ${listResult.items.length} items directly.`);
     }
   } catch (err) {
     console.error('Error handling incoming message:', err);
-    await sock.sendMessage(senderJid, { text: "Sorry, I encountered an internal error processing that." });
   }
 }
 

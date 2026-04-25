@@ -564,6 +564,7 @@ async function loadBrief() {
                 const color = getSourceColor(card.source);
                 const sourceName = card.source.replace(/_/g, ' ');
                 const typeName = card.card_type.replace(/_/g, ' ');
+                const isBriefing = card.card_type === 'briefing';
 
                 let actions = '';
                 if (card.actions && Array.isArray(card.actions) && card.actions.length > 0) {
@@ -572,26 +573,31 @@ async function loadBrief() {
                         actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('${actionType}','${card.id}','${act.id || act.label}')">${esc(act.label)}</button>`;
                     });
                 } else {
-                    if (card.card_type !== 'shopping') {
+                    if (card.card_type !== 'shopping' && !isBriefing) {
                         actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('calendar','${card.id}')">&#x1F4C5; Calendar</button>`;
                         actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('shopping','${card.id}')">&#x1F6D2; List</button>`;
                     }
                 }
-                actions += `<button class="btn btn-secondary btn-sm" onclick="openEditModal('${card.id}',\`${esc(card.title)}\`,\`${esc(card.body)}\`)">&#x270F;&#65039; Edit</button>`;
+                if (!isBriefing) {
+                    actions += `<button class="btn btn-secondary btn-sm" onclick="openEditModal('${card.id}',\`${esc(card.title)}\`,\`${esc(card.body)}\`)">&#x270F;&#65039; Edit</button>`;
+                }
                 actions += `<button class="btn btn-secondary btn-sm" style="color:var(--color-success);border-color:var(--color-success);" onclick="cardAction('resolve','${card.id}')">&#x2713; Done</button>`;
                 actions += `<button class="btn btn-secondary btn-sm" style="color:var(--text-muted);" onclick="cardAction('dismiss','${card.id}')">&#x2715; Dismiss</button>`;
 
+                const bodyHtml = isBriefing ? renderMarkdown(card.body) : esc(card.body);
+                const briefingClass = isBriefing ? 'stream-card-briefing' : '';
+
                 return `
-                <div class="card stream-card" style="border-left-color:${color};">
+                <div class="card stream-card ${briefingClass}" style="border-left-color:${color}; ${isBriefing ? 'background: var(--bg-surface); border: 2px solid var(--border-color);' : ''}">
                     <div class="stream-card-header">
                         <span class="source-pill" style="background:${color}18;">
                             <span class="source-dot" style="background:${color};"></span>
                             <span style="color:${color};">${sourceName}</span>
                         </span>
-                        <span class="stream-card-type">${typeName}</span>
+                        <span class="stream-card-type" style="${isBriefing ? 'font-weight: 700; color: var(--color-accent);' : ''}">${typeName}</span>
                     </div>
-                    <div class="stream-card-title">${esc(card.title)}</div>
-                    <div class="stream-card-body">${esc(card.body)}</div>
+                    <div class="stream-card-title" style="${isBriefing ? 'font-size: 1.5rem; margin-bottom: 16px;' : ''}">${esc(card.title)}</div>
+                    <div class="stream-card-body" style="${isBriefing ? 'line-height: 1.6;' : ''}">${bodyHtml}</div>
                     <div class="stream-card-actions">${actions}</div>
                 </div>`;
             }).join('');

@@ -83,15 +83,15 @@ export async function saveAuthState(data: {
   const store = await getStore();
 
   if (store) {
-    await store.setItemAsync(KEYS.serverUrl, data.serverUrl);
-    await store.setItemAsync(KEYS.apiKey, data.apiKey);
-    await store.setItemAsync(KEYS.profileId, data.profileId);
-    await store.setItemAsync(KEYS.displayName, data.displayName);
+    await store.setItemAsync(KEYS.serverUrl, data.serverUrl || '');
+    await store.setItemAsync(KEYS.apiKey, data.apiKey || '');
+    await store.setItemAsync(KEYS.profileId, data.profileId || '');
+    await store.setItemAsync(KEYS.displayName, data.displayName || '');
   } else {
-    webStore.set(KEYS.serverUrl, data.serverUrl);
-    webStore.set(KEYS.apiKey, data.apiKey);
-    webStore.set(KEYS.profileId, data.profileId);
-    webStore.set(KEYS.displayName, data.displayName);
+    webStore.set(KEYS.serverUrl, data.serverUrl || '');
+    webStore.set(KEYS.apiKey, data.apiKey || '');
+    webStore.set(KEYS.profileId, data.profileId || '');
+    webStore.set(KEYS.displayName, data.displayName || '');
   }
 }
 
