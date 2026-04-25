@@ -26,6 +26,24 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### From 2026-04-25 dogfood (post-batch APK install)
+
+- 2026-04-25 (H, bug): Lists tab — ticked-off items reappear after tab
+  switch / refresh. Repro: Lists → tap checkbox on a task → item
+  disappears optimistically → switch to another tab → switch back →
+  item is back. Static read suggests one of three causes (need a live
+  repro to narrow): (a) `completeListItemApi` failing silently and the
+  optimistic `setTasks(prev => prev.filter(...))` masks it
+  (`mobile/app/(tabs)/lists.tsx:140–144` doesn't check the response),
+  (b) profile mismatch — item's `family_id` ≠ caller's `profileId` on
+  the UPDATE (`src/lists/store.ts:88`), so 0 rows updated and the GET
+  with `status=pending` keeps returning it, (c) `useFocusEffect` on
+  line 124 fires a `loadItems` that overrides the optimistic state
+  before the POST has finished. Diagnostic: `docker logs
+  memu_core_standalone_api | grep "/api/lists"` during the repro to
+  see whether the POST returns 200 + the row's status flips. Single
+  evening fix once cause is known.
+
 ### From 2026-04-20 dogfood running list (afternoon)
 
 Tool-use cluster (items 1 + 3 + 4 + the capabilities half of item 2) shipped
@@ -115,6 +133,40 @@ same evening, 2 open.
 ---
 
 ## Shipped — moved here only for the Sunday retrospective, cleared at triage
+
+- ✅ 2026-04-24 → 25 (beta-readiness batch for Tier-2 Z2 standalone). Closes
+  the "memu was creating more work for me" complaint from the first-use
+  session by making stream-card actions actually execute their persisted
+  payload instead of just dismissing. Backend (`src/index.ts`,
+  `src/intelligence/briefing.ts`): four new endpoints under
+  `/api/stream/action/*` — `add-to-list`, `add-calendar-event`,
+  `update-space`, `reply-draft`. Each loads + validates the persisted
+  briefing action, executes its payload (calls `addItem` /
+  `insertCalendarEvent` / `upsertSpace` / clipboard-ack respectively), and
+  resolves the card. `briefing.ts` now runs `deepTranslateToReal` on
+  `suggested_actions` before persisting to `stream_cards.actions` so real
+  names survive in the JSONB. `/api/briefing/run-now` accepts
+  `{channel: 'app' | 'push'}` so the new mobile test button can hit the
+  actual `pushMorningBriefingToMobile` path. Mobile
+  (`mobile/lib/api.ts`, `mobile/app/(tabs)/index.tsx`,
+  `mobile/app/(tabs)/settings.tsx`): `StreamCardAction` typed as 7-variant
+  discriminated union (4 briefing kinds + 3 legacy types), Today tab's
+  `mapCardActions` renders briefing actions when present and falls back
+  to the Calendar/List/Done triplet for extraction-path cards;
+  `reply_draft` opens an inline preview modal with Copy (clipboard +
+  ack + remove + toast) and Skip (no ack so user can revisit); Settings
+  → Morning briefing modal gets a "Send test" row that runs the full
+  briefing pipeline through `pushMorningBriefingToMobile`. Reflection
+  cron tightened in the same window: confidence threshold 0.7,
+  concrete-next-step requirement, daily reflection cron dropped (kept
+  weekly + per-message + standards). Verbose push logging added to
+  `sendPush` + the briefing cron. Commit `5c0e304` on `origin/main`,
+  deployed to Z2 standalone 2026-04-25 02:08 UTC. EAS APK build kicked
+  off — verifying on-device with the new "Send test" button is the next
+  physical step. [resolves the stream-card half of cluster-1
+  ("LLM confirms captures that have not actually landed"); chat-driven
+  `addToList` half stays open under the 2026-04-21 entry pending Session
+  1 deploy verification]
 
 - ✅ 2026-04-20 evening (tool-use cluster, INBOX items 1 + 3 + 4 + the
   capabilities gap in item 2): Claude tool-use wired into
