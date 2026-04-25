@@ -1,23 +1,23 @@
 # For fresh deployments: laptop, VPS, or new hardware
 # Includes its own PostgreSQL instance
 services:
-#   gateway:
-#     build: .
-#     container_name: memu_core
-#     ports:
-#       - "3100:3100"
-#     environment:
-#       - DATABASE_URL=postgresql://memu:${DB_PASSWORD}@db:5432/memu_core
-#       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-#       - OLLAMA_HOST=${OLLAMA_HOST:-}
-#       - ENABLE_CALENDAR_OBSERVER=${ENABLE_CALENDAR:-false}
-#       - ENABLE_EMAIL_OBSERVER=${ENABLE_EMAIL:-false}
-#       - ENABLE_PHOTO_OBSERVER=${ENABLE_PHOTOS:-false}
-#       - TZ=${TZ:-Europe/London}
-#     depends_on:
-#       db:
-#         condition: service_healthy
-#     restart: unless-stopped
+  gateway:
+    build: .
+    container_name: memu_core
+    ports:
+      - "3100:3100"
+    environment:
+      - DATABASE_URL=postgresql://memu:${DB_PASSWORD}@db:5432/memu_core
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OLLAMA_HOST=${OLLAMA_HOST:-}
+      - ENABLE_CALENDAR_OBSERVER=${ENABLE_CALENDAR:-false}
+      - ENABLE_EMAIL_OBSERVER=${ENABLE_EMAIL:-false}
+      - ENABLE_PHOTO_OBSERVER=${ENABLE_PHOTOS:-false}
+      - TZ=${TZ:-Europe/London}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
   db:
     image: pgvector/pgvector:pg16
