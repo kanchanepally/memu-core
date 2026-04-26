@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-1">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-2">
 </head>
 <body>
 <!-- Auth gate -->
@@ -202,7 +202,7 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== CHAT TAB ==================== -->
-<div id="view-chat" class="container-wide hidden" style="max-width:700px;margin:0 auto;">
+<div id="view-chat" class="container-wide chat-canvas hidden">
     <div class="chat-container">
         <div class="chat-messages" id="chat-messages">
             <div class="typing-indicator" id="chat-loading">Loading conversation...</div>
@@ -232,7 +232,7 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== SPACES TAB ==================== -->
-<div id="view-spaces" class="container hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+<div id="view-spaces" class="container-wide hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
     <!-- List view: chips + grid + feature card -->
     <div id="spaces-list-view">
         <header class="spaces-masthead">
@@ -341,6 +341,20 @@ async function api(path, opts = {}) {
                 <div class="text-muted" style="font-size:13px;">Loading household...</div>
             </div>
         </div>
+
+        <!-- Email — separate from edit-access modes. This is a one-shot
+             external send (mailto:), not a Memu-internal grant. -->
+        <div class="share-divider">
+            <span>Or send a one-off copy</span>
+        </div>
+        <button class="share-email-btn" onclick="emailShareSpace()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span>
+                <strong>Email a copy</strong>
+                <small>Opens your email app with the Space pre-filled. Recipient can read but can't edit.</small>
+            </span>
+        </button>
+
         <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
             <button class="btn btn-secondary btn-sm" onclick="closeShareSpace()">Cancel</button>
             <button class="btn btn-primary btn-sm" id="space-share-save" onclick="saveShareSpace()">Save</button>
@@ -366,7 +380,7 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== LISTS TAB ==================== -->
-<div id="view-lists" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;max-width:720px;margin:0 auto;">
+<div id="view-lists" class="container lists-canvas hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
     <header class="spaces-masthead">
         <div class="briefing-eyebrow">Lists</div>
         <div class="briefing-title">What's on your plate</div>
@@ -1859,6 +1873,36 @@ function renderSharePeople() {
 function toggleSharePerson(id, on) {
     if (on) shareState.selectedIds.add(id);
     else shareState.selectedIds.delete(id);
+}
+
+// Send a one-off email copy of the Space. Uses the user's default email
+// client via mailto: — no SMTP, no attachments, the body is the Space's
+// markdown verbatim (with a small "shared from Memu" footer). Recipient
+// can read it but cannot edit; this is the "share = copy" path,
+// distinct from the in-Memu collaborative modes above.
+function emailShareSpace() {
+    const s = spacesState.spaces.find(x => x.id === spacesState.currentId);
+    if (!s) return;
+    const title = s.title || 'Untitled Space';
+    const body = s.body_markdown || '';
+    const footer = '\n\n—\nShared from Memu — your private family AI. https://memu.digital';
+    const subject = encodeURIComponent(title);
+    // mailto: bodies are subject to URI length limits in some clients
+    // (Outlook ~2000 chars, Gmail mailto handler ~8000). Truncate
+    // generously and append a notice if the Space is too long for one
+    // email — recipient will see the rest in the Space if they later
+    // join the household.
+    const MAX_BODY = 6000;
+    let mailBody = body;
+    if (mailBody.length > MAX_BODY) {
+        mailBody = mailBody.slice(0, MAX_BODY) + '\n\n…[truncated — full Space available on Memu]';
+    }
+    const mailtoUrl = `mailto:?subject=${subject}&body=${encodeURIComponent(mailBody + footer)}`;
+    // Open the email client. Some browsers show a confirmation prompt;
+    // that's fine — it's the user's mail app, not us.
+    window.location.href = mailtoUrl;
+    closeShareSpace();
+    showToast('Opening your email app…');
 }
 
 async function saveShareSpace() {

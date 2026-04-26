@@ -232,6 +232,20 @@ textarea.input {
   width: 100%;
 }
 
+/* Chat canvas — narrower than container-wide for line-length comfort. */
+.chat-canvas {
+  max-width: 760px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Lists canvas — task lists read better in a narrower column. */
+.lists-canvas {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 /* ==========================================================================
    Onboarding / Auth screens
    ========================================================================== */
@@ -1395,6 +1409,27 @@ body.sidebar-shown .sidebar {
   }
   /* Backdrop is mobile-only — hidden on desktop. */
   .sidebar-backdrop { display: none; }
+
+  /* When the sidebar collapses, give content the extra real estate.
+     Reading widths (Spaces detail, Chat, Lists) bump modestly so line
+     length stays comfortable. Tabular / dashboard widths (Today,
+     Calendar, Settings, Ledger, Spaces grid via container-wide) bump
+     more aggressively — they benefit from breathing room. Smooth
+     transition is on max-width so the resize feels intentional. */
+  .container,
+  .container-wide,
+  .chat-canvas,
+  .lists-canvas,
+  .today-grid,
+  #spaces-detail-view {
+    transition: max-width 0.25s ease;
+  }
+  body:not(.sidebar-shown) .container        { max-width: 880px; }
+  body:not(.sidebar-shown) .container-wide   { max-width: 1280px; }
+  body:not(.sidebar-shown) .chat-canvas      { max-width: 920px; }
+  body:not(.sidebar-shown) .lists-canvas     { max-width: 880px; }
+  body:not(.sidebar-shown) .today-grid       { max-width: 1280px; }
+  body:not(.sidebar-shown) #spaces-detail-view { max-width: 920px; }
 }
 
 /* Mobile: backdrop appears with the sidebar. */
@@ -1747,6 +1782,67 @@ body.sidebar-shown .sidebar {
   font-size: 12px;
   color: var(--text-secondary);
   margin-left: auto;
+}
+
+/* Email share — separate row below the in-Memu modes. */
+.share-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0 var(--space-sm);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.share-divider::before,
+.share-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.share-email-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 12px var(--space-md);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-family);
+  transition: var(--transition);
+}
+
+.share-email-btn:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--indigo-primary);
+}
+
+.share-email-btn svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--indigo-primary);
+}
+
+.share-email-btn strong {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.share-email-btn small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 /* ==========================================================================
