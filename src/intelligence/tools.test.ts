@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interactiveQueryTools, toolSchemas } from './tools';
+import { interactiveQueryTools, toolSchemas, mergeSpaceBody } from './tools';
 import type { ToolContext } from './tools';
 import { SPACE_CATEGORIES } from '../spaces/model';
 
@@ -50,6 +50,19 @@ describe('interactiveQueryTools registry', () => {
   it('updateSpace schema only requires body (uri or category+slug resolved at runtime)', () => {
     const schema = interactiveQueryTools.updateSpace.schema;
     expect(schema.input_schema.required).toEqual(['body']);
+  });
+
+  it('updateSpace schema exposes optional mode with append/replace enum', () => {
+    const schema = interactiveQueryTools.updateSpace.schema;
+    const mode = schema.input_schema.properties.mode as { enum: string[] };
+    expect(mode).toBeDefined();
+    expect(mode.enum).toEqual(['append', 'replace']);
+  });
+
+  it('updateSpace schema description biases toward append', () => {
+    const schema = interactiveQueryTools.updateSpace.schema;
+    expect(schema.description).toMatch(/default mode is "append"/i);
+    expect(schema.description).toMatch(/when in doubt, append/i);
   });
 });
 
@@ -158,6 +171,76 @@ describe('updateSpace executor — validation branches', () => {
     const r = await exec({ slug: 'garden', body: 'new body' }, ctx);
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/space not found/i);
+  });
+
+  it('rejects an unknown mode value', async () => {
+    const r = await exec(
+      { uri: 'memu://fam-test/commitment/abc', body: 'new body', mode: 'overwrite' },
+      ctx,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/mode/i);
+  });
+});
+
+describe('mergeSpaceBody — pure helper', () => {
+  const T = '2026-04-26T14:32:00.000Z';
+
+  it('replace mode returns the incoming body verbatim', () => {
+    const merged = mergeSpaceBody('old content here', 'NEW', 'replace', T);
+    expect(merged).toBe('NEW');
+  });
+
+  it('replace mode works on empty existing body', () => {
+    expect(mergeSpaceBody('', 'NEW', 'replace', T)).toBe('NEW');
+  });
+
+  it('append mode preserves existing content', () => {
+    const merged = mergeSpaceBody('Line one.\nLine two.', 'Line three.', 'append', T);
+    expect(merged).toContain('Line one.');
+    expect(merged).toContain('Line two.');
+    expect(merged).toContain('Line three.');
+  });
+
+  it('append mode places new content AFTER existing content', () => {
+    const merged = mergeSpaceBody('OLD', 'NEW', 'append', T);
+    const oldIdx = merged.indexOf('OLD');
+    const newIdx = merged.indexOf('NEW');
+    expect(oldIdx).toBeLessThan(newIdx);
+  });
+
+  it('append mode inserts a dated separator', () => {
+    const merged = mergeSpaceBody('OLD', 'NEW', 'append', T);
+    expect(merged).toContain('---');
+    expect(merged).toContain('Updated 2026-04-26 14:32');
+  });
+
+  it('append mode trims trailing whitespace from existing before joining', () => {
+    const merged = mergeSpaceBody('OLD\n\n\n\n', 'NEW', 'append', T);
+    // No more than one consecutive blank line between OLD and the separator.
+    expect(merged).not.toMatch(/OLD\n\n\n+---/);
+    expect(merged).toContain('OLD\n\n---');
+  });
+
+  it('append mode on empty existing body returns the incoming body without separator', () => {
+    expect(mergeSpaceBody('', 'NEW', 'append', T)).toBe('NEW');
+  });
+
+  it('append mode on whitespace-only existing body returns the incoming body without separator', () => {
+    expect(mergeSpaceBody('   \n\n  \t\n', 'NEW', 'append', T)).toBe('NEW');
+  });
+
+  it('append is non-destructive across many successive updates', () => {
+    let body = '';
+    body = mergeSpaceBody(body, 'first', 'append', '2026-04-26T10:00:00.000Z');
+    body = mergeSpaceBody(body, 'second', 'append', '2026-04-26T11:00:00.000Z');
+    body = mergeSpaceBody(body, 'third', 'append', '2026-04-26T12:00:00.000Z');
+    expect(body).toContain('first');
+    expect(body).toContain('second');
+    expect(body).toContain('third');
+    // Three updates → two separators (first update wrote no separator).
+    const separatorCount = (body.match(/---\n_Updated /g) ?? []).length;
+    expect(separatorCount).toBe(2);
   });
 });
 

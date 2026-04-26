@@ -497,6 +497,100 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Synthesis Spaces overwrite — append-default merge (2026-04-26)
+
+Closes the urgent data-integrity bug from Hareesh's 2026-04-26 dogfood
+session: `updateSpace` was overwriting Spaces wholesale, losing
+accumulated context across multiple Spaces. Both the code path and the
+prompt path drove the bug — the executor passed the incoming body
+straight to `upsertSpace` with no read-merge step, AND the schema
+description + `interactive_query/SKILL.md` updateSpace block both
+explicitly told Claude to "synthesise the updated state rather than
+appending". Both fixed in one slice.
+
+**`mergeSpaceBody(existing, incoming, mode, timestampISO)`** — new
+pure helper in `src/intelligence/tools.ts`. `mode: 'replace'` returns
+the incoming body verbatim. `mode: 'append'` (default) trims trailing
+whitespace from the existing body, then joins with a dated horizontal
+rule separator (`---\n_Updated YYYY-MM-DD HH:MM (UTC)_\n\n`) before
+the incoming content. Empty/whitespace existing body returns incoming
+verbatim with no separator. Successive append-mode updates accumulate
+as a chronological log inside the body — the family's understanding
+grows by accretion, not replacement.
+
+**`executeUpdateSpace`** rewritten to: (1) read existing Space, (2)
+default mode to `'append'` if not specified, (3) reject unknown
+modes, (4) translate incoming body through Twin to real names, (5)
+call `mergeSpaceBody` against existing real-names body, (6) pass
+merged result to `upsertSpace`. Tool result extended from
+`{ok, id, uri, slug, category}` to also carry
+`{action: 'appended'|'replaced', linesBefore, linesAfter, linesAdded}`
+so the inline chat UI (item 2 in the build-plan queue — capabilities
+surfacing) can render "Updated Robin's space — 3 lines added"
+naturally without having to re-fetch the Space.
+
+**Schema description** rewritten to lead with "default mode is
+append", explain when to use replace (user-asked rewrite, or when a
+small correction is cleaner as a full rewrite), and end with "when
+in doubt, append. Appending is recoverable — replacing is not." New
+optional `mode` enum field exposed.
+
+**`skills/interactive_query/SKILL.md` bumped to v4.** updateSpace
+block rewritten: explicit append-default framing, five worked
+examples covering "Robin doesn't like mushrooms" (append), "bolts
+arrived" (append), "two items done on feedback log" (append),
+"actually rewrite Robin's space" (replace, only because user asked),
+and the correction case (depends on body density). Added a closing
+line teaching Claude to use `linesAdded` from the tool result when
+confirming back to the user, and to say "replaced" explicitly when
+that mode was used so the user knows prior content is gone.
+
+**Tests.** `src/intelligence/tools.test.ts` extended:
+- 2 schema tests (mode enum exposed, description biases append)
+- 1 validation branch (rejects unknown mode value)
+- 9 pure `mergeSpaceBody` tests covering replace/append parity for
+  empty existing, content preservation, ordering invariant
+  (existing-before-incoming), separator format, trailing-whitespace
+  trim, no-separator on empty/whitespace existing, and a
+  non-destructiveness-across-three-successive-updates assertion that
+  pins exactly two separators after three appends.
+
+Full suite: **358 tests passing across 22 files** (was 335).
+TypeScript clean.
+
+**Recovery path for Spaces overwritten before this fix shipped.**
+Spaces directory at
+`/mnt/memu-data/memu-core-standalone/spaces/<family_id>/` is a git
+repo per Story 3.1, so prior bodies are recoverable from history
+without manual surgery into the database. Procedure (run on Z2):
+1. Scope blast radius —
+   `docker exec memu_core_standalone_db psql -U memu -d memu_core
+   -c "SELECT family_id, space_uri, event, summary, created_at
+   FROM spaces_log WHERE event='updated' AND created_at > now() -
+   interval '14 days' ORDER BY created_at DESC;"`.
+2. For each affected `<family>/<category>s/<slug>.md`, run
+   `git log -- <relpath>` inside the family directory to find the
+   pre-overwrite commit hash.
+3. Read the prior body with `git show <hash>:<relpath>`.
+4. Either restore via `git checkout <hash> -- <relpath>` (then
+   another append-mode `updateSpace` from chat to add anything
+   genuinely new), or do a manual merge if the post-overwrite
+   content also has value.
+Recovery is per-file and judgement-driven — not automated, since
+"which version was right" depends on Hareesh's recollection of what
+each Space was supposed to contain.
+
+**Pairs with item 2 in the build-plan queue (self-awareness /
+capabilities surfacing).** The new `linesAdded` / `action` fields on
+the tool result are deliberate prep for that work — once item 2
+ships, chat replies will surface "Updated 'Robin' — 3 lines added"
+inline so the user no longer discovers Space writes incidentally.
+
+**Deploy still pending on Z2:** `git pull` in `/opt/memu-core` +
+rebuild via `docker compose -f docker-compose.standalone.yml up -d
+--build`. Item 2 (self-awareness) recommended as the immediate
+follow-on.
+
 ### Tool-use Session 1.5 — `findSpaces` + `addCalendarEvent` (2026-04-21)
 
 Two bugs from the 2026-04-20 → 2026-04-21 dogfood pass shipped together as the second local-tools slice. Same harness as Session 1 (router tool loop, Twin invariant, capabilities-first SKILL.md); added two tools and bumped `interactive_query` to v3.

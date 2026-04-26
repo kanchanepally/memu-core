@@ -26,6 +26,84 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### From 2026-04-26 dogfood (synthesis correctness + self-awareness)
+
+- 2026-04-26 (H, bug, **urgent — data integrity**): Memu has overwritten
+  multiple existing Spaces during chat-driven updates. Likely cause:
+  `updateSpace` tool (commit `3e038b5`) replaces the Space body wholesale
+  rather than merging / appending — `tools.ts` `updateSpace` executor
+  passes the new body straight to `upsertSpace` with no awareness of
+  prior content. Symptom Hareesh saw across multiple Spaces: a Space
+  that previously held accumulated context now holds only the few
+  lines from the most recent exchange. Investigate: (a) audit
+  `src/intelligence/tools.ts` `updateSpace` — replacing or merging?
+  (b) check `spaces_log` for `event=updated` entries in the last 7
+  days to scope the blast radius; (c) recover lost content from git
+  history under `/mnt/memu-data/memu-core-standalone/spaces/` (Spaces
+  is a git repo per Story 3.1 — `git log` per file should restore).
+  Fix likely needs: append-by-default semantics with explicit
+  "replace" mode opt-in, plus user-visible diff/preview before
+  commit, plus the SKILL.md v3 prompt nudged to prefer append over
+  replace. **Gates all further `updateSpace` use until fixed** —
+  emergency-break-glass per Part 10.
+
+- 2026-04-26 (H, bug, **urgent — meta-cognition**): Memu's verbal
+  self-model doesn't match its actual behaviour. Concrete patterns:
+  (a) says "I can't do web search" but successfully fetches and
+  summarises URLs the user pastes (URL ingest path is live, web
+  search tool is not — Claude conflates the two); (b) says "I
+  can't access your Spaces" but has just written to / overwritten
+  them via `updateSpace` (interleaved in the same turn); (c)
+  doesn't surface in chat that it created or modified a Space —
+  user discovers it incidentally via the Spaces tab (also: chat
+  doesn't surface space creation/update in any first-class way,
+  Hareesh's "chat and space creation, updation seems distant"
+  observation). Fix scope: (i) `interactive_query/SKILL.md`
+  capabilities block must be authoritative + current — Claude
+  should never deny a capability it has, and should distinguish
+  URL-fetch (have) from web-search (not yet); (ii) tool-call
+  results surfaced inline in chat as one-liners ("Updated Space
+  'Robin' — 3 lines added", "Created Space 'Plumber' under
+  household", "Added 'veg stock' to shopping"); (iii) consider an
+  `introspect` tool Claude can call to fetch its own current
+  capability list before answering "can you …?" questions —
+  belt-and-braces over the static SKILL.md block; (iv) every
+  tool-call success/failure logged to a `messages.tool_summary`
+  column (or `privacy_ledger.tool_calls`) so the user can audit
+  the turn. **Pairs with the Spaces-overwrite fix** — both are
+  symptoms of "Memu doesn't know what it just did" and want
+  shared scaffolding.
+
+- 2026-04-26 (H, feature): Memu personality (SOUL.md). Jeeves-warm
+  voice — competent, occasionally wry, never sycophantic, leads
+  with action over analysis. Voice rules + behaviour rules +
+  emotional register live in a top-level `skills/SOUL.md` (or
+  `PERSONALITY.md`) included in every interactive system prompt.
+  Source brief: this conversation + `memu-platform/memu-reimagined.md`
+  Parts 1-2. Doesn't depend on synthesis fixes; can be drafted in
+  parallel. → Part 11 v1.5.
+
+- 2026-04-26 (H, feature): Conversational onboarding. First
+  interaction IS the onboarding — no setup wizard, no forms, no
+  "tell me about your family" prompt. Memu asks one question
+  ("What's on your mind right now?"), handles it, introduces
+  features progressively as the user is ready. Adding a partner
+  / child happens via conversation, not a flow. Replaces /
+  extends C-prod-2 (mobile app onboarding wizard). Source brief:
+  this conversation. → Part 11 v1.5; revisit when C-prod-2 is
+  reached in Milestone C.
+
+- 2026-04-26 (obs): Skill-map expansion identified across three
+  tiers: (Tier 1, pre-Founding-50 beta) **autolearn**,
+  **proactive_check**, **document_ingestion**, **draft_communication**;
+  (Tier 2, during beta) meal_planning, follow_up, recurring_task,
+  pattern_insight, receipt_processing; (Tier 3, post-beta)
+  anonymous_web_agent, email_ingestion, budget_tracking,
+  homework_helper, health_tracking. document_ingestion is already
+  tracked as Bug 6 / B-live-Bug6 — promotes to a fully-shaped skill
+  on ship. Tiers 1+2+3 staged into Part 11. Source brief:
+  `memu-platform/memu-reimagined.md` Parts 3-4 + this conversation.
+
 ### From 2026-04-25 dogfood (post-batch APK install)
 
 - 2026-04-25 (H, bug): Lists tab — ticked-off items reappear after tab

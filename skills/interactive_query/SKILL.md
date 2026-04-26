@@ -4,7 +4,7 @@ description: Answer a family member's question as their private AI (Memu). Works
 model: sonnet
 cost_tier: standard
 requires_twin: true
-version: 3
+version: 4
 ---
 
 # Interactive Query
@@ -74,11 +74,26 @@ Create a new Space (compiled page of family understanding) when the user introdu
 - "Let me tell you about my new piano teacher" → createSpace on `person` if no existing match.
 Do NOT use this for throwaway to-dos (use `addToList`), and do NOT use it for every topic the user mentions — only durable, named things worth remembering. `body` should be a short markdown summary of what you know so far.
 
-**`updateSpace({ uri | (category + slug), body, title?, description? })`**
-Update an existing Space when the user adds a fact, corrects something, or reports progress. The Space URI is visible in the context block as `uri: memu://…` — prefer passing the URI. The `body` field replaces the existing body entirely, so synthesise the updated state rather than appending patches.
-- "The bolts arrived for the climbing frame" → updateSpace on the climbing-frame Space, body rewritten to reflect new state.
-- "Correction: Robin's swimming class is 5–6pm not 4–5pm" → updateSpace on the swimming Space.
-- "These two items on the feedback log are done" → updateSpace on the feedback-log Space (past-tense completion on a named Space is an update, NOT an addToList).
+**`updateSpace({ uri | (category + slug), body, mode?, title?, description? })`**
+Update an existing Space when the user adds a fact, corrects something, or reports progress. The Space URI is visible in the context block as `uri: memu://…` — prefer passing the URI.
+
+**Default mode is "append" — and append is what you want almost every time.** The `body` field is added to the bottom of the existing body under a dated separator, and prior content is preserved. This means every update is a layer on top of the family's accumulated understanding, not a replacement of it. **Do not summarise the prior content into your new body** — the prior content is already there and will stay there.
+
+Use `mode: "replace"` only when:
+- The user explicitly asks to rewrite the Space ("clean up Robin's space, it's gotten messy"), OR
+- A small fact is wrong and you need to rewrite the whole body to land the correction cleanly (e.g. the only sentence that was there said something now contradicted).
+
+When in doubt, append. Appending is recoverable — replacing is not.
+
+Examples:
+- "The bolts arrived for the climbing frame" → `updateSpace({uri: "memu://...", body: "Bolts arrived 2026-04-26. Just need the wood now."})` — append mode (default). The earlier history of the project is preserved above.
+- "Robin doesn't like mushrooms" → `updateSpace({category: "person", slug: "robin", body: "- Doesn't like mushrooms (mentioned 2026-04-26)."})` — append mode (default). Adds to Robin's accumulating preferences.
+- "These two items on the feedback log are done" → `updateSpace({category: "commitment", slug: "feedback-log", body: "Marked done 2026-04-26: <items>."})` — append mode. (Past-tense completion on a named Space is an update, NOT an addToList.)
+- "Actually rewrite Robin's space — it's gotten messy and contradictory" → `updateSpace({category: "person", slug: "robin", body: "<full clean rewrite>", mode: "replace"})` — replace mode, only because the user explicitly asked.
+- "Correction: Robin's swimming class is 5–6pm not 4–5pm" → if the existing body is short and centred on that one fact, `mode: "replace"` with a clean rewrite is fine; if the body is rich with other info, `mode: "append"` and write the correction as an explicit "Correction:" line so the prior wrong fact stays visible in history.
+
+The tool returns `{ok, action, linesBefore, linesAfter, linesAdded}` — when you confirm to the user, mention what changed naturally ("Added that to Robin's space — three lines added"). If `action: "replaced"`, say so explicitly so the user knows the prior content is gone.
+
 If the Space is not in the context block, call `findSpaces` to check before falling back to `createSpace`.
 
 **`addCalendarEvent({ title, start, end, location?, notes? })`**

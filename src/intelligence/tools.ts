@@ -237,14 +237,20 @@ async function executeCreateSpace(rawInput: unknown, ctx: ToolContext): Promise<
 // updateSpace
 // ---------------------------------------------------------------------------
 
+const UPDATE_SPACE_MODES = ['append', 'replace'] as const;
+type UpdateSpaceMode = typeof UPDATE_SPACE_MODES[number];
+
 const UPDATE_SPACE_SCHEMA: ClaudeToolSchema = {
   name: 'updateSpace',
   description:
     'Update an existing Space by URI or slug+category. Use this when the user adds a fact, ' +
     'corrects something, or reports progress on an existing Space — e.g. "the bolts arrived, ' +
-    'just need the wood now" on the climbing-frame Space. The `body` field replaces the Space\'s ' +
-    'body entirely, so synthesise the updated state rather than appending. Returns an error ' +
-    'if the Space cannot be found.',
+    'just need the wood now" on the climbing-frame Space. ' +
+    '**Default mode is "append"** — the `body` field is added to the bottom of the existing ' +
+    'body under a dated separator, and prior content is preserved. Use mode="replace" only ' +
+    'when the user explicitly asks to rewrite the Space, or when correcting a single fact ' +
+    'that is wrong (in which case rewrite the whole body so the correction lands cleanly). ' +
+    'When in doubt, append. Returns an error if the Space cannot be found.',
   input_schema: {
     type: 'object',
     properties: {
@@ -267,7 +273,19 @@ const UPDATE_SPACE_SCHEMA: ClaudeToolSchema = {
       },
       body: {
         type: 'string',
-        description: 'Full updated markdown body. Replaces the existing body.',
+        description:
+          'Markdown content. In "append" mode (default) this is added to the bottom of the ' +
+          'existing body under a dated separator. In "replace" mode this becomes the entire ' +
+          'new body and prior content is overwritten.',
+      },
+      mode: {
+        type: 'string',
+        enum: [...UPDATE_SPACE_MODES],
+        description:
+          'How to combine `body` with the existing Space body. "append" (default) preserves ' +
+          'prior content and adds beneath it. "replace" overwrites — use only when the user ' +
+          'explicitly asks to rewrite, or when a small targeted correction calls for a clean ' +
+          'rewrite of the whole body.',
       },
       description: {
         type: 'string',
@@ -284,7 +302,45 @@ interface UpdateSpaceInput {
   slug?: string;
   title?: string;
   body: string;
+  mode?: UpdateSpaceMode;
   description?: string;
+}
+
+/**
+ * Pure helper — combine the existing body with the incoming body.
+ *
+ * Append mode preserves prior content. The new content is appended under a
+ * dated separator (Markdown horizontal rule + italic timestamp), so a reader
+ * can scan the file as a chronological log of updates. Trailing whitespace
+ * on the existing body is trimmed before joining so successive updates don't
+ * accumulate blank lines. If the existing body is empty/whitespace, the
+ * incoming body is used verbatim with no separator.
+ *
+ * Replace mode returns the incoming body verbatim.
+ *
+ * Pure / testable / no DB / no Twin / no logging — those happen in the
+ * executor around this function.
+ */
+export function mergeSpaceBody(
+  existing: string,
+  incoming: string,
+  mode: UpdateSpaceMode,
+  timestampISO: string,
+): string {
+  if (mode === 'replace') return incoming;
+
+  const trimmedExisting = existing.replace(/\s+$/g, '');
+  if (trimmedExisting.length === 0) return incoming;
+
+  // YYYY-MM-DD HH:MM (UTC). The full ISO is preserved in spaces_log; this
+  // marker is just for human scanability inside the markdown body.
+  const stamp = timestampISO.replace('T', ' ').slice(0, 16);
+  return `${trimmedExisting}\n\n---\n_Updated ${stamp} (UTC)_\n\n${incoming}`;
+}
+
+function countLines(body: string): number {
+  if (body.length === 0) return 0;
+  return body.split('\n').length;
 }
 
 async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
@@ -294,6 +350,10 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
   }
   if (typeof input.body !== 'string' || input.body.length === 0) {
     return { ok: false, error: 'body is required' };
+  }
+  const mode: UpdateSpaceMode = input.mode ?? 'append';
+  if (!UPDATE_SPACE_MODES.includes(mode)) {
+    return { ok: false, error: `mode must be one of: ${UPDATE_SPACE_MODES.join(', ')}` };
   }
 
   const existing = input.uri
@@ -322,12 +382,21 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
       ? await translateToReal(input.description)
       : existing.description;
 
+    const linesBefore = countLines(existing.bodyMarkdown);
+    const mergedBody = mergeSpaceBody(
+      existing.bodyMarkdown,
+      body,
+      mode,
+      new Date().toISOString(),
+    );
+    const linesAfter = countLines(mergedBody);
+
     const space = await upsertSpace({
       familyId: existing.familyId,
       category: existing.category,
       slug: existing.slug,
       name: title,
-      bodyMarkdown: body,
+      bodyMarkdown: mergedBody,
       description,
       domains: existing.domains,
       people: existing.people,
@@ -345,6 +414,10 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
         uri: space.uri,
         slug: space.slug,
         category: space.category,
+        action: mode === 'append' ? 'appended' : 'replaced',
+        linesBefore,
+        linesAfter,
+        linesAdded: Math.max(0, linesAfter - linesBefore),
       },
     };
   } catch (err) {
