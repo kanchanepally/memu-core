@@ -8,6 +8,8 @@ export type SkillModel =
   | 'sonnet-vision'
   | 'gemini-flash'
   | 'gemini-flash-lite'
+  | 'deepseek-chat'
+  | 'deepseek-reasoner'
   | 'local'
   | 'auto';
 
@@ -40,6 +42,8 @@ const VALID_MODELS: SkillModel[] = [
   'sonnet-vision',
   'gemini-flash',
   'gemini-flash-lite',
+  'deepseek-chat',
+  'deepseek-reasoner',
   'local',
   'auto',
 ];

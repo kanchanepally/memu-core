@@ -26,6 +26,48 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### Routing matrix (decision pending — added 2026-04-26 evening)
+
+DeepSeek is now wired as a routing provider (commit forthcoming in this
+session). To migrate a skill, edit its `SKILL.md` frontmatter `model:`
+field. Or use a global env override like
+`MEMU_MODEL_OVERRIDE_SONNET=deepseek-chat`. **Current authored model is
+the source of truth — nothing was moved automatically.**
+
+| Skill | Today | Safe target | Why |
+|---|---|---|---|
+| `interactive_query` | sonnet | **stay** | Needs `web_search_20260209` (Anthropic-only) and tool-use chain |
+| `vision` | sonnet-vision | **stay** | DeepSeek/Gemini vision dispatch path not wired |
+| `extraction` | gemini-flash | **stay** | Already cheap |
+| `twin_translate` | local (→haiku override) | gemini-flash-lite | Free tier; novel-NER works fine on small models |
+| `autolearn` | haiku | **deepseek-chat** | Per-turn observation extraction; ~10× cheaper than Haiku |
+| `synthesis_update` | sonnet | **deepseek-chat** | Text in, JSON out — V3 handles structured output well |
+| `synthesis_write` | sonnet | **deepseek-chat** | Text generation; minimal quality loss expected |
+| `briefing` | sonnet | **deepseek-chat** or **gemini-flash** | One call/day per family — could even use free tier |
+| `reflection` | sonnet | **deepseek-chat** | Daily/weekly batch, latency-tolerant |
+| `document_ingestion` | sonnet | **deepseek-chat** (test first) | Heavy structured extraction; verify on real PDF before committing |
+| `import_extract` | haiku | **deepseek-chat** | Bulk fact extraction, rare |
+
+Estimated savings if all "safe target" skills move: **~£20/family/month
+→ ~£3/family/month** at Hareesh's household volume. Material at
+Founding-50 scale (~£1,000/year). Privacy posture unchanged — Twin guard
+runs ahead of dispatch regardless of provider, so DeepSeek/Gemini never
+see real names.
+
+**Migration order suggestion:** start with one — autolearn — for a week
+of ledger data. If quality holds, move synthesis_update + synthesis_write
+together (they share the synthesis pipeline and should be evaluated as a
+pair). Then briefing/reflection. Document_ingestion last — its
+structured-output requirements are the most demanding and worth testing
+deliberately.
+
+**GDPR note for Tier-1 hosted beta.** DeepSeek is a Chinese company.
+Data jurisdiction is China. The Twin invariant means anonymous tokens
+only leave the EU, never real names — the same posture as Anthropic
+(US) or Google (US). Worth surfacing explicitly in the privacy ledger
++ DPIA when Founding-50 lands. Memu's defence is structural: privacy
+by anonymisation, not by provider geography.
+
 ### From 2026-04-26 dogfood (post-document-ingestion deploy)
 
 - 2026-04-26 (H, bug, **HIGH — blocks Space writes from new pipelines**):

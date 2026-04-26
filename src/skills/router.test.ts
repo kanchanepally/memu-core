@@ -187,6 +187,63 @@ describe('model router — plan resolution', () => {
     const plan = planDispatch('extraction');
     expect(plan.concreteModel).toMatch(/gemini/i);
   });
+
+  // --- DeepSeek routing -----------------------------------------------------
+
+  it('routes deepseek-chat override to DeepSeek provider', () => {
+    process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'deepseek-chat';
+    const plan = planDispatch('autolearn');
+    expect(plan.effectiveModel).toBe('deepseek-chat');
+    expect(plan.provider).toBe('deepseek');
+    expect(plan.concreteModel).toBe('deepseek-chat');
+    expect(plan.overridden).toBe(true);
+  });
+
+  it('routes deepseek-reasoner override to DeepSeek provider', () => {
+    process.env.MEMU_MODEL_OVERRIDE_SONNET = 'deepseek-reasoner';
+    const plan = planDispatch('synthesis_update');
+    expect(plan.effectiveModel).toBe('deepseek-reasoner');
+    expect(plan.provider).toBe('deepseek');
+    expect(plan.concreteModel).toBe('deepseek-reasoner');
+  });
+
+  it('uses deepseek-chat as the default concrete model for deepseek-chat alias', () => {
+    // Module-bound consts (same constraint as MEMU_CLAUDE_HAIKU_MODEL test
+    // above) — we verify the default rather than a per-test override.
+    process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'deepseek-chat';
+    const plan = planDispatch('autolearn');
+    expect(plan.concreteModel).toMatch(/deepseek/i);
+  });
+
+  it('downgrades premium deepseek-reasoner to deepseek-chat under budget pressure', () => {
+    process.env.MEMU_MODEL_OVERRIDE_SONNET_VISION = 'deepseek-reasoner';
+    process.env.MEMU_BUDGET_PRESSURE = 'true';
+    const plan = planDispatch('vision');
+    expect(plan.requestedModel).toBe('sonnet-vision');
+    expect(plan.effectiveModel).toBe('deepseek-chat');
+    expect(plan.provider).toBe('deepseek');
+    expect(plan.downgraded).toBe(true);
+  });
+
+  it('downgrades standard-tier deepseek-chat to gemini-flash-lite under budget pressure', () => {
+    // DeepSeek-V3 is already cheap; under pressure we fall back to Gemini
+    // Flash Lite (Google's free tier) before paying anything.
+    process.env.MEMU_MODEL_OVERRIDE_SONNET = 'deepseek-chat';
+    process.env.MEMU_BUDGET_PRESSURE = 'true';
+    const plan = planDispatch('interactive_query');
+    expect(plan.requestedModel).toBe('sonnet');
+    expect(plan.effectiveModel).toBe('gemini-flash-lite');
+    expect(plan.provider).toBe('gemini');
+    expect(plan.downgraded).toBe(true);
+  });
+
+  it('rejects deepseek aliases as invalid env override values when typoed', () => {
+    process.env.MEMU_MODEL_OVERRIDE_HAIKU = 'deepseek-chatxyz';
+    const plan = planDispatch('autolearn');
+    // falls back to the original alias
+    expect(plan.effectiveModel).toBe('haiku');
+    expect(plan.overridden).toBe(false);
+  });
 });
 
 // ----------------------------------------------------------------------------

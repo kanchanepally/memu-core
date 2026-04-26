@@ -8,6 +8,7 @@ import {
   type ConversationMessage,
 } from '../intelligence/claude';
 import { callGemini, toGeminiContents } from '../intelligence/gemini';
+import { callDeepSeek, toDeepSeekMessages } from '../intelligence/deepseek';
 import { resolveProviderKey, type BYOKProvider } from '../security/byok';
 import { enforceTwinInvariant, TwinViolationError } from '../twin/guard';
 import {
@@ -17,7 +18,7 @@ import {
   type ToolExecutionResult,
 } from '../intelligence/tools';
 
-export type ProviderName = 'claude' | 'gemini' | 'ollama';
+export type ProviderName = 'claude' | 'gemini' | 'deepseek' | 'ollama';
 
 export interface DispatchPlan {
   skillName: string;
@@ -133,6 +134,8 @@ const CLAUDE_HAIKU = process.env.MEMU_CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20
 const CLAUDE_SONNET = process.env.MEMU_CLAUDE_SONNET_MODEL || 'claude-sonnet-4-6';
 const GEMINI_FLASH = process.env.MEMU_GEMINI_FLASH_MODEL || 'gemini-2.5-flash';
 const GEMINI_FLASH_LITE = process.env.MEMU_GEMINI_FLASH_LITE_MODEL || 'gemini-2.5-flash-lite';
+const DEEPSEEK_CHAT = process.env.MEMU_DEEPSEEK_CHAT_MODEL || 'deepseek-chat';
+const DEEPSEEK_REASONER = process.env.MEMU_DEEPSEEK_REASONER_MODEL || 'deepseek-reasoner';
 const OLLAMA_DEFAULT = process.env.MEMU_OLLAMA_MODEL || 'llama3.2';
 
 function resolveAlias(alias: SkillModel): Resolution {
@@ -148,6 +151,10 @@ function resolveAlias(alias: SkillModel): Resolution {
       return { provider: 'gemini', concreteModel: GEMINI_FLASH };
     case 'gemini-flash-lite':
       return { provider: 'gemini', concreteModel: GEMINI_FLASH_LITE };
+    case 'deepseek-chat':
+      return { provider: 'deepseek', concreteModel: DEEPSEEK_CHAT };
+    case 'deepseek-reasoner':
+      return { provider: 'deepseek', concreteModel: DEEPSEEK_REASONER };
     case 'local':
       return { provider: 'ollama', concreteModel: OLLAMA_DEFAULT };
     case 'auto':
@@ -167,6 +174,8 @@ const VALID_ALIASES: SkillModel[] = [
   'sonnet-vision',
   'gemini-flash',
   'gemini-flash-lite',
+  'deepseek-chat',
+  'deepseek-reasoner',
   'local',
   'auto',
 ];
@@ -192,10 +201,17 @@ function applyBudgetDowngrade(alias: SkillModel, costTier?: SkillCostTier): { al
     if (alias === 'sonnet-vision' || alias === 'sonnet') {
       return { alias: 'haiku', downgraded: true };
     }
+    // DeepSeek-R1 is the premium reasoning tier; downgrade to V3 chat.
+    if (alias === 'deepseek-reasoner') {
+      return { alias: 'deepseek-chat', downgraded: true };
+    }
   }
   if (costTier === 'standard') {
     if (alias === 'sonnet') return { alias: 'haiku', downgraded: true };
     if (alias === 'gemini-flash') return { alias: 'gemini-flash-lite', downgraded: true };
+    // DeepSeek-V3 is already cheap; under budget pressure, fall back to
+    // Gemini Flash Lite (Google's free tier) before paying anything at all.
+    if (alias === 'deepseek-chat') return { alias: 'gemini-flash-lite', downgraded: true };
   }
   return { alias, downgraded: false };
 }
@@ -407,6 +423,7 @@ function resolveUserPrompt(skill: Skill, input: DispatchInput): { systemPrompt?:
 function providerToBYOKProvider(provider: ProviderName): BYOKProvider | null {
   if (provider === 'claude') return 'anthropic';
   if (provider === 'gemini') return 'gemini';
+  if (provider === 'deepseek') return 'deepseek';
   return null;
 }
 
@@ -617,6 +634,41 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
         model: plan.concreteModel,
         systemInstruction: effectiveSystemPrompt,
         contents,
+        apiKey: callKey.apiKey,
+        maxTokens: input.maxTokens,
+        temperature: input.temperature,
+      });
+      const ledgerId = await writeLedger(plan, input, callKey.keyIdentifier, {
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        status: result.dummy ? 'dummy' : 'ok',
+        twinVerified,
+        twinViolations,
+      });
+      return {
+        text: result.text,
+        plan,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        ledgerId,
+        dummy: result.dummy,
+        dryRun: false,
+      };
+    }
+
+    if (plan.provider === 'deepseek') {
+      // DeepSeek is OpenAI-compatible. Tools (function-calling) are not
+      // wired here yet — interactive_query stays on Claude precisely
+      // because of the web_search server-side tool. Skills routed to
+      // DeepSeek are text-only (synthesis, autolearn, briefing,
+      // reflection, document_ingestion, import_extract).
+      const messages = toDeepSeekMessages(effectiveUserPrompt, effectiveHistory);
+      const result = await callDeepSeek({
+        model: plan.concreteModel,
+        systemPrompt: effectiveSystemPrompt,
+        messages,
         apiKey: callKey.apiKey,
         maxTokens: input.maxTokens,
         temperature: input.temperature,

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { pool } from '../db/connection';
 
-export type BYOKProvider = 'anthropic' | 'gemini' | 'openai';
+export type BYOKProvider = 'anthropic' | 'gemini' | 'openai' | 'deepseek';
 
 const ALGO = 'aes-256-gcm';
 const IV_LEN = 12;
