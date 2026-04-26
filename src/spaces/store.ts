@@ -52,10 +52,19 @@ async function ensureFamilyRepo(familyId: string): Promise<void> {
   try {
     await fs.access(gitDir);
   } catch {
-    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
-    execFileSync('git', ['config', 'user.email', 'memu@localhost'], { cwd: dir });
-    execFileSync('git', ['config', 'user.name', 'Memu'], { cwd: dir });
-    freshlyInitialised = true;
+    // Git is the version-history substrate for the Spaces directory but
+    // the DB row + on-disk markdown are the source of truth. If git is
+    // unavailable (binary missing, ENOENT, sandbox restrictions),
+    // version history is degraded but Spaces still work — don't crash
+    // the Space write. Same pattern as the inner add/commit below.
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
+      execFileSync('git', ['config', 'user.email', 'memu@localhost'], { cwd: dir });
+      execFileSync('git', ['config', 'user.name', 'Memu'], { cwd: dir });
+      freshlyInitialised = true;
+    } catch (err) {
+      console.warn('[SPACES] git init non-fatal — Space history disabled:', (err as Error).message ?? err);
+    }
   }
   await ensureReadme(familyId, freshlyInitialised);
 }

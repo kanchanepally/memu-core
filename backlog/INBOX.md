@@ -26,6 +26,44 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### From 2026-04-26 dogfood (post-document-ingestion deploy)
+
+- 2026-04-26 (H, bug, **HIGH — blocks Space writes from new pipelines**):
+  PDF upload to PWA fails with `Couldn't process that document
+  (persist): Space upsert failed: spawnSync git ENOENT`. The
+  `spaces/store.ts` `ensureFamilyRepo` calls `execFileSync('git',
+  ['init', '-q', '-b', 'main'], ...)` un-wrapped. When the git binary
+  isn't on the container PATH, ENOENT bubbles up and crashes the
+  upsert. Two-part fix: (1) install git in
+  `Dockerfile` (the correct fix — git is intended to be available
+  for spaces history) `RUN apt-get update && apt-get install -y git
+  && rm -rf /var/lib/apt/lists/*`; (2) defensively wrap
+  `ensureFamilyRepo`'s git init in try/catch with a console.warn
+  fallback so Space writes don't crash even if git is unavailable
+  for some reason — same pattern the inner add/commit already use.
+  Diagnostic: `docker exec memu_core_standalone_api which git`
+  on the Z2 confirms whether git is present in the image. **Note:**
+  existing family dirs that already contain `.git` won't trigger this
+  on subsequent writes (the `fs.access(.git)` check skips init) — but
+  any first write for any new family hits it. Affects every new
+  pipeline that creates Spaces (document_ingestion, autolearn writes
+  to brand-new Spaces in the future, anything Tier-1 multi-family).
+
+- 2026-04-26 (H, bug, **MED — UI regression**): Paperclip not visible
+  in the PWA chat composer even after the staged-attachment CSS
+  hotfix. The `[hidden]` selector fix landed in `style.css` —
+  attachment-error is gone — but the paperclip `<button class=
+  "attach-btn" id="chat-attach">` is still missing from the chat
+  composer. Likely causes to investigate: (a) browser CSS cache
+  serving stale style.css despite the new push; (b) layout
+  regression elsewhere I introduced (e.g. the new
+  `.staged-attachment` block above the input bar pushing the
+  attach-btn out of flexbox alignment); (c) z-index / overflow on
+  the parent making the button non-interactive. Diagnostic: open
+  DevTools → Inspect the chat composer area → confirm
+  `chat-attach` element exists, check computed display + position.
+  Hard-refresh (Ctrl+Shift+R) likely first action.
+
 ### From 2026-04-26 dogfood (synthesis correctness + self-awareness)
 
 - 2026-04-26 (H, bug, **verified disclaim repro — RESOLVED in two

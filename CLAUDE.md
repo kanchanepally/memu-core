@@ -497,6 +497,117 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Autolearn upgraded — Tier 1 skill #2 (2026-04-26)
+
+Tier 1 pre-beta skill cluster from 1/4 → 2/4. Autolearn was previously
+"extract durable facts → write to context_entries"; the upgrade keeps
+that as the safety net but adds the structural payoff: high-confidence
+observations now ROUTE to the matching person/household/commitment/
+routine/document Space and append a dated bullet to the body. Family's
+compiled understanding compounds passively, every conversation.
+
+**SKILL.md v2.** Output shape changes from flat string array to a
+structured object:
+```json
+{"observations": [{"text": "...", "subject": "Adult-1|Child-2|null",
+                   "category": "person|household|commitment|routine|document|other",
+                   "confidence": 0.0}]}
+```
+Confidence guidance is explicit: 0.9-1.0 directly stated, 0.7-0.9
+strongly implied, 0.5-0.7 single mention or hedged, < 0.5 gets filtered
+out. Subject is the anonymous label of the entity the observation is
+ABOUT — null when household-general.
+
+**`autolearn.ts` upgrade.** New exported pure helpers:
+- `parseAutolearnOutput(replyText)` — handles v2 object shape AND v1
+  legacy flat-string-array shape (backward-compat during deploy
+  transition; in-flight requests during the rollout could still return
+  the old shape). Returns normalised `AutolearnObservation[]`. Tolerates
+  malformed JSON, missing fields, extra prose around the JSON; clamps
+  confidence to [0,1]; treats empty/whitespace subject as null.
+- `appendAutolearnLine(existing, newLine)` — single-line append, NOT
+  the heavier `mergeSpaceBody` separator. Autolearn fires many times
+  per day; HR-rule + dated separator per write would balloon Spaces
+  inside a week. Just trims trailing whitespace from existing and
+  joins with one `\n`.
+
+Routing (private):
+- `tryRouteToSpace(familyId, obs)` — translates anon subject through
+  Twin, lowercases, case-insensitive substring match against
+  catalogue entries' `name` + `slug`, gated by category match. Skips
+  unresolved Twin labels (`Adult-1` returned verbatim because not in
+  registry) — those go context_entries-only.
+- `appendObservationToSpace(...)` — `findSpaceByUri` to load full
+  body, `appendAutolearnLine` to merge, `upsertSpace` with all
+  existing fields preserved (visibility / people / domains / tags /
+  source_references). Confidence ticks up by 0.02 per autolearn
+  write, capped at 1. `sourceReferences` gains `autolearn:${date}`
+  for traceability.
+
+Pipeline (`extractAndStoreFacts`):
+- Fire-and-forget per-turn (unchanged); errors logged not thrown.
+- Skill dispatch unchanged surface (same arguments, same Twin guard).
+- For each parsed observation:
+  - Skip if confidence < 0.5 (recall threshold).
+  - ALWAYS try to seedContext (preserves embedding recall regardless
+    of Space match — backward-compatible safety net).
+  - If confidence ≥ 0.7 AND a matching Space exists, ALSO append the
+    observation to that Space's body.
+- Log line: `[AUTO-LEARN] N obs → R recall, S Space append(s)` for
+  per-turn observability.
+
+**Tests.** New `src/intelligence/autolearn.test.ts` (22 tests):
+- `appendAutolearnLine`: empty existing → returns line, whitespace-only
+  existing → returns line, single-newline join (no horizontal-rule),
+  trailing-whitespace trim, multi-line existing preserved, three
+  successive appends accumulate without separators (lock the
+  shape-difference from `mergeSpaceBody`).
+- `parseAutolearnOutput` v2: full happy path, empty observations array,
+  JSON-wrapped-in-prose extraction, skip on missing/invalid text or
+  confidence, clamp to [0,1], empty/whitespace subject → null,
+  default category to 'other'.
+- `parseAutolearnOutput` v1 legacy: flat array of strings → defaults,
+  too-short strings filtered, empty array → empty result.
+- `parseAutolearnOutput` malformed: prose-only, malformed JSON, JSON
+  object without `observations` key, empty string. All return [].
+
+DB-touching paths (`tryRouteToSpace`, `appendObservationToSpace`,
+`extractAndStoreFacts` end-to-end) covered by manual QA per project
+convention. Full suite: **425 tests passing across 25 files** (was
+403). TypeScript clean.
+
+**Tier 1 pre-beta skill cluster status:**
+| Skill | Status |
+|---|---|
+| `document_ingestion` | ✅ shipped |
+| `autolearn` | ✅ shipped (this slice) |
+| `proactive_check` | next |
+| `draft_communication` | queued |
+
+**Operational note — git ENOENT bug surfaced today.** The
+`spaces/store.ts` `ensureFamilyRepo` calls `git init` un-wrapped, and
+the rebuilt API container is missing the git binary on PATH. PDF
+upload exposed it (every Space write that needs to init a new family
+repo crashes). Autolearn writes for Hareesh's existing family are
+unaffected (`.git` already exists from previous Space writes; the
+inner `git add`/`git commit` ops are try/catch wrapped — they warn
+but don't fail). For any future family / clean Z2 setup, this is
+blocking. Captured in `memu-core/backlog/INBOX.md` 2026-04-26 entry
+("PDF upload fails with spawnSync git ENOENT") with the two-part fix
+(install git in Dockerfile + defensively wrap `ensureFamilyRepo`).
+**Don't ship a clean Z2 install / Tier-1 multi-family without
+addressing this.** For Hareesh's current dogfood, autolearn works.
+
+**Deploy.** Standard `git pull` + rebuild on Z2. New skill loads at
+boot (skill-loader test EXPECTED list unchanged — autolearn was
+already in the registry, only the version + body changed). After
+deploy, every chat turn triggers the new pipeline; check
+`docker logs memu_core_standalone_api | grep AUTO-LEARN` to see the
+per-turn `N obs → R recall, S Space append(s)` line. Open any of
+your existing person/commitment Spaces over a few days — should see
+dated bullets accumulate as autolearn picks up signals from your
+chats.
+
 ### Mobile document upload — Bug 6 slice 2 (2026-04-26)
 
 Closes the kitchen-counter use case: PDFs arriving via email or

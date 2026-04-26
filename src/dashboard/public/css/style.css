@@ -777,7 +777,7 @@ textarea.input {
    class rule, restores the user-agent contract. Bug originally
    shipped 2026-04-26 PWA staging slice; fixed same day. */
 .staged-attachment[hidden] {
-  display: none;
+  display: none !important;
 }
 
 .staged-attachment img {

@@ -28,10 +28,15 @@ RUN npm prune --omit=dev
 # ---------------------------------------------------------------
 FROM node:20-slim AS runtime
 
-# Runtime deps: openssl for pg, ca-certificates for outbound HTTPS
+# Runtime deps:
+#   - ca-certificates / tzdata: standard
+#   - git: spaces/store.ts uses git for per-Space version history (every
+#     write does git add + git commit on the family directory). Missing
+#     git → spawnSync ENOENT crashes Space upserts on first family write.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       tzdata \
+      git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
