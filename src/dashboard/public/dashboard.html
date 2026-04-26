@@ -149,8 +149,8 @@ async function api(path, opts = {}) {
 
 <!-- Persistent quick composer (Today tab only) -->
 <div id="quick-composer" class="quick-composer">
-    <button class="attach-btn" id="quick-attach" onclick="document.getElementById('quick-file').click()" title="Attach photo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    <button class="attach-btn" id="quick-attach" onclick="document.getElementById('quick-file').click()" title="Attach photo, PDF, or document">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
     </button>
     <input type="file" id="quick-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'quick')">
     <input type="text" class="chat-input" id="quick-input" placeholder="Ask Memu, or say 'add milk to shopping'..." maxlength="500" autocomplete="off">
@@ -207,8 +207,8 @@ async function api(path, opts = {}) {
             <button type="button" class="staged-remove" id="chat-staged-remove" onclick="clearStagedAttachment()" aria-label="Remove attachment">×</button>
         </div>
         <div class="chat-input-bar">
-            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo or document">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo, PDF, or document">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
             <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
             <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
@@ -1682,6 +1682,13 @@ async function sendDocument(base64, fileName, mimeType, channel) {
         if (channel === 'chat') {
             document.getElementById('typing')?.remove();
             addChatMessage(reply, false);
+            // Followup turn — Memu's narration of any actions it took (calendar
+            // events written, planning Spaces created, web searches done).
+            // Lands as a separate bubble so the "Got it. Saved as Space..."
+            // confirmation stays scannable.
+            if (typeof data.followupText === 'string' && data.followupText.trim().length > 0) {
+                addChatMessage(data.followupText, false);
+            }
         } else {
             showToast(`Saved: ${data.spaceTitle}`);
             loadBrief();

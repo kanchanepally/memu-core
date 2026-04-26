@@ -40,6 +40,8 @@ import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
 import { upsertSpace } from '../spaces/store';
 import { pool } from '../db/connection';
+import { interactiveQueryTools, interactiveQueryServerTools } from './tools';
+import { formatToolSummaryFooter } from './toolSummary';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -261,6 +263,13 @@ export interface DocumentIngestionResult {
   truncated: boolean;
   streamCardCount: number;
   storedAt: string;
+  /**
+   * Optional real-names text from the post-ingestion follow-up turn —
+   * Claude's narration of any actions it took (calendar events written,
+   * planning Spaces created, etc.). Empty when the followup didn't fire
+   * or returned nothing actionable.
+   */
+  followupText?: string;
 }
 
 export interface DocumentIngestionFailure {
@@ -368,41 +377,59 @@ export async function processDocumentIngestion(
   );
   const docType = coerceDocType(skillOutput.doc_type);
 
+  // Translate structured data to real names ONCE — re-used for both the
+  // Space body below and the follow-up prompt fed to interactive_query.
+  interface RealKeyDate { label: string; iso: string; urgency: string }
+  interface RealKeyAmount { label: string; amount: string }
+  const realKeyDates: RealKeyDate[] = [];
+  if (Array.isArray(skillOutput.key_dates)) {
+    for (const kd of skillOutput.key_dates) {
+      realKeyDates.push({
+        label: await translateToReal(kd.label ?? ''),
+        iso: typeof kd.iso_date === 'string' ? kd.iso_date : '',
+        urgency: typeof kd.urgency === 'string' ? kd.urgency : '',
+      });
+    }
+  }
+  const realKeyAmounts: RealKeyAmount[] = [];
+  if (Array.isArray(skillOutput.key_amounts)) {
+    for (const ka of skillOutput.key_amounts) {
+      realKeyAmounts.push({
+        label: await translateToReal(ka.label ?? ''),
+        amount: typeof ka.amount === 'string' ? ka.amount : '',
+      });
+    }
+  }
+  const realParties: string[] = Array.isArray(skillOutput.parties)
+    ? (await Promise.all(
+        skillOutput.parties.map(p => translateToReal(typeof p === 'string' ? p : '')),
+      )).filter(p => p.trim().length > 0)
+    : [];
+
   // Build the Space body. Append the metadata sections after the LLM's
   // summary so a reader sees the prose first, then structured fields.
   const sections: string[] = [];
   if (realSummary.trim().length > 0) sections.push(realSummary.trim());
 
-  if (Array.isArray(skillOutput.key_dates) && skillOutput.key_dates.length > 0) {
+  if (realKeyDates.length > 0) {
     const lines: string[] = ['## Key dates'];
-    for (const kd of skillOutput.key_dates) {
-      const label = await translateToReal(kd.label ?? '');
-      const date = typeof kd.iso_date === 'string' ? kd.iso_date : '';
-      const urgency = typeof kd.urgency === 'string' ? kd.urgency : '';
-      const urgencyTag = urgency ? ` _(${urgency})_` : '';
-      lines.push(`- **${date}**: ${label}${urgencyTag}`);
+    for (const kd of realKeyDates) {
+      const urgencyTag = kd.urgency ? ` _(${kd.urgency})_` : '';
+      lines.push(`- **${kd.iso}**: ${kd.label}${urgencyTag}`);
     }
     sections.push(lines.join('\n'));
   }
 
-  if (Array.isArray(skillOutput.key_amounts) && skillOutput.key_amounts.length > 0) {
+  if (realKeyAmounts.length > 0) {
     const lines: string[] = ['## Key amounts'];
-    for (const ka of skillOutput.key_amounts) {
-      const label = await translateToReal(ka.label ?? '');
-      const amount = typeof ka.amount === 'string' ? ka.amount : '';
-      lines.push(`- **${amount}**: ${label}`);
+    for (const ka of realKeyAmounts) {
+      lines.push(`- **${ka.amount}**: ${ka.label}`);
     }
     sections.push(lines.join('\n'));
   }
 
-  if (Array.isArray(skillOutput.parties) && skillOutput.parties.length > 0) {
-    const realParties = await Promise.all(
-      skillOutput.parties.map(p => translateToReal(typeof p === 'string' ? p : '')),
-    );
-    const filtered = realParties.filter(p => p.trim().length > 0);
-    if (filtered.length > 0) {
-      sections.push(`## Referenced\n\n${filtered.map(p => `- ${p}`).join('\n')}`);
-    }
+  if (realParties.length > 0) {
+    sections.push(`## Referenced\n\n${realParties.map(p => `- ${p}`).join('\n')}`);
   }
 
   // Source reference points back to the original file on disk so future
@@ -460,6 +487,30 @@ export async function processDocumentIngestion(
     }
   }
 
+  // Best-effort follow-up: hand the document context to interactive_query
+  // so Claude can act on it — search the web for missing dates, write
+  // calendar events, spawn planning Spaces, cross-reference existing
+  // family Spaces. The Space already exists, so a followup failure does
+  // NOT roll back the ingestion.
+  let followupText: string | undefined;
+  try {
+    followupText = await runDocumentFollowup({
+      profileId: input.profileId,
+      messageId: input.messageId,
+      spaceUri,
+      spaceTitle: realTitle,
+      docType,
+      fileName: input.fileName,
+      summary: realSummary,
+      keyDates: realKeyDates,
+      keyAmounts: realKeyAmounts,
+      parties: realParties,
+      truncated: parsed.truncated,
+    });
+  } catch (err) {
+    console.error('[DOCUMENT INGESTION] followup failed (non-fatal):', err);
+  }
+
   return {
     ok: true,
     spaceUri,
@@ -469,5 +520,148 @@ export async function processDocumentIngestion(
     truncated: parsed.truncated,
     streamCardCount,
     storedAt,
+    followupText,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Post-ingestion follow-up (intelligent action chain)
+// ---------------------------------------------------------------------------
+
+interface FollowupInput {
+  profileId: string;
+  messageId: string;
+  spaceUri: string;
+  spaceTitle: string;
+  docType: string;
+  fileName: string;
+  summary: string;
+  keyDates: { label: string; iso: string; urgency: string }[];
+  keyAmounts: { label: string; amount: string }[];
+  parties: string[];
+  truncated: boolean;
+}
+
+/**
+ * Format the document context as a synthetic user-message that
+ * interactive_query can act on. Phrased as if Hareesh just told Memu
+ * about the upload — so Memu's reply lands naturally as a chat bubble.
+ *
+ * The instruction list is explicit because document follow-ups are a
+ * narrow use case: search the web to ground missing dates, look up
+ * relevant family Spaces, write to the calendar, spawn planning
+ * Spaces. Without explicit guidance the skill defaults to general
+ * conversational behaviour.
+ */
+function buildFollowupPrompt(input: FollowupInput): string {
+  const lines: string[] = [];
+  lines.push(`I just uploaded a document. Here's what was extracted:`);
+  lines.push('');
+  lines.push(`- Title: ${input.spaceTitle}`);
+  lines.push(`- Type: ${input.docType.replace(/_/g, ' ')}`);
+  lines.push(`- Source filename: ${input.fileName}`);
+  lines.push(`- Saved as Space: ${input.spaceUri}`);
+  if (input.truncated) {
+    lines.push(`- ⚠ Note: only the first 50,000 characters were processed.`);
+  }
+  lines.push('');
+  lines.push(`Summary:`);
+  lines.push(input.summary.trim().length > 0 ? input.summary.trim() : '(none)');
+  lines.push('');
+
+  if (input.keyDates.length > 0) {
+    lines.push(`Key dates extracted from the text:`);
+    for (const kd of input.keyDates) {
+      const urgency = kd.urgency ? ` (${kd.urgency})` : '';
+      lines.push(`- ${kd.iso || '(no ISO)'}: ${kd.label}${urgency}`);
+    }
+  } else {
+    lines.push(
+      `Key dates: none extractable from the text. The PDF may have been a visual ` +
+      `calendar grid that didn't parse cleanly — in that case search the web for the ` +
+      `authoritative published version using the document title as your seed.`,
+    );
+  }
+  lines.push('');
+
+  if (input.keyAmounts.length > 0) {
+    lines.push(`Key amounts:`);
+    for (const ka of input.keyAmounts) {
+      lines.push(`- ${ka.amount}: ${ka.label}`);
+    }
+    lines.push('');
+  }
+
+  if (input.parties.length > 0) {
+    lines.push(`Parties referenced: ${input.parties.join(', ')}`);
+    lines.push('');
+  }
+
+  lines.push(`Take any sensible follow-up actions on my behalf:`);
+  lines.push(
+    `- If exact dates are missing or incomplete, use web_search to find the ` +
+    `authoritative published source and use those real grounded dates. Never invent dates.`,
+  );
+  lines.push(
+    `- Cross-reference with existing family context using \`findSpaces\` — relate the ` +
+    `document to the right person, household, or commitment before acting.`,
+  );
+  lines.push(
+    `- For any concrete dated event (term start/end, half-term, MOT, appointment, ` +
+    `deadline), call \`addCalendarEvent\` with real, grounded dates only.`,
+  );
+  lines.push(
+    `- Where the document implies forward planning (school holidays → half-term plans, ` +
+    `summer plans; recurring bills; deadlines), call \`createSpace\` or \`updateSpace\` ` +
+    `to give the family a starting page they can grow into.`,
+  );
+  lines.push(
+    `- Be honest about what you couldn't ground. Don't fabricate — say "I couldn't find X" ` +
+    `and the user will fill it in.`,
+  );
+  lines.push('');
+  lines.push(`Reply with what you actioned, in your usual voice. Keep it concise.`);
+
+  return lines.join('\n');
+}
+
+async function runDocumentFollowup(input: FollowupInput): Promise<string | undefined> {
+  const realPrompt = buildFollowupPrompt(input);
+
+  // Twin guard runs inside dispatch (interactive_query is requires_twin: true).
+  // Pre-anonymise here so the dispatch sees the same shape as a normal chat
+  // turn — saves the guard from rewriting a long prompt at the boundary.
+  const anonPrompt = await translateToAnonymous(realPrompt);
+
+  const result = await dispatch({
+    skill: 'interactive_query',
+    templateVars: { context_block: '' },
+    userMessage: anonPrompt,
+    profileId: input.profileId,
+    familyId: input.profileId,
+    useBYOK: true,
+    tools: interactiveQueryTools,
+    serverTools: interactiveQueryServerTools,
+    maxTokens: 4096,
+    toolContext: {
+      familyId: input.profileId,
+      profileId: input.profileId,
+      channel: 'pwa',
+      messageId: `${input.messageId}-followup`,
+    },
+  });
+
+  if (result.toolCalls && result.toolCalls.length > 0) {
+    const summary = result.toolCalls.map(c => `${c.name}:${c.ok ? 'ok' : 'fail'}`).join(' ');
+    console.log(`[DOC FOLLOWUP TOOL-USE]: ${summary}`);
+  }
+
+  const realText = await translateToReal(result.text);
+  const trimmed = realText.trim();
+  if (trimmed.length === 0 && (!result.toolCalls || result.toolCalls.length === 0)) {
+    return undefined;
+  }
+
+  const footer = formatToolSummaryFooter(result.toolCalls);
+  return footer ? `${trimmed}${footer}` : trimmed;
 }

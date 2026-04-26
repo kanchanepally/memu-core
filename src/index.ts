@@ -329,6 +329,7 @@ server.post('/api/document', async (request, reply) => {
       charCount: result.charCount,
       truncated: result.truncated,
       streamCardCount: result.streamCardCount,
+      followupText: result.followupText,
     };
   } catch (err) {
     server.log.error(err);
