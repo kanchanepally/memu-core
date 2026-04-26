@@ -948,25 +948,54 @@ server.post('/api/spaces', async (request, reply) => {
   }
 });
 
-// Update a Space (human-edited synthesis page)
+// Update a Space (human-edited synthesis page).
+// Optional `visibility` accepts:
+//   - "family" | "private" | "partners_only" | "adults_only" — scalar
+//   - string[] of profile IDs — explicit allow-list (collaborative share)
 server.put('/api/spaces/:id', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
     const { id } = request.params as { id: string };
-    const { title, body_markdown } = request.body as { title?: string; body_markdown?: string };
+    const { title, body_markdown, visibility } = request.body as {
+      title?: string;
+      body_markdown?: string;
+      visibility?: string | string[];
+    };
 
-    if (typeof body_markdown !== 'string' || body_markdown.length === 0) {
-      return reply.code(400).send({ error: 'body_markdown is required' });
+    const updateBody = typeof body_markdown === 'string' && body_markdown.length > 0;
+    const updateVisibility = typeof visibility !== 'undefined';
+    if (!updateBody && !updateVisibility && !title) {
+      return reply.code(400).send({ error: 'nothing to update — provide title, body_markdown, or visibility' });
+    }
+
+    let visibilityStored: string | null = null;
+    if (updateVisibility) {
+      if (Array.isArray(visibility)) {
+        // Validate as profile-id allow-list. Empty array → fall back to private.
+        if (visibility.some(v => typeof v !== 'string' || v.length === 0)) {
+          return reply.code(400).send({ error: 'visibility array must contain profile IDs' });
+        }
+        visibilityStored = visibility.length === 0 ? 'private' : JSON.stringify(visibility);
+      } else if (typeof visibility === 'string') {
+        const allowed = new Set(['family', 'private', 'partners_only', 'adults_only']);
+        if (!allowed.has(visibility)) {
+          return reply.code(400).send({ error: 'visibility must be family, private, partners_only, adults_only, or an array of profile IDs' });
+        }
+        visibilityStored = visibility;
+      } else {
+        return reply.code(400).send({ error: 'visibility must be a string or array of profile IDs' });
+      }
     }
 
     const res = await pool.query(
       `UPDATE synthesis_pages
          SET title = COALESCE($1, title),
-             body_markdown = $2,
+             body_markdown = COALESCE($2, body_markdown),
+             visibility = COALESCE($3, visibility),
              last_updated_at = NOW()
-       WHERE id = $3 AND profile_id = $4
+       WHERE id = $4 AND profile_id = $5
        RETURNING *`,
-      [title || null, body_markdown, id, profileId]
+      [title || null, updateBody ? body_markdown : null, visibilityStored, id, profileId]
     );
 
     if (res.rowCount === 0) {
@@ -976,6 +1005,40 @@ server.put('/api/spaces/:id', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to update space' });
+  }
+});
+
+// List profiles in this family — for the share-Space picker so the user
+// can choose who to grant edit access to. Returns id, display_name, role,
+// and a flag for which one is the caller. Excludes children only when the
+// caller is a child (children should not see family members they can't share with).
+server.get('/api/family/profiles', async (request, reply) => {
+  try {
+    const callerProfileId = (request as any).profileId;
+    const callerProfile = (request as any).profile;
+    const isCallerChild = callerProfile?.role === 'child';
+    const params: any[] = [];
+    let where = '';
+    if (isCallerChild) {
+      where = 'WHERE role != $1';
+      params.push('child');
+    }
+    const res = await pool.query(
+      `SELECT id, display_name, role FROM profiles ${where} ORDER BY
+          CASE role WHEN 'admin' THEN 1 WHEN 'adult' THEN 2 WHEN 'child' THEN 3 ELSE 4 END,
+          display_name`,
+      params,
+    );
+    const profiles = res.rows.map(r => ({
+      id: r.id,
+      display_name: r.display_name,
+      role: r.role,
+      is_self: r.id === callerProfileId,
+    }));
+    return { profiles };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to list profiles' });
   }
 });
 

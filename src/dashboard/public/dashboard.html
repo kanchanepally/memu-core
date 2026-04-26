@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-3">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-1">
 </head>
 <body>
 <!-- Auth gate -->
@@ -35,9 +35,12 @@ async function api(path, opts = {}) {
 }
 </script>
 
-<!-- App shell: sidebar + main -->
+<!-- App shell: sidebar + main. Sidebar toggles between visible (desktop default,
+     mobile slide-in overlay) and hidden via the hamburger in the canvas topbar.
+     State persists in sessionStorage. -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
 <div class="app-shell">
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar">
     <a class="sidebar-logo" href="/dashboard.html">
         <svg class="sidebar-logo-mark" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -91,6 +94,15 @@ async function api(path, opts = {}) {
     </nav>
 </aside>
 <main class="app-main">
+
+<!-- Canvas topbar — hamburger to toggle the sidebar + current page title.
+     Always visible so the user can recall the sidebar from anywhere. -->
+<header class="app-topbar">
+    <button class="topbar-hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation" title="Toggle navigation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <h1 class="topbar-title" id="topbar-title">Today</h1>
+</header>
 
 <!-- ==================== TODAY TAB ==================== -->
 <div id="view-today" class="today-grid">
@@ -221,47 +233,117 @@ async function api(path, opts = {}) {
 
 <!-- ==================== SPACES TAB ==================== -->
 <div id="view-spaces" class="container hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
-    <header class="spaces-masthead">
-        <div class="briefing-eyebrow">Spaces</div>
-        <div class="briefing-title">What Memu knows</div>
-        <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
-    </header>
+    <!-- List view: chips + grid + feature card -->
+    <div id="spaces-list-view">
+        <header class="spaces-masthead">
+            <div class="briefing-eyebrow">Spaces</div>
+            <div class="briefing-title">What Memu knows</div>
+            <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
+        </header>
 
-    <div id="spaces-chips" class="spaces-chips"></div>
+        <div id="spaces-chips" class="spaces-chips"></div>
 
-    <div id="spaces-empty" class="empty-state hidden">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
+        <div id="spaces-empty" class="empty-state hidden">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
 
-    <div id="spaces-feature" class="spaces-feature"></div>
-    <div id="spaces-grid" class="spaces-grid"></div>
+        <div id="spaces-feature" class="spaces-feature"></div>
+        <div id="spaces-grid" class="spaces-grid"></div>
+    </div>
+
+    <!-- Detail view: full-canvas Space page. Replaces the old modal.
+         Toggled by openSpaceDetail() / closeSpaceDetail(). -->
+    <div id="spaces-detail-view" class="hidden">
+        <button class="space-back-btn" onclick="closeSpaceDetail()" aria-label="Back to Spaces">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>All Spaces</span>
+        </button>
+        <div id="space-detail-view">
+            <div class="space-detail-meta">
+                <span id="space-detail-category" class="space-detail-category"></span>
+                <span class="space-detail-dot">·</span>
+                <span id="space-detail-updated" class="space-detail-updated"></span>
+            </div>
+            <h1 id="space-detail-title" class="space-detail-title"></h1>
+            <div id="space-detail-body" class="space-body"></div>
+            <div class="space-detail-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openShareSpace()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                    Share
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
+                <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
+            </div>
+        </div>
+        <div id="space-detail-edit" class="hidden">
+            <div class="space-edit-toolbar" role="toolbar" aria-label="Markdown formatting">
+                <button type="button" class="md-btn" onclick="mdInsert('heading')" title="Heading"><strong>H</strong></button>
+                <button type="button" class="md-btn" onclick="mdInsert('bold')" title="Bold (Ctrl+B)"><strong>B</strong></button>
+                <button type="button" class="md-btn" onclick="mdInsert('italic')" title="Italic (Ctrl+I)"><em>I</em></button>
+                <button type="button" class="md-btn" onclick="mdInsert('list')" title="Bulleted list">•</button>
+                <button type="button" class="md-btn" onclick="mdInsert('numlist')" title="Numbered list">1.</button>
+                <button type="button" class="md-btn" onclick="mdInsert('link')" title="Link (Ctrl+K)">🔗</button>
+                <button type="button" class="md-btn" onclick="mdInsert('quote')" title="Quote">❝</button>
+                <button type="button" class="md-btn" onclick="mdInsert('code')" title="Inline code">&lt;/&gt;</button>
+                <span class="md-toolbar-spacer"></span>
+                <button type="button" class="md-btn md-preview-btn" id="md-preview-btn" onclick="togglePreview()" title="Toggle preview">Preview</button>
+            </div>
+            <input type="text" id="space-edit-title" class="space-edit-title-input" placeholder="Title">
+            <textarea id="space-edit-body" class="space-edit-body" placeholder="Write in Markdown — # Heading, **bold**, - lists, [links](url)..."></textarea>
+            <div id="space-edit-preview" class="space-body space-edit-preview hidden"></div>
+            <div class="space-edit-actions">
+                <button class="btn btn-secondary btn-sm" onclick="exitSpaceEdit()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="space-edit-save" onclick="saveSpaceEdit()">Save</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <button id="spaces-fab" class="spaces-fab hidden" onclick="openSpaceCreate()" title="New Space">+</button>
 
-<!-- Space Detail Modal -->
-<div class="modal-overlay" id="space-detail-modal">
-    <div class="modal-card" style="max-width:640px;">
-        <div class="flex justify-between" style="align-items:center;margin-bottom:var(--space-sm);">
-            <div id="space-detail-category" class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;"></div>
-            <button class="btn btn-secondary btn-sm" onclick="closeSpaceDetail()" style="border:none;">&#x2715;</button>
+<!-- Space Share Modal — collaborative edit, not a copy. Adds household
+     profiles to the Space's visibility list. Backend supports both
+     scalar visibility ("family", "private") and an array of profile IDs. -->
+<div class="modal-overlay" id="space-share-modal">
+    <div class="modal-card" style="max-width:480px;">
+        <h3 class="mb-sm">Share Space</h3>
+        <div class="text-muted mb-md" style="font-size:13px;">
+            Share with people on your Memu — they can view <em>and</em> edit. Changes flow back to the same Space, not a copy.
         </div>
-        <div id="space-detail-view">
-            <h3 id="space-detail-title" class="mb-sm"></h3>
-            <div id="space-detail-updated" class="text-muted mb-md" style="font-size:12px;"></div>
-            <div id="space-detail-body" class="space-body"></div>
-            <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-lg);">
-                <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
-                <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
+        <div class="share-current">
+            <div class="share-label">Current visibility</div>
+            <div class="share-current-value" id="share-current-value">Family</div>
+        </div>
+        <div class="share-mode">
+            <label class="share-mode-option">
+                <input type="radio" name="share-mode" value="family" onchange="onShareModeChange('family')">
+                <span>
+                    <strong>Family</strong>
+                    <small>Everyone in your household sees it</small>
+                </span>
+            </label>
+            <label class="share-mode-option">
+                <input type="radio" name="share-mode" value="private" onchange="onShareModeChange('private')">
+                <span>
+                    <strong>Private</strong>
+                    <small>Only you</small>
+                </span>
+            </label>
+            <label class="share-mode-option">
+                <input type="radio" name="share-mode" value="custom" onchange="onShareModeChange('custom')">
+                <span>
+                    <strong>Specific people</strong>
+                    <small>Pick who can see and edit</small>
+                </span>
+            </label>
+        </div>
+        <div id="share-people" class="share-people hidden">
+            <div class="share-label">People</div>
+            <div id="share-people-list" class="share-people-list">
+                <div class="text-muted" style="font-size:13px;">Loading household...</div>
             </div>
         </div>
-        <div id="space-detail-edit" class="hidden">
-            <label class="input-label">Title</label>
-            <input type="text" id="space-edit-title" class="input mb-md">
-            <label class="input-label">Body (Markdown)</label>
-            <textarea id="space-edit-body" class="input" rows="10" style="font-family:var(--font-mono,monospace);font-size:13px;"></textarea>
-            <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
-                <button class="btn btn-secondary btn-sm" onclick="exitSpaceEdit()">Cancel</button>
-                <button class="btn btn-primary btn-sm" id="space-edit-save" onclick="saveSpaceEdit()">Save</button>
-            </div>
+        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
+            <button class="btn btn-secondary btn-sm" onclick="closeShareSpace()">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="space-share-save" onclick="saveShareSpace()">Save</button>
         </div>
     </div>
 </div>
@@ -494,10 +576,58 @@ async function api(path, opts = {}) {
 
 <!-- ==================== JAVASCRIPT ==================== -->
 <script>
+// ========== SIDEBAR TOGGLE ==========
+//
+// State persists in sessionStorage as `memu_sidebar_shown` ("true"/"false").
+// Default is viewport-dependent: visible on desktop (≥769px), hidden on
+// mobile. Once toggled, the user's preference sticks for the session.
+
+const SIDEBAR_KEY = 'memu_sidebar_shown';
+
+function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function applyInitialSidebarState() {
+    const stored = sessionStorage.getItem(SIDEBAR_KEY);
+    let shown;
+    if (stored === null) {
+        shown = !isMobileViewport(); // desktop default visible, mobile default hidden
+    } else {
+        shown = stored === 'true';
+    }
+    document.body.classList.toggle('sidebar-shown', shown);
+}
+
+function toggleSidebar() {
+    const newShown = !document.body.classList.contains('sidebar-shown');
+    document.body.classList.toggle('sidebar-shown', newShown);
+    sessionStorage.setItem(SIDEBAR_KEY, String(newShown));
+}
+
+function closeSidebar() {
+    document.body.classList.remove('sidebar-shown');
+    sessionStorage.setItem(SIDEBAR_KEY, 'false');
+}
+
+// Apply initial state immediately so there's no flash of wrong layout.
+applyInitialSidebarState();
+
 // ========== TAB NAVIGATION ==========
 
 let currentTab = 'today';
 const tabs = ['today', 'chat', 'spaces', 'lists', 'calendar', 'ledger', 'import', 'settings'];
+
+const TAB_TITLES = {
+    today: 'Today',
+    chat: 'Chat',
+    spaces: 'Spaces',
+    lists: 'Lists',
+    calendar: 'Calendar',
+    ledger: 'Privacy Ledger',
+    import: 'Import',
+    settings: 'Settings',
+};
 
 function switchTab(tab) {
     currentTab = tab;
@@ -505,10 +635,19 @@ function switchTab(tab) {
         document.getElementById('view-' + t).classList.toggle('hidden', t !== tab);
         document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     });
+    // When changing tabs, always come back to the Spaces list view (not detail)
+    if (tab !== 'spaces') {
+        document.getElementById('spaces-list-view')?.classList.remove('hidden');
+        document.getElementById('spaces-detail-view')?.classList.add('hidden');
+    }
+    // Update topbar title
+    document.getElementById('topbar-title').textContent = TAB_TITLES[tab] || 'Memu';
     // Quick composer only on Today
     document.getElementById('quick-composer').classList.toggle('hidden', tab !== 'today');
-    // FAB only on Spaces
+    // FAB only on Spaces (hidden when in detail view — set by openSpaceDetail)
     document.getElementById('spaces-fab').classList.toggle('hidden', tab !== 'spaces');
+    // Auto-close sidebar on mobile after a tab tap so the canvas is visible
+    if (isMobileViewport()) closeSidebar();
     // Load data on tab switch
     if (tab === 'today') loadBrief();
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
@@ -1419,21 +1558,34 @@ function renderSpaceCard(s, isFeature) {
     </div>`;
 }
 
+// ========== SPACE DETAIL (FULL CANVAS, NOT MODAL) ==========
+
 function openSpaceDetail(id) {
     const s = spacesState.spaces.find(x => x.id === id);
     if (!s) return;
     spacesState.currentId = id;
     document.getElementById('space-detail-category').innerHTML = categoryIcon(s.category) + ' ' + categoryLabel(s.category);
     document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
-    document.getElementById('space-detail-updated').textContent = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at);
-    document.getElementById('space-detail-body').innerHTML = renderMarkdown(s.body_markdown || '_No content yet._');
+    document.getElementById('space-detail-updated').textContent = 'Updated ' + (formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at) || 'recently');
+    document.getElementById('space-detail-body').innerHTML = renderMarkdown(s.body_markdown || '_No content yet — tap Edit to add some._');
+    // Swap canvas: hide list, show detail
+    document.getElementById('spaces-list-view').classList.add('hidden');
+    document.getElementById('spaces-detail-view').classList.remove('hidden');
     document.getElementById('space-detail-view').classList.remove('hidden');
     document.getElementById('space-detail-edit').classList.add('hidden');
-    document.getElementById('space-detail-modal').classList.add('open');
+    // FAB belongs to the list view, not detail
+    document.getElementById('spaces-fab').classList.add('hidden');
+    // Topbar reflects the Space title for context
+    document.getElementById('topbar-title').textContent = s.title || 'Space';
+    // Scroll to top of canvas
+    document.querySelector('.app-main')?.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function closeSpaceDetail() {
-    document.getElementById('space-detail-modal').classList.remove('open');
+    document.getElementById('spaces-detail-view').classList.add('hidden');
+    document.getElementById('spaces-list-view').classList.remove('hidden');
+    document.getElementById('spaces-fab').classList.remove('hidden');
+    document.getElementById('topbar-title').textContent = TAB_TITLES.spaces;
     spacesState.currentId = null;
 }
 
@@ -1442,14 +1594,123 @@ function enterSpaceEdit() {
     if (!s) return;
     document.getElementById('space-edit-title').value = s.title || '';
     document.getElementById('space-edit-body').value = s.body_markdown || '';
+    // Hide preview if it was on
+    document.getElementById('space-edit-preview').classList.add('hidden');
+    document.getElementById('space-edit-body').classList.remove('hidden');
+    document.getElementById('md-preview-btn').classList.remove('active');
+    document.getElementById('md-preview-btn').textContent = 'Preview';
     document.getElementById('space-detail-view').classList.add('hidden');
     document.getElementById('space-detail-edit').classList.remove('hidden');
+    // Focus the body — title is already populated, body is where work happens
+    setTimeout(() => document.getElementById('space-edit-body').focus(), 50);
 }
 
 function exitSpaceEdit() {
     document.getElementById('space-detail-view').classList.remove('hidden');
     document.getElementById('space-detail-edit').classList.add('hidden');
 }
+
+// ========== MARKDOWN EDITOR HELPERS ==========
+//
+// Wrap the textarea selection with markdown syntax. Cheap and predictable —
+// no contenteditable WYSIWYG. The body stays markdown, so what you save
+// is what's stored, no lossy conversion.
+
+function mdInsert(kind) {
+    const ta = document.getElementById('space-edit-body');
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const sel = ta.value.slice(start, end);
+    const before = ta.value.slice(0, start);
+    const after = ta.value.slice(end);
+    let inserted = sel;
+    let cursorOffset = 0;
+
+    switch (kind) {
+        case 'heading': {
+            // Toggle a leading "## " on the line containing the cursor
+            const lineStart = before.lastIndexOf('\n') + 1;
+            const linePrefix = ta.value.slice(lineStart, start);
+            if (/^#{1,6}\s/.test(linePrefix)) return; // already a heading
+            ta.value = ta.value.slice(0, lineStart) + '## ' + ta.value.slice(lineStart);
+            ta.selectionStart = ta.selectionEnd = start + 3;
+            ta.focus();
+            return;
+        }
+        case 'bold':
+            inserted = '**' + (sel || 'bold text') + '**';
+            cursorOffset = sel ? inserted.length : 2;
+            break;
+        case 'italic':
+            inserted = '_' + (sel || 'italic text') + '_';
+            cursorOffset = sel ? inserted.length : 1;
+            break;
+        case 'list': {
+            const lines = (sel || 'item').split('\n').map(l => '- ' + l).join('\n');
+            inserted = lines;
+            cursorOffset = inserted.length;
+            break;
+        }
+        case 'numlist': {
+            const lines = (sel || 'item').split('\n').map((l, i) => `${i + 1}. ${l}`).join('\n');
+            inserted = lines;
+            cursorOffset = inserted.length;
+            break;
+        }
+        case 'link': {
+            const text = sel || 'link text';
+            inserted = `[${text}](url)`;
+            cursorOffset = inserted.length - 4; // place cursor inside the url
+            break;
+        }
+        case 'quote': {
+            const lines = (sel || 'quote').split('\n').map(l => '> ' + l).join('\n');
+            inserted = lines;
+            cursorOffset = inserted.length;
+            break;
+        }
+        case 'code':
+            inserted = '`' + (sel || 'code') + '`';
+            cursorOffset = sel ? inserted.length : 1;
+            break;
+    }
+    ta.value = before + inserted + after;
+    const newPos = start + cursorOffset;
+    ta.selectionStart = ta.selectionEnd = sel ? start + inserted.length : newPos;
+    ta.focus();
+}
+
+function togglePreview() {
+    const body = document.getElementById('space-edit-body');
+    const preview = document.getElementById('space-edit-preview');
+    const btn = document.getElementById('md-preview-btn');
+    const showingPreview = !preview.classList.contains('hidden');
+    if (showingPreview) {
+        preview.classList.add('hidden');
+        body.classList.remove('hidden');
+        btn.classList.remove('active');
+        btn.textContent = 'Preview';
+    } else {
+        preview.innerHTML = renderMarkdown(body.value || '_Nothing to preview yet._');
+        preview.classList.remove('hidden');
+        body.classList.add('hidden');
+        btn.classList.add('active');
+        btn.textContent = 'Edit';
+    }
+}
+
+// Keyboard shortcuts for the editor (only fire when the body textarea has focus)
+document.addEventListener('keydown', (e) => {
+    const ta = document.getElementById('space-edit-body');
+    if (!ta || document.activeElement !== ta) return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'b') { e.preventDefault(); mdInsert('bold'); }
+    else if (k === 'i') { e.preventDefault(); mdInsert('italic'); }
+    else if (k === 'k') { e.preventDefault(); mdInsert('link'); }
+    else if (k === 'enter') { e.preventDefault(); saveSpaceEdit(); }
+});
 
 async function saveSpaceEdit() {
     const id = spacesState.currentId;
@@ -1488,6 +1749,154 @@ async function deleteCurrentSpace() {
         showToast('Deleted');
     } catch (err) {
         showToast('Delete failed', true);
+    }
+}
+
+// ========== SHARE-TO-EDIT (collaborative, not copy) ==========
+//
+// "Share" adds household profiles to the Space's visibility list. The
+// backend supports either a scalar visibility ("family", "private",
+// "partners_only", "adults_only") or a string array of explicit profile IDs.
+// Picking specific people writes the array, so they (and only they, plus
+// you) can see and edit. Same Space — edits flow back, no copy.
+
+let shareState = {
+    profiles: [],
+    selectedIds: new Set(),
+    mode: 'family', // 'family' | 'private' | 'custom'
+};
+
+function describeVisibility(v) {
+    if (Array.isArray(v)) return `Specific people (${v.length})`;
+    if (typeof v === 'string' && v.startsWith('[')) {
+        try {
+            const arr = JSON.parse(v);
+            if (Array.isArray(arr)) return `Specific people (${arr.length})`;
+        } catch { /* fall through */ }
+    }
+    if (v === 'private') return 'Private — only you';
+    if (v === 'partners_only') return 'Partners only';
+    if (v === 'adults_only') return 'Adults only';
+    return 'Family — everyone in your household';
+}
+
+function visibilityToMode(v) {
+    if (Array.isArray(v)) return 'custom';
+    if (typeof v === 'string' && v.startsWith('[')) return 'custom';
+    if (v === 'private') return 'private';
+    return 'family';
+}
+
+function visibilityToIds(v) {
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string' && v.startsWith('[')) {
+        try {
+            const arr = JSON.parse(v);
+            if (Array.isArray(arr)) return arr;
+        } catch { /* fall through */ }
+    }
+    return [];
+}
+
+async function openShareSpace() {
+    const s = spacesState.spaces.find(x => x.id === spacesState.currentId);
+    if (!s) return;
+    document.getElementById('share-current-value').textContent = describeVisibility(s.visibility);
+    shareState.mode = visibilityToMode(s.visibility);
+    shareState.selectedIds = new Set(visibilityToIds(s.visibility));
+    document.querySelectorAll('input[name="share-mode"]').forEach(input => {
+        input.checked = input.value === shareState.mode;
+    });
+    document.getElementById('share-people').classList.toggle('hidden', shareState.mode !== 'custom');
+    // Load profiles lazily — don't block the modal open if /api/family/profiles
+    // isn't deployed yet (legacy backends): show an inline note instead.
+    document.getElementById('space-share-modal').classList.add('open');
+    try {
+        if (shareState.profiles.length === 0) {
+            const res = await api('/api/family/profiles');
+            if (res.ok) {
+                const data = await res.json();
+                shareState.profiles = data.profiles || [];
+            } else {
+                shareState.profiles = [];
+            }
+        }
+        renderSharePeople();
+    } catch {
+        document.getElementById('share-people-list').innerHTML =
+            '<div class="text-muted" style="font-size:13px;padding:8px;">Could not load household members. Update Memu to enable sharing.</div>';
+    }
+}
+
+function closeShareSpace() {
+    document.getElementById('space-share-modal').classList.remove('open');
+}
+
+function onShareModeChange(mode) {
+    shareState.mode = mode;
+    document.getElementById('share-people').classList.toggle('hidden', mode !== 'custom');
+    if (mode === 'custom') renderSharePeople();
+}
+
+function renderSharePeople() {
+    const list = document.getElementById('share-people-list');
+    if (!shareState.profiles.length) {
+        list.innerHTML = '<div class="text-muted" style="font-size:13px;padding:8px;">No other people on this Memu yet.</div>';
+        return;
+    }
+    list.innerHTML = shareState.profiles.map(p => {
+        const checked = shareState.selectedIds.has(p.id) || p.is_self ? 'checked' : '';
+        const disabled = p.is_self ? 'disabled' : '';
+        const selfTag = p.is_self ? ' <span class="share-person-role">(you, always)</span>' : '';
+        const roleTag = !p.is_self ? `<span class="share-person-role">${esc(p.role)}</span>` : '';
+        return `<label class="share-person">
+            <input type="checkbox" value="${esc(p.id)}" ${checked} ${disabled} onchange="toggleSharePerson('${esc(p.id)}', this.checked)">
+            <span class="share-person-name">${esc(p.display_name || 'Unnamed')}</span>${selfTag}${roleTag}
+        </label>`;
+    }).join('');
+}
+
+function toggleSharePerson(id, on) {
+    if (on) shareState.selectedIds.add(id);
+    else shareState.selectedIds.delete(id);
+}
+
+async function saveShareSpace() {
+    const id = spacesState.currentId;
+    if (!id) return;
+    const btn = document.getElementById('space-share-save');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    let visibility;
+    if (shareState.mode === 'family') visibility = 'family';
+    else if (shareState.mode === 'private') visibility = 'private';
+    else {
+        // Always include self in the allow-list so the owner doesn't lock themselves out
+        const self = shareState.profiles.find(p => p.is_self);
+        const ids = new Set(shareState.selectedIds);
+        if (self) ids.add(self.id);
+        visibility = Array.from(ids);
+    }
+    try {
+        const res = await api('/api/spaces/' + id, {
+            method: 'PUT',
+            body: JSON.stringify({ visibility }),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Could not update sharing', true);
+            return;
+        }
+        closeShareSpace();
+        await loadSpaces();
+        const updated = spacesState.spaces.find(x => x.id === id);
+        if (updated) openSpaceDetail(id);
+        showToast('Sharing updated');
+    } catch (err) {
+        showToast('Could not update sharing', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
     }
 }
 

@@ -1211,10 +1211,27 @@ textarea.input {
    App shell + sidebar (Indigo Sanctuary — mirrors mobile SideDrawer)
    ========================================================================== */
 
+/* ==========================================================================
+   App shell — collapsible sidebar (Littlebird-inspired layout, 2026-04-26)
+
+   Two viewports, two default behaviours:
+   - Desktop (≥769px): sidebar visible by default. Hamburger toggles it
+     away — canvas expands to full width, sidebar slides off-screen left.
+   - Mobile (≤768px): sidebar hidden by default. Hamburger reveals it as
+     an overlay sliding in from the left, with a backdrop that dismisses
+     on tap.
+
+   The persisted state is `body.sidebar-shown`. JS sets it on boot based
+   on viewport (default visible on desktop, default hidden on mobile)
+   and updates it on toggle. CSS interprets "shown" appropriately per
+   viewport. State persists in sessionStorage across page nav.
+   ========================================================================== */
+
 .app-shell {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 0 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 0.25s ease;
 }
 
 .sidebar {
@@ -1224,10 +1241,29 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
-  position: sticky;
-  top: 0;
   height: 100vh;
   overflow-y: auto;
+  width: 240px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 90;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+}
+
+body.sidebar-shown .sidebar {
+  transform: translateX(0);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 38, 0.45);
+  z-index: 80;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
 .sidebar-logo {
@@ -1301,42 +1337,416 @@ textarea.input {
   position: relative;
 }
 
-/* Desktop: composer respects the sidebar column */
-@media (min-width: 769px) {
-  .quick-composer { left: 240px; }
+/* Topbar — sticky hamburger + page title at the top of the canvas. */
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px var(--space-md);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
+.topbar-hamburger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.topbar-hamburger:hover {
+  background: var(--color-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.topbar-title {
+  font-family: var(--font-headline);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+/* Desktop: sidebar visible by default → reserve column. Hidden → 0 width. */
+@media (min-width: 769px) {
+  body.sidebar-shown .app-shell {
+    grid-template-columns: 240px 1fr;
+  }
+  body.sidebar-shown .sidebar {
+    position: sticky;
+  }
+  body.sidebar-shown .quick-composer {
+    left: 240px;
+  }
+  /* Backdrop is mobile-only — hidden on desktop. */
+  .sidebar-backdrop { display: none; }
+}
+
+/* Mobile: backdrop appears with the sidebar. */
 @media (max-width: 768px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    height: auto;
-    flex-direction: row;
-    padding: var(--space-xs) var(--space-sm);
-    border-right: none;
-    border-top: 1px solid var(--border);
-    gap: 0;
-    z-index: 100;
-    overflow-x: auto;
-    overflow-y: hidden;
+  body.sidebar-shown .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
   }
-  .sidebar-logo, .sidebar-divider { display: none; }
-  .sidebar-nav { flex: 1; flex-direction: row; justify-content: space-around; }
-  .sidebar-nav-item {
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px;
-    font-size: 11px;
-    text-align: center;
-  }
-  .sidebar-nav-item.active { background: transparent; }
-  .app-main { padding-bottom: 60px; }
-  .quick-composer { bottom: 56px; }
+  /* No bottom-tab pattern any more — the hamburger replaces it. */
+  .app-main { padding-bottom: 0; }
+  .quick-composer { left: 0; right: 0; bottom: 0; }
   .today-grid { padding-bottom: 180px; }
+}
+
+/* ==========================================================================
+   Full-canvas Space detail (replaces modal, 2026-04-26)
+   ========================================================================== */
+
+#spaces-detail-view {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-md) var(--space-md) 100px;
+}
+
+.space-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 8px;
+  margin-left: -8px;
+  margin-bottom: var(--space-md);
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: var(--transition);
+}
+
+.space-back-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--text-primary);
+}
+
+.space-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.space-detail-category {
+  font-weight: 600;
+  color: var(--indigo-primary);
+}
+
+.space-detail-dot { opacity: 0.5; }
+
+.space-detail-updated { font-weight: 500; }
+
+.space-detail-title {
+  font-family: var(--font-headline);
+  font-weight: 800;
+  font-size: 36px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-lg);
+  line-height: 1.2;
+}
+
+.space-body {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.space-body h1, .space-body h2, .space-body h3 {
+  font-family: var(--font-headline);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 2em 0 0.6em;
+  line-height: 1.3;
+}
+
+.space-body h1 { font-size: 26px; }
+.space-body h2 { font-size: 22px; }
+.space-body h3 { font-size: 18px; }
+.space-body p { margin: 0 0 1em; }
+.space-body ul, .space-body ol { margin: 0 0 1em; padding-left: 1.4em; }
+.space-body li { margin-bottom: 0.4em; }
+.space-body blockquote {
+  border-left: 3px solid var(--indigo-primary);
+  padding: 0.2em 0 0.2em 1em;
+  margin: 1em 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.space-body code {
+  font-family: var(--font-mono, monospace);
+  background: var(--color-surface);
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-size: 0.92em;
+}
+.space-body a {
+  color: var(--indigo-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.space-body a:hover { opacity: 0.8; }
+
+.space-detail-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-xl);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Markdown editor (full-canvas Space edit, 2026-04-26)
+   ========================================================================== */
+
+.space-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.md-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 30px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.md-btn:hover {
+  background: var(--color-bg);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.md-toolbar-spacer { flex: 1; }
+
+.md-preview-btn {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 12px;
+}
+
+.md-preview-btn.active {
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  border-color: var(--indigo-secondary-container);
+}
+
+.space-edit-title-input {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-headline);
+  font-weight: 800;
+  font-size: 32px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: var(--space-md);
+  padding: 4px 0;
+  border-bottom: 2px dashed transparent;
+  transition: border-color 0.15s ease;
+}
+
+.space-edit-title-input:focus {
+  border-bottom-color: var(--border);
+}
+
+.space-edit-body {
+  display: block;
+  width: 100%;
+  min-height: 50vh;
+  background: var(--color-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.space-edit-body:focus {
+  border-color: var(--border-focus);
+}
+
+.space-edit-preview {
+  min-height: 50vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  background: var(--color-bg);
+}
+
+.space-edit-actions {
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+  margin-top: var(--space-md);
+}
+
+/* ==========================================================================
+   Share Space modal — collaborative edit (2026-04-26)
+   ========================================================================== */
+
+.share-current {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: 12px var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.share-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.share-current-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.share-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: var(--space-md);
+}
+
+.share-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.share-mode-option:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--indigo-primary);
+}
+
+.share-mode-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--indigo-primary);
+}
+
+.share-mode-option strong {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.share-mode-option small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.share-people {
+  margin-bottom: var(--space-md);
+}
+
+.share-people-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.share-person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+}
+
+.share-person:hover {
+  background: var(--color-surface-hover);
+}
+
+.share-person input[type="checkbox"] {
+  accent-color: var(--indigo-primary);
+  flex-shrink: 0;
+}
+
+.share-person-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.share-person-role {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
 }
 
 /* ==========================================================================
