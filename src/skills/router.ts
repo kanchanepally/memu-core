@@ -105,7 +105,20 @@ export interface DispatchResult {
   toolCalls?: ToolCallLogEntry[];
 }
 
-const MAX_TOOL_ITERATIONS = 5;
+// Max tool-use iterations per dispatch. Each iteration is one Claude call;
+// in a single iteration Claude can fire multiple parallel tool_use blocks.
+// Bumped from 5 → 10 for the document followup + delegation patterns where
+// findSpaces → web_search → addCalendarEvent × N → createSpace × N → another
+// web_search → reply can chain across many turns. Env-tunable so we can
+// dial it on Tier-1 hosted without rebuilding the image.
+const MAX_TOOL_ITERATIONS = parseMaxIterationsFromEnv();
+function parseMaxIterationsFromEnv(): number {
+  const raw = process.env.MEMU_MAX_TOOL_ITERATIONS;
+  if (!raw) return 10;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) return 10;
+  return Math.min(n, 30); // hard ceiling — 30 iterations × 4096 output tokens is already ~£1/turn
+}
 
 // ----------------------------------------------------------------------------
 // Model alias → provider+concrete resolution

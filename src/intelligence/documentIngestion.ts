@@ -544,48 +544,58 @@ interface FollowupInput {
 
 /**
  * Format the document context as a synthetic user-message that
- * interactive_query can act on. Phrased as if Hareesh just told Memu
- * about the upload — so Memu's reply lands naturally as a chat bubble.
+ * interactive_query can act on.
  *
- * The instruction list is explicit because document follow-ups are a
- * narrow use case: search the web to ground missing dates, look up
- * relevant family Spaces, write to the calendar, spawn planning
- * Spaces. Without explicit guidance the skill defaults to general
- * conversational behaviour.
+ * This is a delegation, not a question. The framing is deliberately
+ * aggressive: execute every applicable step before replying, no
+ * progress narration between steps, single summary at the end. Without
+ * this, Claude defaults to chat mode — searches once, narrates "let me
+ * search for that", and stops with stop_reason: end_turn before the
+ * router's tool loop has a chance to chain further.
  */
 function buildFollowupPrompt(input: FollowupInput): string {
   const lines: string[] = [];
-  lines.push(`I just uploaded a document. Here's what was extracted:`);
+  lines.push(`A document has just been added to my Spaces. This is a delegation — execute everything below before you reply to me. ONE summary at the end. No "let me search for that", no "now I'll add the dates" — those are progress narration, and they're banned. The user already sees a footer telling them which tools fired. Your job is to do the work and report the outcome.`);
+  lines.push('');
+  lines.push(`## The document`);
   lines.push('');
   lines.push(`- Title: ${input.spaceTitle}`);
   lines.push(`- Type: ${input.docType.replace(/_/g, ' ')}`);
   lines.push(`- Source filename: ${input.fileName}`);
   lines.push(`- Saved as Space: ${input.spaceUri}`);
   if (input.truncated) {
-    lines.push(`- ⚠ Note: only the first 50,000 characters were processed.`);
+    lines.push(`- ⚠ Only the first 50,000 characters were processed.`);
   }
   lines.push('');
-  lines.push(`Summary:`);
+  lines.push(`## Summary extracted from the text`);
+  lines.push('');
   lines.push(input.summary.trim().length > 0 ? input.summary.trim() : '(none)');
   lines.push('');
 
   if (input.keyDates.length > 0) {
-    lines.push(`Key dates extracted from the text:`);
+    lines.push(`## Key dates extracted`);
+    lines.push('');
     for (const kd of input.keyDates) {
       const urgency = kd.urgency ? ` (${kd.urgency})` : '';
       lines.push(`- ${kd.iso || '(no ISO)'}: ${kd.label}${urgency}`);
     }
+    lines.push('');
   } else {
+    lines.push(`## Key dates`);
+    lines.push('');
     lines.push(
-      `Key dates: none extractable from the text. The PDF may have been a visual ` +
-      `calendar grid that didn't parse cleanly — in that case search the web for the ` +
-      `authoritative published version using the document title as your seed.`,
+      `None extractable from the text — the PDF was likely a visual calendar grid that ` +
+      `didn't parse. **Search the web for the authoritative published version using the ` +
+      `document title as your seed, extract the real dates from the search result, and ` +
+      `use those.** Do not stop at "I searched". Do not report that you couldn't find ` +
+      `dates without first having tried web_search at least once.`,
     );
+    lines.push('');
   }
-  lines.push('');
 
   if (input.keyAmounts.length > 0) {
-    lines.push(`Key amounts:`);
+    lines.push(`## Key amounts`);
+    lines.push('');
     for (const ka of input.keyAmounts) {
       lines.push(`- ${ka.amount}: ${ka.label}`);
     }
@@ -593,34 +603,72 @@ function buildFollowupPrompt(input: FollowupInput): string {
   }
 
   if (input.parties.length > 0) {
-    lines.push(`Parties referenced: ${input.parties.join(', ')}`);
+    lines.push(`## Parties referenced`);
+    lines.push('');
+    lines.push(input.parties.join(', '));
     lines.push('');
   }
 
-  lines.push(`Take any sensible follow-up actions on my behalf:`);
+  lines.push(`## Steps — execute every applicable one, in order, before replying`);
+  lines.push('');
   lines.push(
-    `- If exact dates are missing or incomplete, use web_search to find the ` +
-    `authoritative published source and use those real grounded dates. Never invent dates.`,
+    `1. **Identify context.** Call \`findSpaces\` to identify any existing Spaces this ` +
+    `document relates to (a person, the household, an existing planning thread). One or ` +
+    `two findSpaces calls is fine; don't loop endlessly.`,
   );
   lines.push(
-    `- Cross-reference with existing family context using \`findSpaces\` — relate the ` +
-    `document to the right person, household, or commitment before acting.`,
+    `2. **Ground missing facts.** If key dates / amounts / specifics are missing, call ` +
+    `\`web_search\` for the authoritative source. **Once results return, immediately ` +
+    `extract the structured data** (specific date ranges, addresses, prices) and use it ` +
+    `in the next steps. Do NOT report "I searched" without using what you found.`,
   );
   lines.push(
-    `- For any concrete dated event (term start/end, half-term, MOT, appointment, ` +
-    `deadline), call \`addCalendarEvent\` with real, grounded dates only.`,
+    `3. **Write calendar events.** For each concrete dated event (term start/end, ` +
+    `half-term, INSET day, MOT, appointment, deadline), call \`addCalendarEvent\` with ` +
+    `the grounded ISO date(s) in Europe/London timezone. Multi-day events: one event ` +
+    `per day OR one all-day event spanning the range — your call. Never invent dates.`,
   );
   lines.push(
-    `- Where the document implies forward planning (school holidays → half-term plans, ` +
-    `summer plans; recurring bills; deadlines), call \`createSpace\` or \`updateSpace\` ` +
-    `to give the family a starting page they can grow into.`,
+    `4. **Spawn planning Spaces.** Where the document implies forward planning, call ` +
+    `\`createSpace\` (or \`updateSpace\` if findSpaces returned a match) to give the ` +
+    `family a real starting page. Examples: school term dates → spawn half-term, ` +
+    `Easter, summer holiday Spaces with the actual dates and a "what we're considering" ` +
+    `placeholder. Each Space body should contain concrete grounded facts, not just a ` +
+    `title — a blank Space is worse than no Space.`,
   );
   lines.push(
-    `- Be honest about what you couldn't ground. Don't fabricate — say "I couldn't find X" ` +
-    `and the user will fill it in.`,
+    `5. **Follow-on research, where the document implies it.** A school term doc ` +
+    `naturally implies "what are we doing in the holidays?" — if so, web_search for ` +
+    `holiday clubs / activities near the family's location (look it up via findSpaces ` +
+    `if you don't already know it), and capture the findings either in a planning Space ` +
+    `or in your final reply.`,
   );
   lines.push('');
-  lines.push(`Reply with what you actioned, in your usual voice. Keep it concise.`);
+  lines.push(`## Stopping rules`);
+  lines.push('');
+  lines.push(
+    `- Stop and ask the user ONLY when there is a genuine decision only they can make ` +
+    `("two clubs match — book A or B?"). Do not stop because a step finished or because ` +
+    `you want to confirm before acting on grounded data.`,
+  );
+  lines.push(
+    `- If you genuinely couldn't ground a fact (web search returned nothing useful, the ` +
+    `family's location wasn't in any Space), say so explicitly in the final summary. ` +
+    `Don't fabricate. Don't pretend you searched if you didn't.`,
+  );
+  lines.push('');
+  lines.push(`## Reply format`);
+  lines.push('');
+  lines.push(`When you've done everything you can, reply ONCE with:`);
+  lines.push('');
+  lines.push(`**Done. Here's what I did:**`);
+  lines.push('');
+  lines.push(`- **Calendar:** <events added, with specific dates>`);
+  lines.push(`- **Spaces:** <created or updated, with one-line bullets>`);
+  lines.push(`- **Web findings:** <what you found and where you used it>`);
+  lines.push(`- **Couldn't ground:** <anything you genuinely couldn't find — be specific>`);
+  lines.push('');
+  lines.push(`Then, ONLY if there's a real decision needed: a single line "**One thing I need from you:** …".`);
 
   return lines.join('\n');
 }
