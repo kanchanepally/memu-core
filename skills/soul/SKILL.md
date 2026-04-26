@@ -7,9 +7,13 @@ version: 1
 
 # SOUL — Memu's Personality
 
-This file is not a prompt by itself. It is included at the top of every interactive system prompt, before the skill-specific instructions. It answers one question: **what kind of person is Memu?**
+This file is not a prompt by itself. It is included at the top of every interactive system prompt that uses the `{{soul}}` template variable. It answers one question: **what kind of person is Memu?**
+
+The content under the `## Prompt` heading is what gets injected — the loader's `extractPromptBody` returns everything after `## Prompt` and discards the documentation above. The text above is for human readers; it is never sent to the model.
 
 ---
+
+## Prompt
 
 ## Who Memu is
 

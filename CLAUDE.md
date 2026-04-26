@@ -497,6 +497,92 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### SOUL wired — Memu personality auto-injected into interactive_query (2026-04-26)
+
+`skills/SOUL.md` (drafted by Gemini, reviewed for the web-search contradiction
+and a typo) is now wired in as a first-class skill at
+`skills/soul/SKILL.md` (renamed from the top-level `skills/SOUL.md` so the
+loader picks it up — the loader iterates `skills/<name>/SKILL.md`
+directories, not loose top-level files).
+
+**Loader change.** `renderSkill()` in `src/skills/loader.ts` now auto-injects
+the SOUL.md body as the `{{soul}}` template variable. Defensive — if SOUL is
+not in the skills directory (test fixtures with custom `MEMU_SKILLS_DIR`),
+the auto-inject is skipped and a skill body that uses `{{soul}}` will throw
+via `renderTemplate`'s missing-variable guard, which is the correct UX. New
+helper `getSoulBodyOrUndefined()` reads from the same skill cache as
+everything else, no extra disk I/O. Caller-provided `soul` in `vars` wins
+over the auto-injected default — useful for tests that want to override.
+
+**SOUL.md structure.** Added a `## Prompt` heading after the meta-intro
+paragraph so `extractPromptBody` strips the documentation ("This file is
+not a prompt by itself…") and returns only the content from `## Who Memu
+is` onward. The intro stays in the file as documentation for human readers
+but is never sent to the model.
+
+**`interactive_query/SKILL.md` updated.** `{{soul}}` injected at the top of
+the system prompt with a `---` separator before the existing "You are
+Memu, a private AI assistant…" content. SOUL sets voice + behaviour +
+emotional register; the rest of `interactive_query` covers role,
+capabilities, and rules. Unresolved-token check passes.
+
+**SOUL content fixes (applied in the same edit pass).** Two real bugs in
+the Gemini draft caught during review: (1) typo `certaintly` → `certainty`,
+(2) the canonical example of "don't claim capabilities you don't have"
+used "web search isn't live" — but `webSearch` IS live in `tools.ts` since
+2026-04-21. SOUL.md was committing the exact sin it was trying to prevent.
+Replaced with a recurring-calendar-events example (genuinely not yet
+shipped) and generalised the rule to "Same shape for any other
+not-yet-shipped capability — be specific about what's missing and what
+works instead." The principle is preserved; the example no longer
+contradicts the codebase.
+
+**Tests.** `src/skills/loader.test.ts` extended:
+- `EXPECTED` list gets `'soul'` added.
+- New `describe('soul auto-injection', ...)` block with four tests:
+  (a) soul loads with `model: local` and is excluded from the
+  `requires_twin` set;
+  (b) soul body strips the documentation intro (no "This file is not a
+  prompt by itself" string in the rendered body, body starts with
+  `## Who Memu is`);
+  (c) `renderSkill('interactive_query', { context_block: '' })` includes
+  the SOUL voice rules ("## Who Memu is", "Never open with an
+  affirmation") and has no unresolved `{{}}` markers;
+  (d) caller-provided `soul` in vars overrides the auto-injected default.
+
+Full suite: **362 tests passing across 22 files** (was 358).
+TypeScript clean.
+
+**What this changes in production.** Every `interactive_query` turn now
+opens the system prompt with SOUL — no more "Great question!", no more
+trailing "let me know if you need anything else!", first-person voice,
+contractions, lead-with-action, last-call-on-repeated-nudges framing,
+emotional-register modes (overwhelmed / upset / excited / confused),
+child register, and explicit "Memu can be warm because the Twin handles
+privacy at the architecture level — the personality doesn't have to
+compensate." The SOUL content also down-payments on item 2 (self-
+awareness): the "Claims capabilities it doesn't have" rule lands the
+honesty principle even before item 2 wires the structural fixes.
+
+**Token cost note.** SOUL is ~900 tokens included on every
+`interactive_query` call (~40/day per household per the cost table) =
+~36k extra tokens/day per family on Sonnet ≈ £0.07/day uncached.
+Prompt caching collapses this to a one-time cost per cache window.
+Material but not catastrophic; recorded here for the next per-skill
+cost-table refresh.
+
+**What's still ahead.** Item 2 in the build-plan queue (self-awareness /
+capabilities surfacing) is the structural complement: Claude needs to
+trust its own capabilities block (SOUL helps), surface tool-call
+results inline ("Updated 'Robin' — 3 lines added" — the synthesis-fix
+shipped above already exposes `linesAdded` for this), and optionally
+gain an `introspect` tool. SOUL is a voice-layer fix; item 2 is a
+structural one.
+
+**Deploy still pending on Z2:** same `git pull` as the synthesis fix —
+they bundle into a single rebuild. Should be the next session-end commit
++ pull to Z2.
+
 ### Synthesis Spaces overwrite — append-default merge (2026-04-26)
 
 Closes the urgent data-integrity bug from Hareesh's 2026-04-26 dogfood

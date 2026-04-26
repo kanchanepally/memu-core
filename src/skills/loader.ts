@@ -140,9 +140,33 @@ export function listSkills(): Skill[] {
   return Array.from(ensureLoaded().values());
 }
 
+/**
+ * Auto-inject the SOUL.md body as `{{soul}}` for any skill that uses
+ * the variable. SOUL is a meta-skill that holds Memu's voice + behaviour
+ * + emotional-register rules; interactive skills include `{{soul}}` at
+ * the top of their system prompt to wear that personality.
+ *
+ * Defensive — if SOUL.md isn't present (custom MEMU_SKILLS_DIR for
+ * tests, partial test fixtures), this returns undefined and we skip the
+ * auto-injection. A skill body that uses `{{soul}}` will then throw via
+ * renderTemplate's missing-variable guard, which is the correct UX.
+ */
+function getSoulBodyOrUndefined(): string | undefined {
+  try {
+    return ensureLoaded().get('soul')?.body;
+  } catch {
+    return undefined;
+  }
+}
+
 export function renderSkill(name: string, vars: Record<string, string> = {}): string {
   const skill = getSkill(name);
-  return renderTemplate(skill.body, vars);
+  const soulBody = getSoulBodyOrUndefined();
+  // soul is a default — explicit caller-provided vars win.
+  const merged: Record<string, string> = soulBody !== undefined
+    ? { soul: soulBody, ...vars }
+    : vars;
+  return renderTemplate(skill.body, merged);
 }
 
 export function renderTemplate(template: string, vars: Record<string, string>): string {

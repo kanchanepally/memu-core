@@ -18,6 +18,7 @@ const EXPECTED = [
   'interactive_query',
   'autolearn',
   'import_extract',
+  'soul',
 ];
 
 describe('skills loader', () => {
@@ -86,5 +87,45 @@ describe('skills loader', () => {
     expect(rendered).toContain('Page A');
     expect(rendered).toContain('Robin has swim on Thursday');
     expect(rendered).not.toContain('{{');
+  });
+
+  describe('soul auto-injection', () => {
+    it('soul skill loads with model: local and is excluded from requires_twin set', () => {
+      const soul = getSkill('soul');
+      expect(soul.frontmatter.model).toBe('local');
+      // SOUL is content-only — it doesn't dispatch — so requires_twin doesn't apply.
+      // Either undefined or false is acceptable; presence of true would be wrong.
+      expect(soul.frontmatter.requires_twin).not.toBe(true);
+    });
+
+    it('soul body strips the documentation intro and starts with "Who Memu is"', () => {
+      const soul = getSkill('soul');
+      // The "## Prompt" heading is the cut point; body begins with the first
+      // sub-heading after it. The meta-intro paragraph is documentation and
+      // must NOT appear in the injected body.
+      expect(soul.body).not.toMatch(/This file is not a prompt by itself/);
+      expect(soul.body).toMatch(/^##\s+Who Memu is/);
+    });
+
+    it('renderSkill auto-injects {{soul}} into interactive_query', () => {
+      const rendered = renderSkill('interactive_query', { context_block: '' });
+      // The "## Who Memu is" heading from SOUL.md should appear in the
+      // rendered system prompt. If it does not, the wiring is broken.
+      expect(rendered).toContain('## Who Memu is');
+      // Voice rules from SOUL.md should be present too — pick one of the
+      // load-bearing taboos.
+      expect(rendered).toMatch(/Never open with an affirmation/);
+      // No unresolved template markers.
+      expect(rendered).not.toContain('{{');
+    });
+
+    it('renderSkill caller-provided soul overrides the auto-injected default', () => {
+      const rendered = renderSkill('interactive_query', {
+        context_block: '',
+        soul: '## CUSTOM SOUL\n\nFor testing only.',
+      });
+      expect(rendered).toContain('## CUSTOM SOUL');
+      expect(rendered).not.toContain('## Who Memu is');
+    });
   });
 });
