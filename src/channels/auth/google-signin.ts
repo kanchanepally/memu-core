@@ -50,25 +50,64 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdenti
 }
 
 /**
- * Single-tenant resolver: return the primary profile, creating it from the
- * Google identity if the DB is empty. Returns the profile (including api_key)
- * for the client to store.
+ * Resolve a Google sign-in to a Memu profile. Multi-profile aware:
+ *
+ *   1. If a profile with this email already exists → return it. (Rach signs
+ *      in on her own device → finds her profile that the household admin
+ *      previously invited.)
+ *
+ *   2. Else if there's a primary profile with NO recorded email yet → adopt
+ *      this email onto the primary. (Bootstrap continuity: Hareesh signed
+ *      in once before email was recorded; later sign-ins still find him.)
+ *
+ *   3. Else if the database is completely empty → create the primary profile
+ *      from the Google identity. (First-boot.)
+ *
+ *   4. Otherwise → reject. The household has profiles, this email isn't one
+ *      of them, and we don't auto-register strangers via Google sign-in. The
+ *      household admin must explicitly invite via POST /api/profiles. This is
+ *      the structural privacy boundary — sign-in is authentication, not a
+ *      registration backdoor.
  */
+export class GoogleSignInRejected extends Error {
+  constructor(public reason: 'no_invite' | 'invalid_token', message: string) {
+    super(message);
+    this.name = 'GoogleSignInRejected';
+  }
+}
+
 export async function signInWithGoogle(identity: GoogleIdentity) {
-  const existing = await pool.query(
+  // Step 1 — exact email match.
+  if (identity.email) {
+    const byEmail = await pool.query(
+      'SELECT id, display_name, email, role, api_key, created_at FROM profiles WHERE email = $1 LIMIT 1',
+      [identity.email]
+    );
+    if (byEmail.rowCount && byEmail.rows[0]) {
+      return byEmail.rows[0];
+    }
+  }
+
+  // Step 2 — adopt email onto primary if it has none yet.
+  const primary = await pool.query(
     'SELECT id, display_name, email, role, api_key, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
   );
-  if (existing.rowCount && existing.rows[0]) {
-    const profile = existing.rows[0];
-    // Opportunistically stamp the Google email onto the primary profile if it
-    // hasn't been recorded yet — useful for future multi-tenant migration.
+  if (primary.rowCount && primary.rows[0]) {
+    const profile = primary.rows[0];
     if (!profile.email && identity.email) {
       await pool.query('UPDATE profiles SET email = $1 WHERE id = $2', [identity.email, profile.id]);
       profile.email = identity.email;
+      return profile;
     }
-    return profile;
+    // A primary exists, has its own email, and this Google email isn't a
+    // known profile. Reject — the admin must invite first.
+    throw new GoogleSignInRejected(
+      'no_invite',
+      `No Memu profile invited for ${identity.email}. Ask your household admin to invite you in Settings → Household.`
+    );
   }
 
+  // Step 3 — first boot: create the primary profile.
   const apiKey = generateApiKey();
   const inserted = await pool.query(
     `INSERT INTO profiles (display_name, email, role, api_key)
@@ -78,17 +117,16 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
   );
   const profile = inserted.rows[0];
 
-  // Default persona and entity registry entry, same as registerProfile()
-  const personaId = `adult-${Date.now()}`;
+  const personaId = `adult-${Date.now()}-${profile.id.slice(0, 4)}`;
   await pool.query(
     'INSERT INTO personas (id, profile_id, persona_label) VALUES ($1, $2, $3)',
     [personaId, profile.id, `Adult-${profile.id.slice(0, 4)}`]
   );
   await pool.query(
     `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by)
-       VALUES ('person', $1, 'Adult-0', 'google_signin')
+       VALUES ('person', $1, $2, 'google_signin')
      ON CONFLICT DO NOTHING`,
-    [identity.name.trim()]
+    [identity.name.trim(), `Adult-${profile.id.slice(0, 4)}`]
   );
 
   return profile;

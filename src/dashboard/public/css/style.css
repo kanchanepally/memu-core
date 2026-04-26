@@ -2438,3 +2438,75 @@ textarea.input {
   opacity: 1;
   color: var(--color-error, #c6364a);
 }
+
+/* ==========================================================================
+   Household invite (Settings → Add household member, 2026-04-26)
+   ========================================================================== */
+
+.invite-role-row { display: flex; gap: 8px; }
+
+.invite-role-option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.invite-role-option:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--indigo-primary);
+}
+
+.invite-role-option input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--indigo-primary);
+}
+
+.invite-role-option strong {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.invite-role-option small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.invite-link-box {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  word-break: break-all;
+  color: var(--text-primary);
+  max-height: 100px;
+  overflow-y: auto;
+  user-select: all;
+}
+
+.household-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  font-family: var(--font-headline);
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: var(--space-sm);
+}

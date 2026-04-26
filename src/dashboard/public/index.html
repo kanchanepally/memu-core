@@ -114,6 +114,28 @@ function clearAuth() {
     localStorage.removeItem(AUTH_KEY);
 }
 
+// Magic-link invite handling. The household admin generates an invite
+// in Settings → Household → "Add household member" — the resulting URL
+// embeds serverUrl + apiKey as query params. When the invitee opens it
+// (typically tapped from a WhatsApp message), we capture the credentials,
+// strip them from the URL (so they don't sit in browser history forever),
+// and redirect into the dashboard. One tap from invite to signed-in.
+(function maybeAcceptMagicLink() {
+    const params = new URLSearchParams(window.location.search);
+    const serverUrl = params.get('serverUrl');
+    const apiKey = params.get('apiKey');
+    if (serverUrl && apiKey) {
+        setAuth({
+            serverUrl: serverUrl.replace(/\/+$/, ''),
+            apiKey,
+        });
+        // Replace the URL so the apiKey doesn't linger in history.
+        history.replaceState({}, '', window.location.pathname);
+        window.location.href = '/dashboard.html';
+        return;
+    }
+})();
+
 // If already authenticated, go straight to dashboard
 const auth = getAuth();
 if (auth.apiKey && auth.serverUrl) {

@@ -13,7 +13,7 @@ import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoog
 import { generateAndPushMorningBriefing, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
 import { registerPushToken } from './channels/mobile';
 import { requireAuth, registerProfile } from './auth';
-import { verifyGoogleIdToken, signInWithGoogle } from './channels/auth/google-signin';
+import { verifyGoogleIdToken, signInWithGoogle, GoogleSignInRejected } from './channels/auth/google-signin';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
 import { validateAllSkills, listSkills } from './skills/loader';
 import { registerWebIdRoutes } from './webid/server';
@@ -154,6 +154,12 @@ server.post('/api/auth/google/signin', async (request, reply) => {
       apiKey: profile.api_key,
     };
   } catch (err: any) {
+    if (err instanceof GoogleSignInRejected) {
+      // 403 — token is valid, but this household hasn't invited this email.
+      // Distinct from 401 (invalid token) so the client can show a clear
+      // "ask your admin to invite you" message rather than "sign-in broken".
+      return reply.code(403).send({ error: err.message, reason: err.reason });
+    }
     server.log.error({ err }, 'Google sign-in failed');
     return reply.code(401).send({ error: 'Google sign-in failed', detail: err?.message });
   }
@@ -1024,7 +1030,7 @@ server.get('/api/family/profiles', async (request, reply) => {
       params.push('child');
     }
     const res = await pool.query(
-      `SELECT id, display_name, role FROM profiles ${where} ORDER BY
+      `SELECT id, display_name, email, role FROM profiles ${where} ORDER BY
           CASE role WHEN 'admin' THEN 1 WHEN 'adult' THEN 2 WHEN 'child' THEN 3 ELSE 4 END,
           display_name`,
       params,
@@ -1032,6 +1038,7 @@ server.get('/api/family/profiles', async (request, reply) => {
     const profiles = res.rows.map(r => ({
       id: r.id,
       display_name: r.display_name,
+      email: r.email,
       role: r.role,
       is_self: r.id === callerProfileId,
     }));
@@ -1039,6 +1046,88 @@ server.get('/api/family/profiles', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to list profiles' });
+  }
+});
+
+// Invite a new household member. Creates a fresh profile + persona +
+// entity_registry row, returns the API key + a one-tap magic link the
+// admin can send to the invitee via WhatsApp / SMS / etc. Adult and
+// admin profiles can invite; children cannot.
+//
+// Magic link shape:
+//   <publicBase>/?serverUrl=<encoded>&apiKey=<key>
+// The PWA index.html picks up the query params on load, writes them to
+// localStorage, and redirects to the dashboard. One tap from invite to
+// signed-in.
+//
+// Security note: the API key is in the URL. URLs leak (browser history,
+// screenshots, accidentally-shared links). Acceptable for in-household
+// invites where the admin is sending to a trusted person via a private
+// channel. For broader distribution we'd want a one-shot bearer-exchange
+// token; deferred until needed.
+server.post('/api/profiles', async (request, reply) => {
+  try {
+    const callerProfile = (request as any).profile;
+    if (!callerProfile) {
+      return reply.code(401).send({ error: 'Not authenticated' });
+    }
+    if (callerProfile.role === 'child') {
+      return reply.code(403).send({ error: 'Children cannot invite household members' });
+    }
+
+    const body = request.body as {
+      display_name?: string;
+      email?: string;
+      role?: string;
+    };
+    if (!body?.display_name || typeof body.display_name !== 'string' || !body.display_name.trim()) {
+      return reply.code(400).send({ error: 'display_name is required' });
+    }
+    const role = (body.role ?? 'adult').trim();
+    if (!['adult', 'child'].includes(role)) {
+      return reply.code(400).send({ error: "role must be 'adult' or 'child'" });
+    }
+    const email = (body.email ?? '').trim();
+
+    // Reject if a profile with this email already exists — avoid silent
+    // duplicates which would split the household's data view.
+    if (email) {
+      const dup = await pool.query('SELECT id FROM profiles WHERE email = $1 LIMIT 1', [email]);
+      if (dup.rowCount && dup.rowCount > 0) {
+        return reply.code(409).send({
+          error: `A profile with email ${email} already exists`,
+          reason: 'email_exists',
+        });
+      }
+    }
+
+    const created = await registerProfile(
+      body.display_name.trim(),
+      email,
+      role,
+      '',
+      { allowExisting: false },
+    );
+
+    // Build the magic link from the request's own host. PUBLIC_BASE_URL
+    // overrides if set (Tailscale / hosted Tier-1 shape).
+    const proto = (request.headers['x-forwarded-proto'] as string) || request.protocol || 'https';
+    const host = request.headers.host || 'localhost';
+    const inferredBase = `${proto}://${host}`;
+    const publicBase = process.env.PUBLIC_BASE_URL || inferredBase;
+    const magicLink = `${publicBase}/?serverUrl=${encodeURIComponent(publicBase)}&apiKey=${encodeURIComponent(created.api_key)}`;
+
+    return {
+      id: created.id,
+      displayName: created.display_name,
+      email: created.email,
+      role: created.role,
+      apiKey: created.api_key,
+      magicLink,
+    };
+  } catch (err) {
+    server.log.error({ err }, 'Failed to invite household member');
+    return reply.code(500).send({ error: 'Failed to invite household member' });
   }
 });
 

@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-3">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-4">
 </head>
 <body>
 <!-- Auth gate -->
@@ -379,6 +379,59 @@ async function api(path, opts = {}) {
     </div>
 </div>
 
+<!-- Add household member — invite a profile, return a magic link the
+     admin shares via WhatsApp / SMS. -->
+<div class="modal-overlay" id="invite-modal">
+    <div class="modal-card" style="max-width:520px;">
+        <div id="invite-form-stage">
+            <h3 class="mb-sm">Invite a household member</h3>
+            <div class="text-muted mb-md" style="font-size:13px;">
+                Creates a profile on this Memu and gives you a one-tap link
+                to send them. Their data is theirs — you decide which Spaces
+                are shared, they decide what stays private.
+            </div>
+            <label class="input-label">Display name</label>
+            <input type="text" id="invite-name" class="input mb-md" placeholder="e.g. Rachael">
+            <label class="input-label">Email (optional)</label>
+            <input type="email" id="invite-email" class="input mb-md" placeholder="rach@example.com">
+            <label class="input-label">Role</label>
+            <div class="invite-role-row" style="display:flex;gap:8px;margin-bottom:var(--space-md);">
+                <label class="invite-role-option">
+                    <input type="radio" name="invite-role" value="adult" checked>
+                    <span><strong>Adult</strong><small>Full access. Can invite others.</small></span>
+                </label>
+                <label class="invite-role-option">
+                    <input type="radio" name="invite-role" value="child">
+                    <span><strong>Child</strong><small>Kids mode. Can't invite or change settings.</small></span>
+                </label>
+            </div>
+            <div id="invite-error" class="hidden text-error" style="font-size:13px;margin-bottom:var(--space-sm);"></div>
+            <div class="flex gap-sm" style="justify-content:flex-end;">
+                <button class="btn btn-secondary btn-sm" onclick="closeInviteMember()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="invite-submit" onclick="submitInviteMember()">Create invite</button>
+            </div>
+        </div>
+        <div id="invite-result-stage" class="hidden">
+            <h3 class="mb-sm">Invite ready</h3>
+            <div class="text-muted mb-md" style="font-size:13px;">
+                Send this link to <strong id="invite-result-name"></strong> via WhatsApp,
+                Signal, or whatever they use. One tap from them and they're in.
+            </div>
+            <div class="invite-link-box" id="invite-link-box"></div>
+            <button class="btn btn-secondary btn-sm" onclick="copyInviteLink()" style="width:100%;margin-top:var(--space-sm);">
+                <span id="invite-copy-label">Copy link</span>
+            </button>
+            <div class="text-muted" style="font-size:11px;margin-top:var(--space-sm);">
+                Heads-up: the link contains an API key. Send it through a private
+                channel — don't paste it into a public chat or email it widely.
+            </div>
+            <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
+                <button class="btn btn-primary btn-sm" onclick="closeInviteMember()">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ==================== LISTS TAB ==================== -->
 <div id="view-lists" class="container lists-canvas hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
     <header class="spaces-masthead">
@@ -534,6 +587,19 @@ async function api(path, opts = {}) {
             </div>
             <span class="setting-chevron">&#x203A;</span>
         </div>
+    </div>
+
+    <div class="section-label">Household</div>
+    <div class="settings-section">
+        <div class="setting-row" onclick="openInviteMember()" id="invite-member-row">
+            <div class="setting-icon">&#x2795;</div>
+            <div class="setting-content">
+                <div class="setting-title">Add household member</div>
+                <div class="setting-subtitle">Invite an adult or child to this Memu</div>
+            </div>
+            <span class="setting-chevron">&#x203A;</span>
+        </div>
+        <div id="settings-household-list"></div>
     </div>
 
     <div class="section-label">About</div>
@@ -1381,6 +1447,121 @@ function statRow(label, value) {
 function loadSettings() {
     document.getElementById('settings-name').textContent = auth.displayName || 'Unknown';
     document.getElementById('settings-server').textContent = auth.serverUrl || 'Not connected';
+    loadHouseholdList();
+}
+
+async function loadHouseholdList() {
+    const container = document.getElementById('settings-household-list');
+    if (!container) return;
+    try {
+        const res = await api('/api/family/profiles');
+        if (!res.ok) {
+            container.innerHTML = '';
+            return;
+        }
+        const data = await res.json();
+        const profiles = data.profiles || [];
+        if (profiles.length <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = profiles.map(p => {
+            const initial = (p.display_name || '?').charAt(0).toUpperCase();
+            const selfTag = p.is_self ? ' <span style="color:var(--text-secondary);font-size:11px;font-weight:500;">(you)</span>' : '';
+            const roleTag = `<span style="color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:0.06em;">${esc(p.role)}</span>`;
+            return `<div class="setting-row" style="padding-left:var(--space-md);">
+                <div class="household-avatar">${esc(initial)}</div>
+                <div class="setting-content">
+                    <div class="setting-title">${esc(p.display_name)}${selfTag}</div>
+                    <div class="setting-subtitle">${esc(p.email || '')} ${roleTag}</div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = '';
+    }
+}
+
+// --- Invite a household member ---
+
+let lastInviteLink = '';
+
+function openInviteMember() {
+    document.getElementById('invite-name').value = '';
+    document.getElementById('invite-email').value = '';
+    document.querySelectorAll('input[name="invite-role"]').forEach(r => r.checked = r.value === 'adult');
+    document.getElementById('invite-error').classList.add('hidden');
+    document.getElementById('invite-form-stage').classList.remove('hidden');
+    document.getElementById('invite-result-stage').classList.add('hidden');
+    document.getElementById('invite-modal').classList.add('open');
+    setTimeout(() => document.getElementById('invite-name').focus(), 50);
+}
+
+function closeInviteMember() {
+    document.getElementById('invite-modal').classList.remove('open');
+    // Refresh the household list in case we just added someone.
+    loadHouseholdList();
+}
+
+async function submitInviteMember() {
+    const name = document.getElementById('invite-name').value.trim();
+    const email = document.getElementById('invite-email').value.trim();
+    const role = document.querySelector('input[name="invite-role"]:checked')?.value || 'adult';
+    const errEl = document.getElementById('invite-error');
+    errEl.classList.add('hidden');
+
+    if (!name) {
+        errEl.textContent = 'Display name is required.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+
+    const btn = document.getElementById('invite-submit');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+    try {
+        const res = await api('/api/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ display_name: name, email: email || undefined, role }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Could not create invite.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        lastInviteLink = data.magicLink || '';
+        document.getElementById('invite-result-name').textContent = data.displayName;
+        const box = document.getElementById('invite-link-box');
+        box.textContent = lastInviteLink;
+        document.getElementById('invite-form-stage').classList.add('hidden');
+        document.getElementById('invite-result-stage').classList.remove('hidden');
+    } catch (err) {
+        errEl.textContent = 'Network error. Try again.';
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create invite';
+    }
+}
+
+async function copyInviteLink() {
+    if (!lastInviteLink) return;
+    const label = document.getElementById('invite-copy-label');
+    try {
+        await navigator.clipboard.writeText(lastInviteLink);
+        label.textContent = 'Copied ✓';
+        setTimeout(() => { label.textContent = 'Copy link'; }, 1500);
+    } catch (err) {
+        // Fallback: select the text in the box for manual copy.
+        const box = document.getElementById('invite-link-box');
+        const range = document.createRange();
+        range.selectNodeContents(box);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        showToast('Link selected — press Ctrl+C to copy', false);
+    }
 }
 
 function handleSignOut() {

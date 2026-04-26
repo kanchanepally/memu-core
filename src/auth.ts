@@ -43,14 +43,42 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   (request as any).profile = profile;
 }
 
+export interface RegisterProfileOptions {
+  /**
+   * When true (default), the call short-circuits to the primary profile if
+   * one already exists. This preserves the original single-tenant behaviour
+   * for the public /api/register endpoint — first user creates the household,
+   * subsequent calls are idempotent.
+   *
+   * When false, the call ALWAYS creates a fresh profile. Used by the
+   * admin-driven /api/profiles endpoint to invite additional household
+   * members (Rach, Robin, etc.) into the same Memu instance.
+   */
+  allowExisting?: boolean;
+}
+
 /**
  * Register a new profile. Returns the profile with API key.
  */
-export async function registerProfile(displayName: string, email: string, role: string = 'adult', familyNames: string = '') {
-  // SINGLE-TENANT MVP: Return the primary profile if it exists to keep mobile and web perfectly synced.
-  const existingRes = await pool.query('SELECT id, display_name, email, role, api_key, created_at FROM profiles ORDER BY created_at ASC LIMIT 1');
-  if (existingRes.rowCount && existingRes.rowCount > 0 && existingRes.rows[0]) {
-    return existingRes.rows[0];
+export async function registerProfile(
+  displayName: string,
+  email: string,
+  role: string = 'adult',
+  familyNames: string = '',
+  options: RegisterProfileOptions = {},
+) {
+  const allowExisting = options.allowExisting !== false; // default true
+
+  if (allowExisting) {
+    // First-boot / public-register backstop: if a profile already exists,
+    // return it instead of creating a duplicate. Keeps the original
+    // single-tenant behaviour for the bootstrap flow.
+    const existingRes = await pool.query(
+      'SELECT id, display_name, email, role, api_key, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
+    );
+    if (existingRes.rowCount && existingRes.rowCount > 0 && existingRes.rows[0]) {
+      return existingRes.rows[0];
+    }
   }
 
   const apiKey = generateApiKey();
@@ -65,18 +93,24 @@ export async function registerProfile(displayName: string, email: string, role: 
   const profile = res.rows[0];
 
   // Create a default persona for the profile
-  const personaId = `${role}-${Date.now()}`;
+  const personaId = `${role}-${Date.now()}-${profile.id.slice(0, 4)}`;
   const personaLabel = role === 'child' ? `Child-${profile.id.slice(0, 4)}` : `Adult-${profile.id.slice(0, 4)}`;
   await pool.query(
     'INSERT INTO personas (id, profile_id, persona_label) VALUES ($1, $2, $3)',
     [personaId, profile.id, personaLabel]
   );
 
-  // Add the registering user to the entity_registry securely
+  // Add the registering user to the entity_registry securely.
+  // Use a unique anonymous_label per profile (incorporating profile id slice)
+  // so multiple registrations don't collide on the legacy `Adult-0` / `Child-0`
+  // labels.
+  const entityLabel = role === 'child'
+    ? `Child-${profile.id.slice(0, 4)}`
+    : `Adult-${profile.id.slice(0, 4)}`;
   await pool.query(
     `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by)
      VALUES ('person', $1, $2, 'onboarding') ON CONFLICT DO NOTHING`,
-    [displayName.trim(), role === 'child' ? `Child-0` : `Adult-0`]
+    [displayName.trim(), entityLabel]
   );
 
   // Add any explicitly declared family members to the registry
