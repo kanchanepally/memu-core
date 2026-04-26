@@ -769,6 +769,17 @@ textarea.input {
   border-top: 1px solid var(--border);
 }
 
+/* CRITICAL — without this rule the `hidden` HTML attribute is
+   overridden by the `.staged-attachment { display: flex }` above
+   (class specificity 0,1,0 beats the UA `[hidden]` rule at 0,0,1),
+   so the pill renders empty + broken-img on every page load. The
+   attribute selector here pushes specificity to 0,1,1 — beats the
+   class rule, restores the user-agent contract. Bug originally
+   shipped 2026-04-26 PWA staging slice; fixed same day. */
+.staged-attachment[hidden] {
+  display: none;
+}
+
 .staged-attachment img {
   width: 44px;
   height: 44px;
