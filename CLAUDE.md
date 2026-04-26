@@ -497,6 +497,51 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### 2026-04-26 evening — multi-profile + PWA Littlebird + DeepSeek + WhatsApp gate
+
+Twelve commits, two repos. End of a long session that took Memu from
+single-tenant-by-architecture to multi-profile-with-magic-link-onboarding,
+fixed the PDF-document chain end-to-end, gave the PWA a layout architecture
+overhaul (sidebar+canvas, full-canvas Spaces, share-to-edit), and added
+DeepSeek as a routing provider. Plus: WhatsApp ingestion locked down to
+self-chat-only (was running omnivorous and torching Gemini's free-tier
+quota on every group chat in Hareesh's account).
+
+**memu-core commits, in order shipped:**
+
+| Commit | What |
+|---|---|
+| `04d34de` | Document followup chain — `processDocumentIngestion` now dispatches `interactive_query` after the Space is written, with all five local tools + Anthropic web_search. Camera SVG → Feather paperclip on `quick-attach` and `chat-attach` buttons. |
+| `24e273b` | Delegation framing — sharper followup prompt (explicit "execute every step before replying", banned progress narration), interactive_query SKILL.md v6 adds Rule 10 for the delegation pattern across all chat turns, MAX_TOOL_ITERATIONS bumped 5 → 10 (env-tunable via `MEMU_MAX_TOOL_ITERATIONS`, hard ceiling 30). |
+| `f84a3e4` | PWA Littlebird-inspired layout — collapsible sidebar with hamburger toggle (state persists in sessionStorage), full-canvas Space view replacing the modal, rich markdown editor with toolbar (H/B/I/list/numlist/link/quote/code) and keyboard shortcuts (Ctrl+B/I/K/Enter), share-to-edit modal with three modes (Family / Private / Specific people) backed by visibility array on `synthesis_pages`. New `GET /api/family/profiles` + extended `PUT /api/spaces/:id` to accept `visibility` (string or array). |
+| `95f9209` | PWA bug-fix — content stayed in narrow column when sidebar collapsed because inner views had fixed `max-width`. Conditional max-width rules added per container; inline `max-width` overrides on view-chat / view-lists lifted into `.chat-canvas` / `.lists-canvas` classes. Email share added as a fourth, separate affordance ("Or send a one-off copy" via `mailto:`) — distinct from the in-Memu collaborative modes. |
+| `5b7468d` | Critical PWA layout fix — canvas was rendering at ~120px width when sidebar was hidden because grid + `position: fixed` sidebar pulled it out of grid flow. Switched `.app-shell` from grid to flex; sidebar `width: 0` collapses to nothing on hide. Plus fixed double-prefix "UPDATED UPDATED TODAY" on Space meta (formatSpaceUpdated already returns "Updated today"; Space-detail rewrite was prepending "Updated " on top). |
+| `8b0ef8f` | DeepSeek provider — bare-fetch OpenAI-compatible client at `src/intelligence/deepseek.ts`, mirrors `gemini.ts` shape. `SkillModel` type extended with `deepseek-chat | deepseek-reasoner`. Router resolves aliases, dispatches via `callDeepSeek` for `provider === 'deepseek'`. Concrete-model env overrides (`MEMU_DEEPSEEK_CHAT_MODEL`, `MEMU_DEEPSEEK_REASONER_MODEL`). Budget-pressure cascade: `deepseek-reasoner → deepseek-chat → gemini-flash-lite` (Google's free tier as the bottom rung). BYOK provider list extended (Settings UI surface deferred). 5 new tests, 431 total. |
+| `e4f0539` | WhatsApp self-chat-only ingestion — was running "Phase 1: Omnivorous" mode, processing every group/family/friend chat through extraction. Hit Gemini's 20/day free-tier limit in minutes, downstream symptom was `extraction → 429 Too Many Requests` flooding the privacy ledger. Fix: `MEMU_WHATSAPP_INGESTION` env var with default `self_only`. Pure helpers `normaliseJid` + `shouldIngest` extracted and tested (14 new tests). Throttled summary log every 60s shows count of skipped messages. Set `MEMU_WHATSAPP_INGESTION=all` to restore legacy. Extraction stays on Gemini Flash per Hareesh's explicit choice. |
+| `04620da` | Multi-profile registration — Memu was hardcoded single-tenant (both `registerProfile` and `signInWithGoogle` short-circuited to return primary profile). New device sign-in returned Hareesh's profile + API key. Fix: `registerProfile` gains `options.allowExisting` flag (default true preserves backstop), `signInWithGoogle` becomes 4-step resolver (match-by-email → adopt-email-onto-primary → first-boot-create → reject via new `GoogleSignInRejected` with reason `no_invite`). New `POST /api/profiles` admin-only endpoint with magic-link generation (`https://<base>/?serverUrl=&apiKey=`). PWA Settings → Household section with two-stage invite modal (form → result-with-link). PWA `index.html` landing handles magic-link query params and scrubs them via `history.replaceState` so the apiKey doesn't sit in browser history. Persona / entity-registry inserts now use per-profile suffixes (`Adult-<id-slice>` instead of literal `Adult-0`) so multiple registrations don't collide. |
+
+**memu-platform commits:**
+
+| Commit | What |
+|---|---|
+| `77402c9` | Presentation deliverables for Rach onboarding (and reuse). 14-slide `.pptx` deck (Indigo Sanctuary palette in calm/muted register, modular CTA slide for swap per audience), `walkthrough-rach.md` live demo script (8-beat arc, pre-flight checklist with 3 Caddisfly-flavoured Spaces to seed, recovery moves, profile-setup steps), `briefing-rach.md` leave-behind (privacy promise, Caddisfly-specific use cases, access steps, what's rough), `build_deck.py` generator script kept around for regeneration. |
+| `ffa7306` | `14-POD-DRIVES.md` architectural writeup — synthesises B-pod milestone (Part 6 of memu-build-plan.md, slices 1-4) with Hareesh's evening articulation when planning Rach's onboarding. Per-person LUKS SSDs, family Spaces replicated to every personal drive (not just held centrally — gives bus-factor against single-drive failure), Tailscale-primary with drive-optional progression, hardware procurement table (~£600-800 for four drives across the Hareesh / Rach / Robin household). Open questions named explicitly (children's lifecycle, drive failure, hub recovery, hosted Tier-1 migration, laptop standalone). |
+
+**Open from this session, parked for tomorrow:**
+
+- **Container_id 400 from Anthropic** — `interactive_query` mid-chain returned `400 invalid_request_error: container_id is required when there are pending tool uses generated by code execution with tools`. Original repro: `req_011CaSsALet9nquWKrmnW8Vm` from 2026-04-26 19:35:46 (in `privacy_ledger`). The chain successfully ran one iteration (1954ms, 6091/29 tokens) and failed iteration 2. We don't use `code_execution_20250522` — only `web_search_20260209` server-side. Hypothesis: `src/skills/router.ts:512+` reconstructs Claude's content array between iterations and confuses the API when the assistant message includes server-side tool blocks alongside text or local tool_use. **Don't fix blind — get another repro with the request body logged first.** Likely interacts with the new `MAX_TOOL_ITERATIONS=10` because longer chains hit it more often. Captured in `backlog/INBOX.md`.
+
+- **Routing matrix migration order** — DeepSeek wired but no skill SKILL.md actually moved. Recommended start: `autolearn` (cheapest signal, week of ledger data, easiest rollback). Then synthesis_update + synthesis_write together. Briefing/reflection. Document_ingestion last. Full table in `backlog/INBOX.md`.
+
+- **Pod-drive directory dry-run** — flagged in closing section of `memu-platform/14-POD-DRIVES.md`. Prototype the `/private/<profile_id>/` + `/family/` layout on existing Z2 internal drive (no LUKS, no USB), move private-visibility Spaces, symlink for backward compat, verify retrieval. Validates data shape before any hardware lifecycle work. ~1 session.
+
+- **CLAUDE.md sweep for "single-tenant" wording** — `auth.ts` doc-comments and the build plan still say "single-tenant MVP" in places. Multi-profile shipped tonight. 5-10 minute pass.
+
+**Deploy state (end of session, all commits pushed to origin/main):**
+- Last Z2 deploy was *before* commit `04d34de` (the document followup chain). The Z2 is running pre-Littlebird-PWA, pre-DeepSeek, pre-multi-profile. **Hareesh has not deployed any of tonight's work yet** — to come tomorrow with `git pull && docker compose -f docker-compose.standalone.yml up -d --build memu_core_standalone_api` and a hard browser refresh.
+
+**Tier 1 skill cluster status:** still 2/4 shipped (`document_ingestion`, `autolearn`). `proactive_check` and `draft_communication` queued.
+
 ### Autolearn upgraded — Tier 1 skill #2 (2026-04-26)
 
 Tier 1 pre-beta skill cluster from 1/4 → 2/4. Autolearn was previously

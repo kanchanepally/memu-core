@@ -26,6 +26,43 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### Pickup for the next session (added 2026-04-26 evening close)
+
+**Top of the list, in priority order:**
+
+1. **Rach onboarding dogfood.** Multi-profile registration shipped (commit
+   `04620da`). Settings → Household → Add household member generates a
+   magic link. Use the walkthrough script + briefing doc in
+   `memu-platform/presentations/`. The demo is the test — anything that
+   breaks during her first hour with Memu is the next bug list.
+
+2. **Investigate the container_id 400.** See bug entry below. Needs a real
+   repro (the original was `req_011CaSsALet9nquWKrmnW8Vm` from
+   2026-04-26 19:35:46 in the privacy ledger). Likely a quirk of how
+   `src/skills/router.ts:512+` reconstructs Claude's content array when
+   the assistant response includes server-side `web_search_tool_result`
+   blocks alongside text or local tool_use blocks. Don't speculate —
+   capture another repro first.
+
+3. **Autolearn → DeepSeek-V3 migration.** First skill to test on the new
+   provider per the routing matrix below. Edit `skills/autolearn/SKILL.md`
+   `model: haiku` → `model: deepseek-chat`. Run a week, compare ledger
+   `latency_ms` + observation quality on real Hareesh + Rach traffic. If
+   it holds, escalate to synthesis_update + synthesis_write together.
+
+4. **CLAUDE.md sweep for "single-tenant" wording.** Multi-profile shipped
+   tonight (commit `04620da`). The `auth.ts` doc-comments + the build
+   plan still say "single-tenant MVP" in places. 5-10 minute pass to
+   reflect today's reality.
+
+5. **Pod-drive directory dry-run on Z2** (no hardware needed). Per
+   `memu-platform/14-POD-DRIVES.md` closing section: prototype the
+   `/private/<profile_id>/` and `/family/` directory layout on the
+   existing 4TB drive, move private-visibility Spaces into them,
+   symlink for backward compat, verify retrieval still works. Validates
+   the data shape before any LUKS / udev / hardware lifecycle work.
+   Roughly 1 session.
+
 ### Routing matrix (decision pending — added 2026-04-26 evening)
 
 DeepSeek is now wired as a routing provider (commit forthcoming in this
@@ -70,41 +107,77 @@ by anonymisation, not by provider geography.
 
 ### From 2026-04-26 dogfood (post-document-ingestion deploy)
 
-- 2026-04-26 (H, bug, **HIGH — blocks Space writes from new pipelines**):
-  PDF upload to PWA fails with `Couldn't process that document
-  (persist): Space upsert failed: spawnSync git ENOENT`. The
-  `spaces/store.ts` `ensureFamilyRepo` calls `execFileSync('git',
-  ['init', '-q', '-b', 'main'], ...)` un-wrapped. When the git binary
-  isn't on the container PATH, ENOENT bubbles up and crashes the
-  upsert. Two-part fix: (1) install git in
-  `Dockerfile` (the correct fix — git is intended to be available
-  for spaces history) `RUN apt-get update && apt-get install -y git
-  && rm -rf /var/lib/apt/lists/*`; (2) defensively wrap
-  `ensureFamilyRepo`'s git init in try/catch with a console.warn
-  fallback so Space writes don't crash even if git is unavailable
-  for some reason — same pattern the inner add/commit already use.
-  Diagnostic: `docker exec memu_core_standalone_api which git`
-  on the Z2 confirms whether git is present in the image. **Note:**
-  existing family dirs that already contain `.git` won't trigger this
-  on subsequent writes (the `fs.access(.git)` check skips init) — but
-  any first write for any new family hits it. Affects every new
-  pipeline that creates Spaces (document_ingestion, autolearn writes
-  to brand-new Spaces in the future, anything Tier-1 multi-family).
+- 2026-04-26 (H, bug, ✅ **RESOLVED commits `27cad89` + `04d34de`**):
+  PDF upload PWA → `spawnSync git ENOENT`. Two-part fix shipped: (1) git
+  installed in Dockerfile runtime image; (2) `ensureFamilyRepo`'s git
+  init wrapped in try/catch with console.warn fallback so Space writes
+  succeed even if git is missing. Verified by deploy + WeST PDF re-upload
+  later same evening.
 
-- 2026-04-26 (H, bug, **MED — UI regression**): Paperclip not visible
-  in the PWA chat composer even after the staged-attachment CSS
-  hotfix. The `[hidden]` selector fix landed in `style.css` —
-  attachment-error is gone — but the paperclip `<button class=
-  "attach-btn" id="chat-attach">` is still missing from the chat
-  composer. Likely causes to investigate: (a) browser CSS cache
-  serving stale style.css despite the new push; (b) layout
-  regression elsewhere I introduced (e.g. the new
-  `.staged-attachment` block above the input bar pushing the
-  attach-btn out of flexbox alignment); (c) z-index / overflow on
-  the parent making the button non-interactive. Diagnostic: open
-  DevTools → Inspect the chat composer area → confirm
-  `chat-attach` element exists, check computed display + position.
-  Hard-refresh (Ctrl+Shift+R) likely first action.
+- 2026-04-26 (H, bug, ✅ **RESOLVED commit `04d34de`**): Paperclip not
+  visible in PWA chat composer. Root cause was the SVG glyph itself —
+  it was a camera icon (single eye + lens), not a paperclip. Swapped to
+  Feather paperclip on both `quick-attach` and `chat-attach` buttons.
+
+### New bugs surfaced 2026-04-26 evening
+
+- 2026-04-26 (H, bug, **MED — needs repro to diagnose**): Anthropic
+  returns `400 invalid_request_error: container_id is required when
+  there are pending tool uses generated by code execution with tools`
+  on `interactive_query` mid-chain. Original repro:
+  `req_011CaSsALet9nquWKrmnW8Vm` at 2026-04-26 19:35:46 (in
+  `privacy_ledger` row from same timestamp). The chain ran one
+  successful iteration (1954ms, 6091/29 tokens) then iteration 2
+  failed. Memu doesn't use Anthropic's `code_execution_20250522`
+  tool — only `web_search_20260209` server-side. Hypothesis: how
+  `src/skills/router.ts:512+` reconstructs the assistant's content
+  array between iterations (when it includes `server_tool_use` /
+  `web_search_tool_result` blocks) confuses the API into thinking
+  there are pending code-execution outputs. **Don't fix blind —
+  capture another repro with the request body logged before
+  speculating.** Workaround until then: catch + degrade gracefully
+  (return text-so-far). Likely interacts with the new
+  MAX_TOOL_ITERATIONS=10 bump from commit `24e273b` because longer
+  chains hit this more often.
+
+- 2026-04-26 (H, bug, ✅ **RESOLVED commit `e4f0539`**): Gemini
+  free-tier 429 ("Quota exceeded for metric:
+  generate_content_free_tier_requests, limit: 20") was the noisy
+  symptom. Underlying cause: WhatsApp Baileys ingestion was running in
+  "Phase 1: Omnivorous" mode — every message Baileys delivered (group
+  chats, family threads, friend DMs, newsletters) was hitting the
+  extraction skill on Gemini Flash. Limit hit in minutes. Fix:
+  `MEMU_WHATSAPP_INGESTION` env var with default `self_only`. Only
+  the user's own self-chat ("Message yourself") is processed.
+  Throttled summary log every 60s tells the operator how many
+  messages got skipped. Set `MEMU_WHATSAPP_INGESTION=all` to restore
+  legacy omnivorous behaviour. Extraction stays on Gemini Flash per
+  Hareesh's explicit choice — only the ingestion volume changes.
+
+- 2026-04-26 (H, gap, ✅ **RESOLVED commit `04620da`**): Couldn't add
+  Rach as a household member. Root cause: `auth.ts:registerProfile`
+  and `channels/auth/google-signin.ts:signInWithGoogle` were both
+  hardcoded single-tenant — both short-circuited to return the
+  primary profile if any existed. New device sign-in returned
+  Hareesh's profile + API key. Fix shipped: `registerProfile` gains
+  `options.allowExisting` flag (default true preserves backstop);
+  `signInWithGoogle` becomes a 4-step resolver
+  (match-by-email → adopt-onto-primary → first-boot-create → reject
+  with `GoogleSignInRejected`); new `POST /api/profiles` admin-only
+  endpoint with magic-link generation; PWA Settings → Household
+  panel; PWA index.html landing handles `?serverUrl=&apiKey=` query
+  params. One tap from invite to signed-in.
+
+- 2026-04-26 (obs): Layout bug in PWA after the Littlebird sidebar
+  refresh — content rendered in a ~120px column when sidebar was
+  hidden. Root cause: CSS Grid with `position: fixed` sidebar pulled
+  the sidebar out of grid flow, so `app-main` got auto-placed into
+  column 1 (the 0-width column). Switched to flex layout (commit
+  `5b7468d`). Worth noting the lesson: when an element switches
+  between in-flow (`position: sticky`) and out-of-flow
+  (`position: fixed`) based on viewport / state, grid auto-placement
+  becomes brittle. Flex is more forgiving. Same applies elsewhere if
+  we ever rebuild the layout.
 
 ### From 2026-04-26 dogfood (synthesis correctness + self-awareness)
 
