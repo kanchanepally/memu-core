@@ -1229,23 +1229,29 @@ textarea.input {
    App shell — collapsible sidebar (Littlebird-inspired layout, 2026-04-26)
 
    Two viewports, two default behaviours:
-   - Desktop (≥769px): sidebar visible by default. Hamburger toggles it
-     away — canvas expands to full width, sidebar slides off-screen left.
-   - Mobile (≤768px): sidebar hidden by default. Hamburger reveals it as
-     an overlay sliding in from the left, with a backdrop that dismisses
-     on tap.
+   - Desktop (≥769px): sidebar is part of the flex row, takes 240px when
+     visible. When hidden, its width collapses to 0 (padding/border too)
+     so the canvas naturally absorbs the freed space.
+   - Mobile (≤768px): sidebar is `position: fixed` overlay sliding in
+     from the left, with a backdrop that dismisses on tap. The flex
+     layout becomes single-column (sidebar is out of flow).
 
    The persisted state is `body.sidebar-shown`. JS sets it on boot based
    on viewport (default visible on desktop, default hidden on mobile)
    and updates it on toggle. CSS interprets "shown" appropriately per
    viewport. State persists in sessionStorage across page nav.
+
+   IMPORTANT — uses flex, not grid. An earlier grid attempt put
+   sidebar at `position: fixed` which removed it from grid flow, so
+   `app-main` got auto-placed into column 1 (the 0-width column) and
+   collapsed to ~0px. Flex with width transitions sidesteps that
+   entirely — `app-main` always takes `flex: 1` of whatever's left.
    ========================================================================== */
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 0 1fr;
+  display: flex;
   min-height: 100vh;
-  transition: grid-template-columns 0.25s ease;
+  align-items: stretch;
 }
 
 .sidebar {
@@ -1255,19 +1261,13 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  width: 240px;
+  flex-shrink: 0;
   height: 100vh;
   overflow-y: auto;
-  width: 240px;
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  z-index: 90;
-  transform: translateX(-100%);
-  transition: transform 0.25s ease;
-}
-
-body.sidebar-shown .sidebar {
-  transform: translateX(0);
+  transition: width 0.25s ease, padding 0.25s ease;
 }
 
 .sidebar-backdrop {
@@ -1278,6 +1278,7 @@ body.sidebar-shown .sidebar {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
+  display: none;
 }
 
 .sidebar-logo {
@@ -1347,6 +1348,7 @@ body.sidebar-shown .sidebar {
 }
 
 .app-main {
+  flex: 1;
   min-width: 0;
   position: relative;
 }
@@ -1396,19 +1398,23 @@ body.sidebar-shown .sidebar {
   letter-spacing: -0.01em;
 }
 
-/* Desktop: sidebar visible by default → reserve column. Hidden → 0 width. */
+/* Desktop: sidebar is in flex row. Hidden → width collapses to 0. */
 @media (min-width: 769px) {
-  body.sidebar-shown .app-shell {
-    grid-template-columns: 240px 1fr;
-  }
-  body.sidebar-shown .sidebar {
-    position: sticky;
+  body:not(.sidebar-shown) .sidebar {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+    overflow: hidden;
   }
   body.sidebar-shown .quick-composer {
     left: 240px;
   }
-  /* Backdrop is mobile-only — hidden on desktop. */
-  .sidebar-backdrop { display: none; }
+
+  /* Match composer padding when sidebar is hidden so it goes edge-to-edge */
+  body:not(.sidebar-shown) .quick-composer {
+    left: 0;
+  }
 
   /* When the sidebar collapses, give content the extra real estate.
      Reading widths (Spaces detail, Chat, Lists) bump modestly so line
@@ -1432,8 +1438,23 @@ body.sidebar-shown .sidebar {
   body:not(.sidebar-shown) #spaces-detail-view { max-width: 920px; }
 }
 
-/* Mobile: backdrop appears with the sidebar. */
+/* Mobile: sidebar becomes fixed overlay; backdrop appears with it. */
 @media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 90;
+    width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  body.sidebar-shown .sidebar {
+    transform: translateX(0);
+  }
+  .sidebar-backdrop {
+    display: block;
+  }
   body.sidebar-shown .sidebar-backdrop {
     opacity: 1;
     pointer-events: auto;

@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-2">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-3">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1580,7 +1580,7 @@ function openSpaceDetail(id) {
     spacesState.currentId = id;
     document.getElementById('space-detail-category').innerHTML = categoryIcon(s.category) + ' ' + categoryLabel(s.category);
     document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
-    document.getElementById('space-detail-updated').textContent = 'Updated ' + (formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at) || 'recently');
+    document.getElementById('space-detail-updated').textContent = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at) || 'Updated recently';
     document.getElementById('space-detail-body').innerHTML = renderMarkdown(s.body_markdown || '_No content yet — tap Edit to add some._');
     // Swap canvas: hide list, show detail
     document.getElementById('spaces-list-view').classList.add('hidden');
