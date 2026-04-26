@@ -8,6 +8,7 @@ import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
 import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { processChatVisionInput } from './intelligence/vision';
+import { processDocumentIngestion } from './intelligence/documentIngestion';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent, insertCalendarEvent } from './channels/calendar/google';
 import { generateAndPushMorningBriefing, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
 import { registerPushToken } from './channels/mobile';
@@ -267,6 +268,71 @@ server.post('/api/vision', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Vision pipeline failed' });
+  }
+});
+
+// Document ingestion — caller sends a base64-encoded file (PDF or plain
+// text). The ingestion pipeline parses, anonymises, dispatches the
+// document_ingestion skill, and persists a `document` Space + any
+// time-sensitive stream cards. Adults only — children's profiles cannot
+// upload documents in v1 (same posture as Article 20 export).
+server.post('/api/document', async (request, reply) => {
+  const body = request.body as {
+    file?: string;
+    fileName?: string;
+    mimeType?: string;
+  };
+  if (!body?.file || typeof body.file !== 'string') {
+    return reply.code(400).send({ error: 'file (base64) required' });
+  }
+  if (!body?.fileName || typeof body.fileName !== 'string') {
+    return reply.code(400).send({ error: 'fileName required' });
+  }
+  const fileName = body.fileName;
+  const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'application/octet-stream';
+  try {
+    const profile = (request as any).profile;
+    if (profile?.role === 'child') {
+      return reply.code(403).send({ error: 'children cannot upload documents' });
+    }
+    const profileId = (request as any).profileId;
+    const messageId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const buffer = Buffer.from(body.file, 'base64');
+    if (buffer.length === 0) {
+      return reply.code(400).send({ error: 'document payload is empty' });
+    }
+    // Cap inbound at 25MB — refuses anything larger before we waste time
+    // base64-decoding gigabytes. Practical PDF size for school letters
+    // and bills is <2MB; 25MB is generous headroom for image-heavy PDFs.
+    if (buffer.length > 25 * 1024 * 1024) {
+      return reply.code(413).send({ error: 'document too large (max 25MB)' });
+    }
+    const result = await processDocumentIngestion({
+      profileId,
+      fileName,
+      buffer,
+      mimeType,
+      channel: 'pwa',
+      messageId,
+    });
+    if (!result.ok) {
+      // 422 — semantically valid request, but processing failed at parse
+      // / skill / persist stage. Echo the stage so the client can
+      // distinguish "you uploaded a scanned PDF" from "the LLM choked".
+      return reply.code(422).send({ error: result.error, stage: result.stage });
+    }
+    return {
+      ok: true,
+      spaceUri: result.spaceUri,
+      spaceTitle: result.spaceTitle,
+      docType: result.docType,
+      charCount: result.charCount,
+      truncated: result.truncated,
+      streamCardCount: result.streamCardCount,
+    };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Document ingestion failed' });
   }
 });
 

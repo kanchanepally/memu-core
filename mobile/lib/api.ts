@@ -172,6 +172,31 @@ export async function sendVision(
   });
 }
 
+// Document ingestion — same shape as the backend's /api/document
+// response. Adults-only (children blocked server-side → 403). The
+// backend writes a `document` Space and any time-sensitive stream
+// cards; mobile renders the result as a chat bubble.
+export interface DocumentResponse {
+  ok: true;
+  spaceUri: string;
+  spaceTitle: string;
+  docType: string;
+  charCount: number;
+  truncated: boolean;
+  streamCardCount: number;
+}
+
+export async function sendDocument(
+  fileBase64: string,
+  fileName: string,
+  mimeType: string,
+): Promise<ApiResponse<DocumentResponse>> {
+  return request<DocumentResponse>('/api/document', {
+    method: 'POST',
+    body: JSON.stringify({ file: fileBase64, fileName, mimeType }),
+  });
+}
+
 // Google Calendar OAuth
 export async function getGoogleAuthUrl(source: string = 'pwa'): Promise<ApiResponse<{ url: string }>> {
   return request<{ url: string }>(`/api/auth/google?format=json&source=${encodeURIComponent(source)}`);

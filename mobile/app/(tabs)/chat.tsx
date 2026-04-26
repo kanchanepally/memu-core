@@ -9,7 +9,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { sendMessage, sendVision, getChatHistory, type Visibility } from '../../lib/api';
+import * as DocumentPicker from 'expo-document-picker';
+// `expo-file-system` v19 moved the flat read/write functions to a /legacy
+// subpath while introducing a new class-based File API at the top level.
+// The legacy API is stable, well-documented, and gives us
+// readAsStringAsync({ encoding: Base64 }) directly. The class API would
+// require fetching as Blob then base64-encoding manually — same behaviour,
+// more code. Stick with legacy until there's a reason to migrate.
+import * as FileSystem from 'expo-file-system/legacy';
+import { sendMessage, sendVision, sendDocument, getChatHistory, type Visibility } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useToast } from '../../components/Toast';
@@ -138,24 +146,106 @@ export default function ChatScreen() {
     }
   }, [handlePhotoPicked, toast]);
 
+  // Document upload — kitchen reality is "PDF arrived in email or in
+  // Downloads, send it to Memu." Document picker opens the OS file
+  // browser; user picks a PDF or .txt. Same chat-input-as-caption pattern
+  // as photos: whatever the user has typed becomes the caption.
+  // Constraints: max 25MB inbound (same as backend cap). PDF + plain
+  // text only; .docx / mammoth deferred. Images caught here are routed
+  // back to the photo flow with a one-line note rather than failing.
+  const pickDocument = useCallback(async () => {
+    if (sending) return;
+    try {
+      const caption = input.trim();
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'text/plain'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+      if (asset.size && asset.size > 25 * 1024 * 1024) {
+        toast.show('File too large (max 25MB).', 'error');
+        return;
+      }
+
+      const fileName = asset.name || 'document';
+      const declaredMime = asset.mimeType || 'application/octet-stream';
+      // expo-document-picker returns a content:// or file:// URI on
+      // Android, file:// on iOS. expo-file-system reads either.
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!base64) {
+        toast.show("Couldn't read the file.", 'error');
+        return;
+      }
+
+      // Show what the user said (or a fallback marker) immediately, then
+      // route to /api/document. Same UX shape as sendImage.
+      setInput('');
+      const userMsg: Message = {
+        id: `user-doc-${Date.now()}`,
+        text: caption ? `📄 ${fileName} — ${caption}` : `📄 ${fileName}`,
+        fromMemu: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setSending(true);
+
+      const { data, error } = await sendDocument(base64, fileName, declaredMime);
+      setSending(false);
+
+      let memuText: string;
+      if (error || !data) {
+        toast.show(`Couldn't process document — ${error ?? 'unknown error'}`, 'error');
+        memuText = `Couldn't process that document: ${error ?? 'unknown error'}.`;
+      } else {
+        const truncatedNote = data.truncated ? ' (truncated for processing)' : '';
+        const cardNote = data.streamCardCount > 0
+          ? ` and ${data.streamCardCount} stream card${data.streamCardCount === 1 ? '' : 's'} on your today screen`
+          : '';
+        memuText =
+          `Got it. Saved as a Space — **${data.spaceTitle}** ` +
+          `(${data.docType.replace(/_/g, ' ')}, ${data.charCount.toLocaleString()} chars${truncatedNote})${cardNote}.`;
+      }
+      const memuMsg: Message = {
+        id: `memu-doc-${Date.now()}`,
+        text: memuText,
+        fromMemu: true,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, memuMsg]);
+    } catch (err) {
+      setSending(false);
+      const message = err instanceof Error ? err.message : 'Document upload failed';
+      toast.show(message, 'error');
+    }
+  }, [input, sending, toast]);
+
   const handleAttach = useCallback(() => {
     if (sending) return;
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel', 'Take photo', 'Choose from library'], cancelButtonIndex: 0 },
+        {
+          options: ['Cancel', 'Take photo', 'Choose from library', 'Pick a document'],
+          cancelButtonIndex: 0,
+        },
         idx => {
           if (idx === 1) takePhoto();
           else if (idx === 2) pickFromLibrary();
+          else if (idx === 3) pickDocument();
         },
       );
     } else {
-      Alert.alert('Add photo', 'Where from?', [
+      Alert.alert('Add attachment', 'What from?', [
         { text: 'Camera', onPress: takePhoto },
-        { text: 'Library', onPress: pickFromLibrary },
+        { text: 'Photo library', onPress: pickFromLibrary },
+        { text: 'Document (PDF / text)', onPress: pickDocument },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }
-  }, [sending, takePhoto, pickFromLibrary]);
+  }, [sending, takePhoto, pickFromLibrary, pickDocument]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();

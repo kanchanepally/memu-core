@@ -45,10 +45,12 @@ describe('interactiveQueryTools registry', () => {
     const ws = interactiveQueryServerTools[0];
     expect(ws.type).toBe('web_search_20260209');
     expect(ws.name).toBe('web_search');
-    // max_uses caps a single turn's iterative searching. 3 is generous
-    // enough for "find me X" prompts; small enough to bound cost per
-    // turn (~$0.03 worst case at $10/1000).
-    expect(ws.max_uses).toBe(3);
+    // max_uses caps a single turn's iterative searching. 2 is enough
+    // for "find X then verify a detail" patterns and bounds cost
+    // (~$0.02/turn at $10/1000). Was 3 — reduced 2026-04-26 after
+    // observing Claude burn all 3 searches then truncate the
+    // synthesis (raised-bed search dogfood).
+    expect(ws.max_uses).toBe(2);
   });
 
   it('addToList schema enumerates the allowed list types', () => {

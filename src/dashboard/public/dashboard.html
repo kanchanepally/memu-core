@@ -148,7 +148,7 @@ async function api(path, opts = {}) {
     <button class="attach-btn" id="quick-attach" onclick="document.getElementById('quick-file').click()" title="Attach photo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
     </button>
-    <input type="file" id="quick-file" accept="image/*" style="display:none" onchange="handleFilePick(event,'quick')">
+    <input type="file" id="quick-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'quick')">
     <input type="text" class="chat-input" id="quick-input" placeholder="Ask Memu, or say 'add milk to shopping'..." maxlength="500" autocomplete="off">
     <button class="send-btn" id="quick-send" onclick="sendQuick()" disabled>&#x27A4;</button>
 </div>
@@ -191,11 +191,22 @@ async function api(path, opts = {}) {
         <div class="chat-messages" id="chat-messages">
             <div class="typing-indicator" id="chat-loading">Loading conversation...</div>
         </div>
+        <!-- Staged attachment pill — shown above the input bar when an image
+             has been picked but not yet sent. User types a caption / question
+             into the existing chat-input, then sendMessage() routes to vision. -->
+        <div class="staged-attachment" id="chat-staged" hidden>
+            <img id="chat-staged-thumb" alt="Attachment preview">
+            <div class="staged-meta">
+                <div class="staged-name" id="chat-staged-name"></div>
+                <div class="staged-hint">Type what you'd like Memu to do with it, then send.</div>
+            </div>
+            <button type="button" class="staged-remove" id="chat-staged-remove" onclick="clearStagedAttachment()" aria-label="Remove attachment">×</button>
+        </div>
         <div class="chat-input-bar">
-            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo">
+            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo or document">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </button>
-            <input type="file" id="chat-file" accept="image/*" style="display:none" onchange="handleFilePick(event,'chat')">
+            <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
             <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
             <button class="send-btn" id="chat-send" onclick="sendMessage()" disabled>
                 &#x27A4;
@@ -756,9 +767,14 @@ const chatInput = document.getElementById('chat-input');
 const chatSend = document.getElementById('chat-send');
 let chatSending = false;
 
-chatInput.addEventListener('input', () => {
-    chatSend.disabled = !chatInput.value.trim() || chatSending;
-});
+function refreshChatSendState() {
+    // Send is enabled when either there's text OR a staged image.
+    // chatSending always disables (prevents double-submit).
+    const hasContent = !!chatInput.value.trim() || !!stagedAttachment;
+    chatSend.disabled = !hasContent || chatSending;
+}
+
+chatInput.addEventListener('input', refreshChatSendState);
 
 chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && !chatSending) {
@@ -865,7 +881,28 @@ async function loadChatHistory() {
 
 async function sendMessage() {
     const text = chatInput.value.trim();
-    if (!text || chatSending) return;
+    // Allow send when there's text OR a staged image (user can send a
+    // photo without typing if they want — equivalent to the old behaviour
+    // but now opt-in rather than forced).
+    if (!text && !stagedAttachment) return;
+    if (chatSending) return;
+
+    // Branch: image staged → route through vision pipeline with caption.
+    if (stagedAttachment && stagedAttachment.kind === 'image') {
+        const captureBase64 = stagedAttachment.base64;
+        chatInput.value = '';
+        chatSend.disabled = true;
+        chatSending = true;
+        clearStagedAttachment(); // hide pill before send so the user sees forward motion
+        try {
+            await sendImage(captureBase64, 'chat', text);
+        } finally {
+            chatSending = false;
+            refreshChatSendState();
+            chatInput.focus();
+        }
+        return;
+    }
 
     addChatMessage(text, true, null, 'pwa');
     chatInput.value = '';
@@ -1505,24 +1542,160 @@ async function saveSpaceCreate() {
 
 // ========== VISION / ATTACH ==========
 
+// Staged attachment for the chat tab. Holds a picked-but-not-yet-sent
+// image so the user can type a caption / question before triggering the
+// vision pipeline. Quick composer (today screen) keeps immediate-send
+// behaviour by design.
+let stagedAttachment = null; // { kind: 'image', base64, fileName, dataUrl } | null
+
+function stageImageForChat(base64, fileName, dataUrl) {
+    stagedAttachment = { kind: 'image', base64, fileName, dataUrl };
+    const pill = document.getElementById('chat-staged');
+    const thumb = document.getElementById('chat-staged-thumb');
+    const nameEl = document.getElementById('chat-staged-name');
+    if (pill && thumb && nameEl) {
+        thumb.src = dataUrl;
+        nameEl.textContent = fileName || 'Photo';
+        pill.hidden = false;
+    }
+    // Switch focus to chat input so the user can type intent immediately.
+    switchTab('chat');
+    const chatInputEl = document.getElementById('chat-input');
+    if (chatInputEl) {
+        chatInputEl.placeholder = 'What would you like Memu to do with this?';
+        chatInputEl.focus();
+    }
+    // Send button should now be enabled even with empty text — staged image
+    // is enough to fire.
+    if (typeof refreshChatSendState === 'function') refreshChatSendState();
+}
+
+function clearStagedAttachment() {
+    stagedAttachment = null;
+    const pill = document.getElementById('chat-staged');
+    if (pill) pill.hidden = true;
+    const chatInputEl = document.getElementById('chat-input');
+    if (chatInputEl) chatInputEl.placeholder = 'Ask Memu anything...';
+    if (typeof refreshChatSendState === 'function') refreshChatSendState();
+}
+
 async function handleFilePick(event, channel) {
     const input = event.target;
     const file = input.files && input.files[0];
     input.value = '';
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-        showToast('Please pick an image file', true);
+
+    // Route by type:
+    //   image/*  → /api/vision. Chat tab: stage + caption. Quick composer:
+    //              immediate send (its design — "scratchpad" UX).
+    //   pdf, txt → /api/document (Bug 6 — slice 1, parse + skill + Space).
+    //   anything else → reject with a clear list of supported types.
+    if (file.type.startsWith('image/')) {
+        try {
+            const { base64, dataUrl } = await resizeAndEncodeWithPreview(file);
+            if (channel === 'chat') {
+                stageImageForChat(base64, file.name, dataUrl);
+            } else {
+                await sendImage(base64, channel, '');
+            }
+        } catch (err) {
+            showToast('Could not read image', true);
+        }
         return;
     }
+
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isText = file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name);
+    if (!isPdf && !isText) {
+        showToast('Supported: photos, PDFs, plain text. Word docs coming soon.', true);
+        return;
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+        showToast('File too large (max 25MB)', true);
+        return;
+    }
+
     try {
-        const base64 = await resizeAndEncode(file);
-        await sendImage(base64, channel);
+        const base64 = await readFileAsBase64(file);
+        await sendDocument(base64, file.name, file.type || (isPdf ? 'application/pdf' : 'text/plain'), channel);
     } catch (err) {
-        showToast('Could not read image', true);
+        showToast('Could not read file', true);
     }
 }
 
-function resizeAndEncode(file) {
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            // reader.result is a data URL like "data:application/pdf;base64,..."
+            // — split off the prefix to get raw base64.
+            const dataUrl = reader.result;
+            const comma = String(dataUrl).indexOf(',');
+            if (comma < 0) return reject(new Error('unexpected reader output'));
+            resolve(String(dataUrl).slice(comma + 1));
+        };
+        reader.onerror = () => reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function sendDocument(base64, fileName, mimeType, channel) {
+    if (channel === 'chat') {
+        switchTab('chat');
+        addChatMessage(`📄 Uploaded ${fileName}`, true, null, 'pwa');
+        const typing = document.createElement('div');
+        typing.className = 'typing-indicator';
+        typing.id = 'typing';
+        typing.textContent = 'Memu is reading the document...';
+        chatMessages.appendChild(typing);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    } else {
+        showToast('Reading document...');
+    }
+    try {
+        const res = await api('/api/document', {
+            method: 'POST',
+            body: JSON.stringify({ file: base64, fileName, mimeType }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            const errMsg = data.error || 'Document ingestion failed';
+            const stage = data.stage ? ` (${data.stage})` : '';
+            if (channel === 'chat') {
+                document.getElementById('typing')?.remove();
+                addChatMessage(`Couldn't process that document${stage}: ${errMsg}`, false);
+            } else {
+                showToast(errMsg, true);
+            }
+            return;
+        }
+        const truncatedNote = data.truncated ? ' (truncated for processing)' : '';
+        const cardNote = data.streamCardCount > 0
+            ? ` and ${data.streamCardCount} stream card${data.streamCardCount === 1 ? '' : 's'} on your today screen`
+            : '';
+        const reply = `Got it. Saved as a Space — **${data.spaceTitle}** (${data.docType.replace(/_/g, ' ')}, ${data.charCount.toLocaleString()} chars${truncatedNote})${cardNote}.`;
+        if (channel === 'chat') {
+            document.getElementById('typing')?.remove();
+            addChatMessage(reply, false);
+        } else {
+            showToast(`Saved: ${data.spaceTitle}`);
+            loadBrief();
+        }
+    } catch (err) {
+        if (channel === 'chat') {
+            document.getElementById('typing')?.remove();
+            addChatMessage('Something went wrong reading that document.', false);
+        } else {
+            showToast('Document upload failed', true);
+        }
+    }
+}
+
+// Returns { base64, dataUrl } — the dataUrl is used for in-page preview
+// (staged-attachment pill thumbnail). Callers that only need the base64
+// payload can ignore dataUrl.
+function resizeAndEncodeWithPreview(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -1539,7 +1712,7 @@ function resizeAndEncode(file) {
                 ctx.drawImage(img, 0, 0, w, h);
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
                 const base64 = dataUrl.split(',')[1];
-                resolve(base64);
+                resolve({ base64, dataUrl });
             };
             img.onerror = () => reject(new Error('image decode failed'));
             img.src = reader.result;
@@ -1549,10 +1722,21 @@ function resizeAndEncode(file) {
     });
 }
 
-async function sendImage(base64, channel) {
+// Backwards-compat shim — returns just the base64 string. Existing
+// callers should migrate to resizeAndEncodeWithPreview when convenient.
+async function resizeAndEncode(file) {
+    return (await resizeAndEncodeWithPreview(file)).base64;
+}
+
+async function sendImage(base64, channel, caption) {
+    const cap = (caption || '').trim();
     if (channel === 'chat') {
         switchTab('chat');
-        addChatMessage('📷 Sent a photo', true, null, 'pwa');
+        // Show what the user actually said. If they typed a caption, that
+        // IS the message — render it with a 📷 marker. If they sent a
+        // photo with no caption, fall back to the old "Sent a photo" marker.
+        const bubble = cap ? `📷 ${cap}` : '📷 Sent a photo';
+        addChatMessage(bubble, true, null, 'pwa');
         const typing = document.createElement('div');
         typing.className = 'typing-indicator';
         typing.id = 'typing';
@@ -1565,7 +1749,7 @@ async function sendImage(base64, channel) {
     try {
         const res = await api('/api/vision', {
             method: 'POST',
-            body: JSON.stringify({ image: base64, mimeType: 'image/jpeg' }),
+            body: JSON.stringify({ image: base64, mimeType: 'image/jpeg', caption: cap }),
         });
         const data = await res.json();
         const reply = data.response || 'Photo received.';

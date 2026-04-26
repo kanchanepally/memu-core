@@ -92,6 +92,7 @@ services:
       # ---- On-disk data roots (bind-mounted below) ----
       - MEMU_SPACES_ROOT=/app/spaces
       - MEMU_TMP_DIR=/app/tmp
+      - MEMU_DOCUMENTS_ROOT=/app/documents
 
       # ---- Admin / optional channels ----
       - ADMIN_WHATSAPP_NUMBER=${ADMIN_WHATSAPP_NUMBER:-}

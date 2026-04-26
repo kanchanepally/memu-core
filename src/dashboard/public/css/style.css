@@ -757,6 +757,62 @@ textarea.input {
   border-top: 1px solid var(--border);
 }
 
+/* Staged attachment pill — shown above chat-input-bar when a photo/file
+   has been picked but not yet sent. Lets the user type intent before
+   triggering the vision pipeline. */
+.staged-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border-top: 1px solid var(--border);
+}
+
+.staged-attachment img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.staged-attachment .staged-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.staged-attachment .staged-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.staged-attachment .staged-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.staged-attachment .staged-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-pill);
+  transition: var(--transition);
+}
+
+.staged-attachment .staged-remove:hover {
+  background: var(--color-bg);
+  color: var(--text-primary);
+}
+
 .chat-input {
   flex: 1;
   background: var(--color-bg);

@@ -497,6 +497,272 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Mobile document upload — Bug 6 slice 2 (2026-04-26)
+
+Closes the kitchen-counter use case: PDFs arriving via email or
+Downloads, picked from the chat composer on the phone, flow through
+the same `/api/document` pipeline that the PWA already uses. Mobile
+photos already worked via `/api/vision` + camera/library; this slice
+fills the "the school sent a PDF — get it into Memu" gap that the
+desktop-only PWA upload didn't cover.
+
+**New deps (matched to Expo SDK 54).**
+- `expo-document-picker@~14.0.8` — OS file browser, accepts PDF + plain
+  text via `type: ['application/pdf', 'text/plain']`. Returns the
+  selected asset's URI, name, mimeType, and size.
+- `expo-file-system@~19.0.21` (already transitive, now pinned). v19
+  moved the flat read/write functions to `/legacy`; we import from
+  `expo-file-system/legacy` to keep the simple
+  `readAsStringAsync(uri, { encoding: EncodingType.Base64 })` shape.
+  The new top-level class API (`File`, `Paths`, `Directory`) would
+  require fetching as Blob then base64-encoding manually — same
+  result, more code. Migrate later if a reason emerges.
+
+**`mobile/lib/api.ts` — new `sendDocument(fileBase64, fileName,
+mimeType)`.** Returns `ApiResponse<DocumentResponse>` mirroring the
+backend shape: `{ok, spaceUri, spaceTitle, docType, charCount,
+truncated, streamCardCount}`. Children-blocked posture surfaces as
+the standard 403 → `error: 'children cannot upload documents'` via
+the existing `request()` error path.
+
+**`mobile/app/(tabs)/chat.tsx` — `pickDocument()` callback +
+`handleAttach()` extended.**
+- iOS: ActionSheet now has 4 options (Cancel / Take photo / Choose
+  from library / Pick a document).
+- Android: Alert with 3 actionable options (Camera / Photo library /
+  Document (PDF / text)).
+- `pickDocument()` mirrors the photo flow: reads `input.trim()` as
+  caption (same chat-input-as-caption pattern Hareesh approved on
+  PWA), enforces 25MB cap client-side (matching the backend), reads
+  the picked file as base64 via `FileSystem.readAsStringAsync`,
+  POSTs to `/api/document`, renders the result as a chat bubble:
+  *"Got it. Saved as a Space — **British Gas bill April** (bill,
+  3,420 chars) and 1 stream card on your today screen."*
+- User bubble shows `📄 ${fileName} — ${caption}` if caption is
+  present, falling back to `📄 ${fileName}` otherwise. Distinct
+  from the photo bubble's `📷` so chat history is scannable.
+
+**Backend tests still green: 403 across 24 files** — no backend
+changes in this slice. Mobile TS check has 2 pre-existing errors
+(line 337 toast 'success' kind, line 571 `radius.xs` missing) that
+predate this session and don't block EAS bundle (Metro tolerates
+strict-mode TS warnings; the deployed APK ships fine despite them).
+The new `pickDocument` code compiles cleanly.
+
+**Bug 6 status now:**
+- ✅ slice 1 — backend pipeline + PWA upload (2026-04-26 morning)
+- ✅ slice 2 — mobile picker (this session)
+- 🟡 deferred — `mammoth` for `.docx`, OCR fallback for scanned PDFs
+  (likely never needed: photo-of-document already works via
+  `/api/vision` + camera), share-sheet target ("Share to Memu" from
+  email apps — substantial native code, separate Part 11 item).
+
+**Tier 1 pre-beta skill cluster:** still 1/4 shipped (the
+`document_ingestion` skill is unchanged this slice). Next foundation
+skill is `autolearn`.
+
+**Deploy.** Backend rebuild not needed (no backend changes since the
+last push). Mobile APK rebuild required to ship the new picker — EAS
+build cycle ~1h. Can run in background while testing the PWA in the
+meantime.
+
+### Three quick fixes — truncation, search caps, image captions (2026-04-26)
+
+Three surfaces lit up by Hareesh's afternoon dogfood (raised-bed
+search + photo upload). All three closed in one batch.
+
+**1. interactive_query maxTokens 1024 → 4096.** The orchestrator's
+`dispatch()` call for the chat path passed no `maxTokens`, so it
+inherited the 1024 default in `callClaude`. With server-side
+web_search injecting ~5–15k tokens of search context, 1024 output
+tokens isn't enough for Claude to synthesise after searches —
+replies were truncating mid-sentence (the raised-bed answer cut off
+after "The Bed Itself"). Bumped to 4096 explicitly in
+`src/intelligence/orchestrator.ts`. Cost impact: per-turn output
+budget quadruples but prompt caching keeps the input side
+unchanged.
+
+**2. web_search max_uses 3 → 2.** `interactiveQueryServerTools` was
+configured with `max_uses: 3`. In the dogfood transcript Claude
+burned all 3 every turn (`searched the web · searched the web ·
+searched the web`) before running into the maxTokens cap. Two
+searches is enough for "find X then verify a detail" patterns, also
+halves cost (~$0.02 vs ~$0.03 per search-y turn). `tools.ts` +
+test assertion updated.
+
+**3. PWA image upload — staging + caption (chat tab).** Photos
+picked from the chat tab now stage in a preview pill above the
+chat-input bar instead of immediately firing `/api/vision`. The
+chat input doubles as the caption field — placeholder swaps to
+"What would you like Memu to do with this?". User types intent,
+clicks send, then `sendMessage()` routes to vision with caption
+populated (the `/api/vision` endpoint already accepted a caption
+field; the UI just didn't expose it). Quick composer (today
+screen) keeps immediate-send by design — its UX is "scratchpad,
+fire and forget". Documents stay immediate-send too; their
+captioning lands with the mobile slice.
+
+Implementation:
+- `dashboard.html` — new `staged-attachment` div above
+  `chat-input-bar` (thumbnail + filename + remove button).
+- `style.css` — `.staged-attachment` rules using Indigo Sanctuary
+  tokens (44×44 thumb, ellipsised filename, hint copy in
+  `--text-secondary`).
+- JS — new `stagedAttachment` global, `stageImageForChat()`,
+  `clearStagedAttachment()`, `refreshChatSendState()` helper that
+  enables Send when EITHER text OR a staged image exists.
+  `resizeAndEncodeWithPreview(file)` returns `{base64, dataUrl}` so
+  the same canvas pass produces the in-page preview without a
+  second decode. `sendImage(base64, channel, caption)` signature
+  extended; chat bubble now renders `📷 ${caption}` when caption
+  present, falling back to the old "📷 Sent a photo" only when
+  empty. `sendMessage()` checks `stagedAttachment` first and
+  branches to vision routing.
+
+**Tests still green: 403 across 24 files.** No code paths the
+existing tests cover changed semantics (only constants moved); UI
+work is PWA HTML/JS, no test scaffolding for that layer in this
+codebase.
+
+**Mobile.** Still on slice 2 (deferred). PWA changes here don't
+unblock mobile — `expo-document-picker` + `expo-image-picker` need
+their own captioning flow, but the React Native side has different
+input affordances and is a separate slice.
+
+**Deploy.** Standard `git pull` + rebuild on Z2. Re-test the
+raised-bed search — the answer should now arrive complete (4096
+output tokens, 2 searches max). Re-test photo upload from PWA chat
+— should stage with thumbnail, let you type intent, send when
+ready.
+
+### Document ingestion shipped — Bug 6 / Tier 1 skill #3 (2026-04-26)
+
+Closes Bug 6 from the 2026-04-19 first-use session and shifts Tier 1
+pre-beta skill cluster from 0/4 to 1/4 shipped. PDF and plain-text
+documents (school newsletters, utility bills, council notices,
+appointment letters, receipts) flow into the Twin → skill → Space
+pipeline; time-sensitive items become stream cards on the today
+screen.
+
+**Slice scope.** Backend pipeline + PWA upload UI. Mobile upload
+deferred to slice 2 (avoids a 1h+ EAS build cycle blocking the
+test loop). PDF + plain-text only; .docx via mammoth deferred to
+slice 2 — the named pain points (school letters, bills) are PDFs
+almost always. Image documents continue through `/api/vision` as
+before; the dispatcher's error message steers callers there if
+they upload a JPG to `/api/document`.
+
+**New skill.** `skills/document_ingestion/SKILL.md` v1
+(`model: sonnet`, `requires_twin: true`, `cost_tier: standard`).
+Returns ONE JSON object per document with `doc_type`
+(school_letter / bill / appointment / council / receipt / form /
+contract / manual / creative / other), `title` (Space title —
+concrete, scannable), `summary_markdown` (the body — what the
+family will keep), `key_dates`, `key_amounts`, `parties`,
+`stream_cards` (only for things that need action by a deadline).
+Explicit empty-or-illegible response shape so the pipeline never
+confabulates when extraction fails.
+
+**New module `src/intelligence/documentIngestion.ts`.**
+- Pure helpers: `parsePlainText(buffer)`, `parsePdf(buffer)`
+  (lazy-imports `pdf-parse@2.4.5`, class-based API: `new PDFParse({
+  data }).getText()`), `parseDocument(buffer, mimeType)` dispatcher,
+  `resolveMimeType(declaredMime, fileName)` (falls back to extension
+  for `application/octet-stream` uploads).
+- Cap: text fed to LLM is truncated at 50,000 chars (~12k tokens) with
+  an explicit `…[document truncated]` marker so the skill can flag it
+  in summary rather than silently dropping content.
+- Storage: original file persisted under
+  `MEMU_DOCUMENTS_ROOT` (`/app/documents` in container, mounted to
+  `/mnt/memu-data/memu-core-standalone/documents/` on Z2). Path shape
+  `<familyId>/<yyyy-mm>/<uuid>-<safeFileName>`. The Space's
+  `sourceReferences` carries `document:<storedAt>` so future tools
+  (Article 20 export, "view original" UI) can resurface it.
+- Orchestration: `processDocumentIngestion(input)` — parse → persist
+  original early (before LLM call so a Sonnet failure doesn't lose
+  the file) → `detectAndRegisterNovelEntities` → `translateToAnonymous`
+  → dispatch the skill → JSON-parse → `translateToReal` on every
+  user-facing field (title / summary / key_dates labels / key_amounts
+  labels / stream cards) → `upsertSpace` (`category: 'document'`,
+  `confidence: 0.7`, `tags: [docType]`) → INSERT each `stream_cards`
+  row → return `{ok, spaceUri, spaceTitle, docType, charCount,
+  truncated, streamCardCount, storedAt}` or
+  `{ok: false, error, stage}` (parse / skill / persist).
+
+**New endpoint `POST /api/document`.** Same base64-in-JSON pattern
+as `/api/vision` — keeps the slice tight (no `@fastify/multipart`
+dep). Body: `{ file: base64, fileName, mimeType }`. Children
+blocked (same posture as Article 20 export). 25MB inbound cap
+(33MB base64-encoded fits inside the 50MB Fastify global limit).
+Returns 200 on success, 422 on parse/skill/persist failure (echoes
+`stage` so the client can render a useful message), 400/403/413/500
+on transport-level issues.
+
+**PWA wiring (`src/dashboard/public/dashboard.html`).**
+- File input `accept` attribute extended:
+  `image/*,application/pdf,.pdf,text/plain,.txt,.md` on both the
+  quick composer and the chat composer.
+- `handleFilePick()` rewritten to route by type: images → existing
+  `sendImage()` / `/api/vision`; PDFs and plain text → new
+  `sendDocument()` / `/api/document`; anything else rejected with
+  "Supported: photos, PDFs, plain text. Word docs coming soon."
+- `readFileAsBase64()` helper for non-image uploads (vision's
+  `resizeAndEncode` is image-specific — uses canvas to downscale
+  and re-encode as JPEG; documents need verbatim base64).
+- `sendDocument()` shows a typing indicator in chat, calls
+  `/api/document`, renders the result as a chat bubble:
+  *"Got it. Saved as a Space — **British Gas bill April** (bill,
+  3,420 chars) and 1 stream card on your today screen."*
+
+**Privacy posture.** Real names enter only at parsing (the document
+text contains them) and exit only at persistence (Space body, stream
+card titles). The skill operates entirely in the anonymous namespace.
+Twin guard fires per-skill (`document_ingestion` is `requires_twin:
+true`) before dispatch. Novel-entity detection runs first so any
+unseen names in the document (a new piano teacher, a new doctor's
+practice) get registered before translation.
+
+**Tests.** New `src/intelligence/documentIngestion.test.ts` (15
+tests):
+- `resolveMimeType`: declared-mime passthrough, octet-stream fallback
+  via extension, case insensitivity, unrecognised passthrough.
+- `parsePlainText`: utf-8 decode, whitespace trim, empty rejection,
+  whitespace-only rejection, truncation flag at 60k, no-truncation
+  at exactly 50k cap, unicode (£128.45, em dash) preserved.
+- `parseDocument`: dispatcher routes plain-text, rejects unsupported
+  with helpful error, image rejection points to `/api/vision`,
+  .docx rejection mentions roadmap.
+- PDF happy path covered by manual QA on the Z2 (real PDF buffer
+  fixtures aren't worth shipping for one assertion). Skill loader
+  test EXPECTED list extended with `'document_ingestion'`.
+
+Full suite: **403 tests passing across 24 files** (was 388). TypeScript
+clean.
+
+**Compose change.** `docker-compose.standalone.yml` env block adds
+`MEMU_DOCUMENTS_ROOT=/app/documents`. The bind-mount for
+`/mnt/memu-data/memu-core-standalone/documents` was already in the
+volumes section (provisioned for this exact use case in B-live-1) —
+just plumbed the env var through.
+
+**Slice 2 (next session for documents).** Mobile upload — `expo-document-
+picker` in the chat composer, same base64-to-`/api/document` flow.
+mammoth/.docx support (small dep add, parser is one function).
+PDF-OCR fallback for scanned PDFs that pdf-parse can't extract from
+(probably defer further — vision already covers photo-of-document).
+
+**Tier 1 skill cluster status (per Part 11):** 1/4 shipped
+(`document_ingestion`). Next up: `autolearn` — silent background
+learning from every interaction. Foundation skill that everything
+else compounds on; depends on the synthesis-overwrite fix landing
+clean (it did, 2026-04-26).
+
+**Deploy.** Standard `git pull` + rebuild. Test path: open PWA at
+`https://memu-hub.tail5c57ce.ts.net:8443/dashboard.html`, drop a PDF
+school letter or utility bill via the paperclip in either composer,
+watch the Space appear in the Spaces tab and any time-sensitive
+extractions land on the today screen.
+
 ### web_search migrated to Anthropic native (2026-04-26)
 
 Closes the webSearch reliability bug exposed by Slice 1's footer

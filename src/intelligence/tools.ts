@@ -662,7 +662,14 @@ export const interactiveQueryServerTools: ClaudeServerSideTool[] = [
   {
     type: 'web_search_20260209',
     name: 'web_search',
-    max_uses: 3,
+    // 2 searches per turn — enough for "find X then verify a detail",
+    // not enough to spend the entire output budget on iterative
+    // searching with nothing left for synthesis. Was 3; dropped to 2
+    // 2026-04-26 after observing the truncation pattern in Hareesh's
+    // raised-bed search dogfood (Claude burned all 3 then ran out of
+    // maxTokens before answering). Halves cost too (~$0.02/turn vs
+    // ~$0.03).
+    max_uses: 2,
   },
 ];
 

@@ -182,6 +182,13 @@ export async function processIntelligencePipeline(
     useBYOK: true,
     tools: interactiveQueryTools,
     serverTools: interactiveQueryServerTools,
+    // 4096 instead of the 1024 default. Server-side web_search injects
+    // search results (~5-15k input tokens after a couple of searches);
+    // 1024 output tokens isn't enough for Claude to synthesise a real
+    // answer afterwards — replies were truncating mid-sentence in
+    // Hareesh's 2026-04-26 dogfood (raised-bed search). 4096 gives
+    // breathing room without unbounded cost.
+    maxTokens: 4096,
     toolContext: {
       familyId: profileId,
       profileId,

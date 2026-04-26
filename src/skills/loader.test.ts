@@ -19,6 +19,7 @@ const EXPECTED = [
   'autolearn',
   'import_extract',
   'soul',
+  'document_ingestion',
 ];
 
 describe('skills loader', () => {
