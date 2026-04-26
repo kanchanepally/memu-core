@@ -141,15 +141,21 @@ export function listSkills(): Skill[] {
 }
 
 /**
- * Auto-inject the SOUL.md body as `{{soul}}` for any skill that uses
+ * Auto-inject the SOUL.md body as `{{soul}}` for any template that uses
  * the variable. SOUL is a meta-skill that holds Memu's voice + behaviour
  * + emotional-register rules; interactive skills include `{{soul}}` at
  * the top of their system prompt to wear that personality.
  *
  * Defensive — if SOUL.md isn't present (custom MEMU_SKILLS_DIR for
- * tests, partial test fixtures), this returns undefined and we skip the
- * auto-injection. A skill body that uses `{{soul}}` will then throw via
- * renderTemplate's missing-variable guard, which is the correct UX.
+ * tests, partial test fixtures), this returns undefined and the
+ * auto-injection is skipped. A template body that uses `{{soul}}` will
+ * then throw via renderTemplate's missing-variable guard, which is the
+ * correct UX (surfaces misconfiguration immediately).
+ *
+ * Lives in `renderTemplate` (not just `renderSkill`) because the router
+ * and the catalogue matcher both call `renderTemplate` directly on
+ * skill bodies — putting the auto-inject any higher up the stack misses
+ * those call sites.
  */
 function getSoulBodyOrUndefined(): string | undefined {
   try {
@@ -161,17 +167,17 @@ function getSoulBodyOrUndefined(): string | undefined {
 
 export function renderSkill(name: string, vars: Record<string, string> = {}): string {
   const skill = getSkill(name);
-  const soulBody = getSoulBodyOrUndefined();
-  // soul is a default — explicit caller-provided vars win.
-  const merged: Record<string, string> = soulBody !== undefined
-    ? { soul: soulBody, ...vars }
-    : vars;
-  return renderTemplate(skill.body, merged);
+  return renderTemplate(skill.body, vars);
 }
 
 export function renderTemplate(template: string, vars: Record<string, string>): string {
+  // soul is a default — explicit caller-provided vars win.
+  const soulBody = getSoulBodyOrUndefined();
+  const merged: Record<string, string> = soulBody !== undefined
+    ? { soul: soulBody, ...vars }
+    : vars;
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => {
-    if (Object.prototype.hasOwnProperty.call(vars, key)) return vars[key];
+    if (Object.prototype.hasOwnProperty.call(merged, key)) return merged[key];
     throw new Error(`Missing template variable: ${key}`);
   });
 }

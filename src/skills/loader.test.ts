@@ -127,5 +127,36 @@ describe('skills loader', () => {
       expect(rendered).toContain('## CUSTOM SOUL');
       expect(rendered).not.toContain('## Who Memu is');
     });
+
+    // REGRESSION GUARD — 2026-04-26.
+    //
+    // The router (`src/skills/router.ts:resolveUserPrompt`) and the
+    // catalogue matcher both call `renderTemplate` DIRECTLY on a skill
+    // body, bypassing `renderSkill`. The first deploy of SOUL.md
+    // shipped with the auto-inject only in `renderSkill`, so every
+    // chat turn 500'd with `Missing template variable: soul`. The
+    // auto-inject lives in `renderTemplate` for that reason — every
+    // call site, including direct ones, gets soul automatically.
+    //
+    // This test pins it: a direct `renderTemplate` call on a body that
+    // contains `{{soul}}` must NOT throw, even with vars={}. If this
+    // ever fails, the production chat path is broken.
+    it('renderTemplate auto-injects soul even when called directly with no vars', () => {
+      const out = renderTemplate('Voice: {{soul}}\nEnd.', {});
+      expect(out).toContain('Voice: ## Who Memu is');
+      expect(out).toContain('End.');
+      expect(out).not.toContain('{{soul}}');
+    });
+
+    it('renderTemplate caller-provided soul overrides the auto-injected default', () => {
+      const out = renderTemplate('Voice: {{soul}}', { soul: 'CUSTOM' });
+      expect(out).toBe('Voice: CUSTOM');
+    });
+
+    it('renderTemplate still throws on missing non-soul variables', () => {
+      expect(() => renderTemplate('Hi {{somethingelse}}', {})).toThrow(
+        /Missing template variable: somethingelse/i,
+      );
+    });
   });
 });
