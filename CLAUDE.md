@@ -497,6 +497,114 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### Self-awareness Slice 1 — capabilities authority + tool-call footer (2026-04-26)
+
+First slice of build-plan item 2 (the meta-cognition pair to today's
+synthesis-overwrite fix). Closes the "I can't do X" while doing X half
+of the bug, and the "creation/updation seems distant" half — the latter
+via a small machine-rendered footer appended to every chat reply that
+fired tool calls.
+
+**Capabilities authority (parts a + a-mirror).**
+`skills/interactive_query/SKILL.md` bumped to v5. New paragraph at the
+top of the Capabilities section: "These six tools are wired and working
+in this conversation right now. They are not aspirational… If you find
+yourself about to write 'I can't…' or 'I'm not able to…' about
+something this list covers, stop and use the tool instead. False
+humility is just as dishonest as a false claim. When in doubt, try the
+tool and report what actually happened." Rule 5 also extended to cover
+all six tools (was three) and require concrete naming ("Added — milk,
+eggs, bread are on your shopping list", "Booked dentist for Tuesday
+3pm") instead of "I've added that". `skills/soul/SKILL.md` "What Memu
+never does" now carries the disclaim mirror — "Disclaims a capability
+it does have" — explicitly tied to the tool list of the active skill.
+
+**Tool-call footer (part b, Tier 1).** New module
+`src/intelligence/toolSummary.ts` exporting a pure
+`formatToolSummaryFooter(toolCalls)`. For each tool call in
+`dispatchResult.toolCalls` it produces a structural clause (no real
+names, no DB lookups): "added 1 item to shopping list", "appended 3
+lines to a Space", "replaced a Space — prior content is in git
+history", "added an event to your calendar", "searched the web".
+findSpaces successes are excluded (internal navigation, not a state
+change worth announcing); findSpaces failures still surface. Failures
+get a ⚠ prefix and the error string. Multiple clauses joined with
+` · `. Output shape: `\n\n---\n_Memu just: <clauses>_\n` — horizontal
+rule + italic, visually distinct from Claude's prose. Empty for
+zero-tool turns.
+
+**Orchestrator wiring.** `src/intelligence/orchestrator.ts` calls the
+formatter after step 5 (reverse translation) and step 5b (list
+reconciler), then appends to `realResponse` only:
+- `realResponse` (returned to client + stored as
+  `content_response_translated`) → user sees the footer.
+- `claudeResponse` (anonymous, stored as `content_response_raw` +
+  replayed in the next turn's history) → unchanged → footer NEVER
+  enters Claude's context window. Critical: keeps the footer from
+  looping back into the prompt in subsequent turns (where it would
+  confuse the reconciler regex and waste tokens).
+
+The list reconciler (5b) was reordered to run BEFORE the footer is
+appended, so the reconciler can never accidentally trip on
+auto-generated footer wording. Today's footer phrasing already doesn't
+match the reconciler regex (deliberately omits the determiner — "to
+shopping list", not "to your shopping list"), but the coupling was
+fragile; clean separation is safer. A regression-guard test pins this:
+`formatToolSummaryFooter` output is asserted to NOT match a mirror of
+the reconciler regex.
+
+**Privacy invariant locked in test.** `formatToolSummaryFooter` operates
+only on whitelisted output fields (counts, list type, action mode,
+linesAdded). A test feeds the formatter a hostile output payload
+containing real-name-shaped fields (`item_text`, `user_name`, `notes`)
+and asserts none of them appear in the output — only the structural
+summary does. Same test for updateSpace ensures slug/title don't leak
+even if present in the output dict.
+
+**Tests.** New `src/intelligence/toolSummary.test.ts` (25 tests):
+- Empty/no-op: undefined input, empty array, findSpaces-only success,
+  zero-added addToList — all return empty string.
+- Single ok tool: addToList singular/plural × shopping/task,
+  createSpace, updateSpace append (singular line / plural lines) /
+  replace, addCalendarEvent, webSearch.
+- Failures: ⚠ prefix, error string included, no-error fallback,
+  findSpaces failure surfaces (unlike findSpaces success).
+- Multiple tools: middot separator, success-before-failure ordering,
+  findSpaces success skipped without breaking the rest.
+- Privacy: hostile output payload doesn't echo arbitrary free-text
+  fields; updateSpace doesn't echo title/slug.
+- Output shape: starts with `\n\n---\n`, ends with `\n`, italic-wrapped
+  "Memu just:" prefix.
+- Regression guard: output does NOT match the listReconciler regex
+  pattern (prevents future duplicate-insert regressions).
+
+Full suite: **390 tests passing across 23 files** (was 365). TypeScript
+clean.
+
+**Deferred to slice 2 (next session).**
+- (b) Tier 2 — DB-lookup-enriched footer that names actual list items,
+  Space titles, and event summaries instead of bare counts. Needs a
+  `userVisible` channel on `ToolExecutionResult` so real names can
+  flow into the footer without leaking back to Claude in
+  subsequent tool_result blocks. Roughly: extend
+  `ToolExecutionResult` with optional `userVisible: Record<string,
+  unknown>`, populate from each executor (using the values already
+  translated to real names internally), thread up through
+  `ToolCallLogEntry`, surface in the footer. Probably ~1-2 hours.
+- (c) `introspect` tool — Claude calls it mid-turn to fetch its own
+  capability list. Belt-and-braces over the static SKILL.md block.
+  Defer until we see whether the v5 SKILL.md + SOUL disclaim mirror
+  fully solve the disclaim problem. If Hareesh still gets "I can't"
+  responses for capabilities the tool list covers, this becomes
+  next.
+- (d) `messages.tool_summary` JSONB persistence — adds a column,
+  populates from `dispatchResult.toolCalls`, no consumer yet.
+  Speculative until Privacy Ledger UI or audit feature wants it.
+
+**Deploy as usual:** `git pull` + rebuild. The footer will appear on
+every chat turn that fires a tool. Voice rules from SOUL keep Claude's
+prose terse; the footer keeps the concrete effect visible.
+
 ### SOUL wired — Memu personality auto-injected into interactive_query (2026-04-26)
 
 `skills/SOUL.md` (drafted by Gemini, reviewed for the web-search contradiction

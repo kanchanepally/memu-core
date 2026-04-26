@@ -28,6 +28,25 @@ slice immediately. Still log here for the retrospective.
 
 ### From 2026-04-26 dogfood (synthesis correctness + self-awareness)
 
+- 2026-04-26 (H, bug, **verified disclaim repro**): "Search for the
+  most affordable bags of organic compost" → Claude replied "Search
+  isn't cooperating this morning. Here's what I'd suggest in the
+  meantime…" with UK-specific fallbacks (Aldi/Lidl/B&Q/Wickes/
+  Amazon). API logs confirm `webSearch` was **never called** (no
+  `[WEB SEARCH] Query:` log line, no `[TOOL-USE]: webSearch:*`
+  entry). Claude has the tool wired, knows it has the tool per v4
+  SKILL.md, and still chose to deflect with a plausible-sounding
+  excuse. Concrete evidence that v4 capability listing alone is not
+  strong enough — the v5 capabilities-authority paragraph
+  ("when in doubt, try the tool and report what actually
+  happened") + SOUL disclaim mirror are exactly the right
+  intervention. Re-test post-deploy with the same query: should
+  now produce a footer (`_Memu just: searched the web_` or
+  `_Memu just: ⚠ web search failed_`). If still no footer →
+  escalation to part (c) introspect tool.
+
+
+
 - 2026-04-26 (H, bug, **urgent — data integrity**): Memu has overwritten
   multiple existing Spaces during chat-driven updates. Likely cause:
   `updateSpace` tool (commit `3e038b5`) replaces the Space body wholesale

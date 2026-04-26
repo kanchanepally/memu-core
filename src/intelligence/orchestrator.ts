@@ -10,6 +10,7 @@ import { extractAndStoreFacts } from './autolearn';
 import { handleListCommand } from './listCommands';
 import { reconcileListMentions } from './listReconciler';
 import { interactiveQueryTools } from './tools';
+import { formatToolSummaryFooter } from './toolSummary';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
 import { processSynthesisUpdate } from './synthesis';
@@ -197,7 +198,7 @@ export async function processIntelligencePipeline(
   console.log(`[LLM -> Raw]: ${claudeResponse}`);
 
   // 5. Reverse Translation (Anonymous -> Real)
-  const realResponse = await translateToReal(claudeResponse);
+  const realResponseBase = await translateToReal(claudeResponse);
 
   // 5b. List-mention reconciliation. The interactive_query skill instructs
   // Claude to confirm list additions confidently ("Done, I've added that").
@@ -206,8 +207,14 @@ export async function processIntelligencePipeline(
   // Scan Claude's real-names reply for explicit "added X to your shopping/
   // task list" confirmations and persist the items. Idempotent against
   // duplicates via pending-item dedup.
+  //
+  // Runs against `realResponseBase` (NOT the footer-augmented response)
+  // so the reconciler can never accidentally trip on the auto-generated
+  // tool-summary footer's wording. Today's footer doesn't match the
+  // reconciler regex but the coupling is fragile — keep the inputs
+  // separate.
   try {
-    const reconciled = await reconcileListMentions(profileId, realResponse, channel, messageId);
+    const reconciled = await reconcileListMentions(profileId, realResponseBase, channel, messageId);
     if (reconciled.addedShopping.length + reconciled.addedTask.length > 0) {
       console.log(
         `[LIST RECONCILE]: shopping=${reconciled.addedShopping.length} task=${reconciled.addedTask.length}`,
@@ -216,6 +223,21 @@ export async function processIntelligencePipeline(
   } catch (err) {
     console.error('[LIST RECONCILE] failed:', err);
   }
+
+  // 5c. Tool-call summary footer (Item 2 Slice 1, 2026-04-26).
+  // Append a small machine-rendered line to the user-visible reply
+  // describing what tools fired. Closes the "creation/updation seems
+  // distant" gap — Claude's prose can be terse (per SOUL.md) without
+  // hiding the concrete effect. The footer is structural-only (no real
+  // names, no DB lookups) and goes ONLY into the user-facing channel:
+  //   - realResponse (returned to client + stored as
+  //     content_response_translated) → user sees it
+  //   - claudeResponse (anonymous, stored as content_response_raw +
+  //     replayed in next turn's history) → unchanged → footer NEVER
+  //     enters Claude's context window. Important: keeps the footer
+  //     from looping back into the prompt and confusing future turns.
+  const toolFooter = formatToolSummaryFooter(dispatchResult.toolCalls);
+  const realResponse = toolFooter ? `${realResponseBase}${toolFooter}` : realResponseBase;
 
   // 6. Immutable Message Storage (Audit Trail)
   await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
