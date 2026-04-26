@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { interactiveQueryTools, toolSchemas, mergeSpaceBody } from './tools';
+import {
+  interactiveQueryTools,
+  interactiveQueryServerTools,
+  toolSchemas,
+  mergeSpaceBody,
+} from './tools';
 import type { ToolContext } from './tools';
 import { SPACE_CATEGORIES } from '../spaces/model';
 
@@ -11,26 +16,39 @@ const ctx: ToolContext = {
 };
 
 describe('interactiveQueryTools registry', () => {
-  it('exposes the six expected tools', () => {
+  it('exposes the five expected client-side tools', () => {
+    // webSearch migrated to Anthropic server-side tool 2026-04-26 — see
+    // `interactiveQueryServerTools` below. Local registry now holds only
+    // tools Memu executes in-process.
     expect(Object.keys(interactiveQueryTools).sort()).toEqual([
       'addCalendarEvent',
       'addToList',
       'createSpace',
       'findSpaces',
       'updateSpace',
-      'webSearch',
     ]);
   });
 
-  it('toolSchemas() returns one schema per tool with required Claude fields', () => {
+  it('toolSchemas() returns one schema per client-side tool with required Claude fields', () => {
     const schemas = toolSchemas(interactiveQueryTools);
-    expect(schemas).toHaveLength(6);
+    expect(schemas).toHaveLength(5);
     for (const s of schemas) {
       expect(typeof s.name).toBe('string');
       expect(typeof s.description).toBe('string');
       expect(s.input_schema.type).toBe('object');
       expect(s.input_schema.properties).toBeDefined();
     }
+  });
+
+  it('interactiveQueryServerTools exposes web_search with the current Anthropic version', () => {
+    expect(interactiveQueryServerTools).toHaveLength(1);
+    const ws = interactiveQueryServerTools[0];
+    expect(ws.type).toBe('web_search_20260209');
+    expect(ws.name).toBe('web_search');
+    // max_uses caps a single turn's iterative searching. 3 is generous
+    // enough for "find me X" prompts; small enough to bound cost per
+    // turn (~$0.03 worst case at $10/1000).
+    expect(ws.max_uses).toBe(3);
   });
 
   it('addToList schema enumerates the allowed list types', () => {
@@ -336,78 +354,13 @@ describe('addCalendarEvent executor — validation branches', () => {
   // convention also used by the updateSpace tests above.
 });
 
-describe('webSearch schema', () => {
-  it('declares query as the only required field', () => {
-    const schema = interactiveQueryTools.webSearch.schema;
-    expect(schema.input_schema.required).toEqual(['query']);
-  });
-
-  it('description warns Claude off anonymous tokens', () => {
-    const schema = interactiveQueryTools.webSearch.schema;
-    expect(schema.description).toMatch(/anonymous token/i);
-  });
-});
-
-describe('webSearch executor — validation branches', () => {
-  const exec = interactiveQueryTools.webSearch.execute;
-
-  it('rejects missing input object', async () => {
-    const r = await exec(null, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/missing input/i);
-  });
-
-  it('rejects missing query', async () => {
-    const r = await exec({}, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/query/i);
-  });
-
-  it('rejects whitespace-only query', async () => {
-    const r = await exec({ query: '   ' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/query/i);
-  });
-
-  // Privacy invariant: anonymous tokens (Adult-N, Child-N, Person-N, Place-N,
-  // Institution-N, Detail-N) must never reach the public search engine.
-  // Refuse rather than leak — translateToReal would defeat the Twin.
-  it('rejects query containing an Adult-N token', async () => {
-    const r = await exec({ query: 'carpet cleaner near Adult-1' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/anonymous token/i);
-  });
-
-  it('rejects query containing a Child-N token', async () => {
-    const r = await exec({ query: 'Child-2 birthday party ideas' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/anonymous token/i);
-  });
-
-  it('rejects query containing a Person-N token', async () => {
-    const r = await exec({ query: 'gift for Person-3' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/anonymous token/i);
-  });
-
-  it('rejects query containing a Place-N token', async () => {
-    const r = await exec({ query: 'restaurants near Place-1' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/anonymous token/i);
-  });
-
-  it('rejects query containing an Institution-N token', async () => {
-    const r = await exec({ query: 'term dates Institution-2' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/anonymous token/i);
-  });
-
-  it('rejects query containing a Detail-N token', async () => {
-    const r = await exec({ query: 'Detail-4 specifications' }, ctx);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/anonymous token/i);
-  });
-
-  // Network-touching happy path (DDG Lite scrape, no_results, fetch errors)
-  // covered by manual QA, same convention as the addCalendarEvent tests above.
-});
+// webSearch is now an Anthropic server-side tool (`web_search_20260209`).
+// Its schema lives in `interactiveQueryServerTools` (see registry tests
+// above). Privacy invariant — anonymous tokens must not reach the search
+// engine — is now enforced at the prompt level via the SKILL.md
+// description warning Claude off Twin tokens, rather than a regex
+// reject in a local executor. Server-side tools have no local
+// `execute()`; Anthropic resolves them on their infrastructure and the
+// router synthesises a ToolCallLogEntry from `server_tool_use` blocks
+// in the response (see `collectServerToolCalls` in router.ts and its
+// tests).

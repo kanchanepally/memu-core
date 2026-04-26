@@ -9,7 +9,7 @@ import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
 import { handleListCommand } from './listCommands';
 import { reconcileListMentions } from './listReconciler';
-import { interactiveQueryTools } from './tools';
+import { interactiveQueryTools, interactiveQueryServerTools } from './tools';
 import { formatToolSummaryFooter } from './toolSummary';
 import { scrapeUrlContent } from './browser';
 import { pool } from '../db/connection';
@@ -181,6 +181,7 @@ export async function processIntelligencePipeline(
     familyId: profileId,
     useBYOK: true,
     tools: interactiveQueryTools,
+    serverTools: interactiveQueryServerTools,
     toolContext: {
       familyId: profileId,
       profileId,

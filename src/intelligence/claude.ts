@@ -17,6 +17,25 @@ export type ClaudeContentBlock =
       tool_use_id: string;
       content: string | Array<{ type: 'text'; text: string }>;
       is_error?: boolean;
+    }
+  // Anthropic server-side tools (e.g. web_search). Claude emits these in
+  // its response when it invokes a managed tool; Anthropic resolves the
+  // call server-side and includes the result in the same response. Memu's
+  // router does NOT execute these locally — they're already done by the
+  // time we see them.
+  | {
+      type: 'server_tool_use';
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+    }
+  | {
+      type: 'web_search_tool_result';
+      tool_use_id: string;
+      // Either an array of result items or an error object. We don't
+      // structurally type either deeply — the router only needs to
+      // distinguish ok-shape from error-shape for the footer.
+      content: unknown;
     };
 
 export interface ClaudeToolSchema {
@@ -29,6 +48,32 @@ export interface ClaudeToolSchema {
   };
 }
 
+/**
+ * Anthropic-managed server-side tools (web_search and friends). Sent
+ * alongside local-function tools in the same `tools` array on the API
+ * call. Distinguished by the `type` field — local tools have no `type`.
+ *
+ * Today only `web_search_20260209` is wired. Adding others (e.g. code
+ * execution when GA) is a one-liner — extend the union and add to the
+ * `interactiveQueryServerTools` array in tools.ts.
+ */
+export type ClaudeServerSideTool = {
+  type: 'web_search_20260209';
+  name: 'web_search';
+  max_uses?: number;
+  allowed_domains?: string[];
+  blocked_domains?: string[];
+  user_location?: {
+    type: 'approximate';
+    city?: string;
+    region?: string;
+    country?: string;
+    timezone?: string;
+  };
+};
+
+export type ClaudeAnyTool = ClaudeToolSchema | ClaudeServerSideTool;
+
 export interface ClaudeCallInput {
   model: string;
   system?: string;
@@ -39,7 +84,7 @@ export interface ClaudeCallInput {
   maxTokens?: number;
   temperature?: number;
   apiKey?: string;
-  tools?: ClaudeToolSchema[];
+  tools?: ClaudeAnyTool[];
   toolChoice?: 'auto' | 'any' | 'none' | { type: 'tool'; name: string };
 }
 

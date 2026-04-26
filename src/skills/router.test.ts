@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { planDispatch } from './router';
+import { planDispatch, collectServerToolCalls } from './router';
+import type { ToolCallLogEntry } from './router';
+import type { ClaudeContentBlock } from '../intelligence/claude';
 
 const ENV_KEYS_TO_RESET = [
   'MEMU_MODEL_OVERRIDE_HAIKU',
@@ -184,5 +186,171 @@ describe('model router — plan resolution', () => {
     // pattern as the Claude counterpart test above.
     const plan = planDispatch('extraction');
     expect(plan.concreteModel).toMatch(/gemini/i);
+  });
+});
+
+// ----------------------------------------------------------------------------
+// collectServerToolCalls — Anthropic server-side tool telemetry
+// ----------------------------------------------------------------------------
+//
+// Pure helper: scans a Claude response's content array for
+// `server_tool_use` blocks (where Anthropic invoked a managed tool like
+// web_search) and pairs them with `web_search_tool_result` blocks to
+// synthesise a ToolCallLogEntry per invocation. The orchestrator's
+// formatToolSummaryFooter consumes these entries to produce footer
+// lines like "_Memu just: searched the web_" or "_⚠ web search failed_".
+//
+// Memu does NOT execute server-side tools locally — Anthropic resolves
+// them and returns the result inline. This helper is purely
+// observational. Easy to test in isolation; no DB / network / SDK
+// dependencies.
+
+describe('collectServerToolCalls', () => {
+  it('produces no entries when content has no server_tool_use blocks', () => {
+    const content: ClaudeContentBlock[] = [
+      { type: 'text', text: 'Hello.' },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toEqual([]);
+  });
+
+  it('synthesises ok entry for a successful web_search with results', () => {
+    const content: ClaudeContentBlock[] = [
+      {
+        type: 'server_tool_use',
+        id: 'srvtoolu_1',
+        name: 'web_search',
+        input: { query: 'organic compost UK' },
+      },
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'srvtoolu_1',
+        content: [
+          { type: 'web_search_result', url: 'https://aldi.co.uk', title: 'Aldi' },
+          { type: 'web_search_result', url: 'https://lidl.co.uk', title: 'Lidl' },
+        ],
+      },
+      { type: 'text', text: 'Based on search results…' },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].name).toBe('webSearch');
+    expect(calls[0].ok).toBe(true);
+    expect(calls[0].output).toEqual({ count: 2 });
+    expect(calls[0].error).toBeUndefined();
+  });
+
+  it('marks fail when web_search returns zero results (search ran but found nothing)', () => {
+    const content: ClaudeContentBlock[] = [
+      {
+        type: 'server_tool_use',
+        id: 'srvtoolu_2',
+        name: 'web_search',
+        input: { query: 'extremely niche query' },
+      },
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'srvtoolu_2',
+        content: [],
+      },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].ok).toBe(false);
+    expect(calls[0].error).toBe('no_results');
+  });
+
+  it('marks fail when result has web_search_tool_result_error shape', () => {
+    const content: ClaudeContentBlock[] = [
+      {
+        type: 'server_tool_use',
+        id: 'srvtoolu_3',
+        name: 'web_search',
+        input: { query: 'foo' },
+      },
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'srvtoolu_3',
+        content: { type: 'web_search_tool_result_error', error_code: 'max_uses_exceeded' },
+      },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].ok).toBe(false);
+    expect(calls[0].error).toBe('max_uses_exceeded');
+  });
+
+  it('marks fail with no_result_returned when server_tool_use has no paired result block', () => {
+    // Edge case — Anthropic's response format guarantees pairing, but
+    // we guard against malformed/truncated responses anyway.
+    const content: ClaudeContentBlock[] = [
+      {
+        type: 'server_tool_use',
+        id: 'srvtoolu_4',
+        name: 'web_search',
+        input: { query: 'foo' },
+      },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].ok).toBe(false);
+    expect(calls[0].error).toBe('no_result_returned');
+  });
+
+  it('handles multiple server-side calls in a single response', () => {
+    const content: ClaudeContentBlock[] = [
+      { type: 'server_tool_use', id: 'a', name: 'web_search', input: { query: 'q1' } },
+      { type: 'web_search_tool_result', tool_use_id: 'a', content: [{ type: 'web_search_result' }] },
+      { type: 'text', text: 'first findings' },
+      { type: 'server_tool_use', id: 'b', name: 'web_search', input: { query: 'q2' } },
+      { type: 'web_search_tool_result', tool_use_id: 'b', content: [] },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].ok).toBe(true);
+    expect(calls[0].output).toEqual({ count: 1 });
+    expect(calls[1].ok).toBe(false);
+    expect(calls[1].error).toBe('no_results');
+  });
+
+  it('ignores server_tool_use blocks with non-web_search names (forward compat)', () => {
+    // When Anthropic ships other server-side tools (e.g. code execution)
+    // we may not have telemetry for them yet. Don't synthesise spurious
+    // entries — only handle web_search until those tools are wired
+    // intentionally.
+    const content: ClaudeContentBlock[] = [
+      {
+        type: 'server_tool_use',
+        id: 'x',
+        name: 'code_execution_xxx' as 'web_search',
+        input: {},
+      },
+    ];
+    const calls: ToolCallLogEntry[] = [];
+    collectServerToolCalls(content, calls);
+    expect(calls).toEqual([]);
+  });
+
+  it('appends to an existing toolCalls array — does not overwrite', () => {
+    // The router uses one toolCalls array across the whole multi-turn
+    // dispatch loop. Server-side calls collected on iteration N must
+    // not clobber local-tool calls collected on earlier iterations.
+    const calls: ToolCallLogEntry[] = [
+      { name: 'addToList', ok: true, output: { list: 'shopping', added: 1 } },
+    ];
+    const content: ClaudeContentBlock[] = [
+      { type: 'server_tool_use', id: 'a', name: 'web_search', input: { query: 'q' } },
+      { type: 'web_search_tool_result', tool_use_id: 'a', content: [{ type: 'web_search_result' }] },
+    ];
+    collectServerToolCalls(content, calls);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].name).toBe('addToList');
+    expect(calls[1].name).toBe('webSearch');
   });
 });

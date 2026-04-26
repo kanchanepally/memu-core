@@ -497,6 +497,122 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### web_search migrated to Anthropic native (2026-04-26)
+
+Closes the webSearch reliability bug exposed by Slice 1's footer
+visibility — the local DDG Lite scraper was returning `no_results`
+reliably from the Z2's IP (rate-limit / captcha / parse drift), so
+webSearch was effectively broken even though the tool was wired and
+Claude was correctly reaching for it post-Slice-1.
+
+**Migration shape.** Replaced the local function tool
+`webSearch` (~110 lines of HTML scraping in `tools.ts`) with
+Anthropic's managed server-side tool `web_search_20260209`. Anthropic
+resolves the search on their infrastructure and feeds results inline
+into Claude's reasoning loop — Memu doesn't execute anything locally
+for this tool, only synthesises a `ToolCallLogEntry` per
+`server_tool_use` block in the response so the orchestrator's footer
+still surfaces "_Memu just: searched the web_" or "_⚠ web search
+failed (no_results)_".
+
+**Type changes.**
+- `src/intelligence/claude.ts` — new `ClaudeServerSideTool` discriminated
+  union (today only `web_search_20260209`; extends easily for future
+  managed tools like code execution). New `ClaudeAnyTool = ClaudeToolSchema
+  | ClaudeServerSideTool` for the heterogeneous tools array.
+  `ClaudeContentBlock` extended with `server_tool_use` and
+  `web_search_tool_result` variants so the router can detect and pair
+  them.
+- `src/skills/router.ts` — `DispatchInput` gains optional
+  `serverTools?: ClaudeServerSideTool[]`. The dispatch loop combines
+  local schemas + server tools into the single `tools` array sent to
+  Claude. New exported helper `collectServerToolCalls(content,
+  toolCalls)` scans the response for `server_tool_use` /
+  `web_search_tool_result` pairs, decides ok/fail from the result
+  shape (array of items → ok with count; array length 0 → fail
+  no_results; `web_search_tool_result_error` → fail with error_code;
+  missing pair → fail no_result_returned), pushes a synthesised entry
+  with `name: 'webSearch'` so `formatToolSummaryFooter`'s existing
+  case branch matches without any rename.
+- `src/intelligence/tools.ts` — removed `WEB_SEARCH_SCHEMA`,
+  `executeWebSearch`, the `ANON_TOKEN_RE` regex, and the local DDG
+  Lite scraping (~110 lines deleted). Registry now exports five
+  client-side tools (down from six). New
+  `interactiveQueryServerTools: ClaudeServerSideTool[]` exports the
+  Anthropic config: `[{ type: 'web_search_20260209', name:
+  'web_search', max_uses: 3 }]`. `max_uses: 3` caps cost per turn at
+  ~$0.03 worst case (Anthropic's published $10/1000 searches) while
+  still allowing iterative searching for "find me X" queries.
+- `src/intelligence/orchestrator.ts` — passes
+  `serverTools: interactiveQueryServerTools` to `dispatch()` for
+  every interactive_query turn.
+
+**Prompt changes.**
+- `skills/interactive_query/SKILL.md` v5 webSearch capability block
+  rewritten: now describes Anthropic-managed search, removes the
+  DDG-specific phrasing, keeps the privacy warning ("never put a
+  personal anonymous token into a query") and adds explicit anti-
+  confabulation guidance: "If the search returns no useful results,
+  say so honestly and offer fallbacks (specific retailers, direct
+  links the user can check) — do NOT confabulate plausible-sounding
+  fallbacks as if they were results." This is the lesson from the
+  pre-migration session where Claude returned UK-specific Aldi/Lidl
+  fallbacks dressed as search results when no search ran. The v5
+  capabilities-authority paragraph also reframed: "Five tools …
+  execute inside Memu … The sixth, `web_search`, is an
+  Anthropic-managed server-side tool — Anthropic resolves the search
+  and feeds results back into your reasoning loop automatically."
+
+**Privacy posture (unchanged but worth recording).** Search queries
+pass through Anthropic's infrastructure to a third-party search
+engine (whichever provider Anthropic uses). Twin tokens leaking
+into a query would reach both Anthropic and the search provider.
+The SKILL.md prompt warning is the primary defense — the local
+regex check that DDG had is gone (Anthropic resolves the call before
+we see it; we cannot pre-flight). Net: one extra hop vs DDG
+(Anthropic → search provider, vs Memu → search provider direct);
+threat model unchanged because Anthropic already sees the
+anonymised prompt anyway. Logged in the build plan deferred-but-
+named as Path D (search-as-microservice via Claude) — a future
+refactor that would put webSearch back into the local registry as
+a function tool whose internals make a Claude+web_search sub-call,
+giving full provider flexibility (interactive_query could move to
+Gemini Flash without losing search quality).
+
+**Tests.**
+- `src/intelligence/tools.test.ts` — registry test expectation moved
+  from 6 to 5 client-side tools; the obsolete webSearch schema +
+  executor + 6 anonymous-token-rejection tests deleted (privacy is
+  now prompt-enforced). New test on `interactiveQueryServerTools`:
+  exports one entry with `type: 'web_search_20260209'`, `name:
+  'web_search'`, `max_uses: 3`. File went from 56 → 46 tests.
+- `src/skills/router.test.ts` — new `describe('collectServerToolCalls')`
+  block with 8 tests: empty content → no entries; ok shape (array of
+  results → count); zero-results → fail with `no_results`;
+  `web_search_tool_result_error` → fail with the error_code;
+  unpaired `server_tool_use` → fail with `no_result_returned`; multiple
+  invocations in one response handled independently; non-web_search
+  server tool names ignored (forward-compat for future Anthropic
+  managed tools); appends to existing toolCalls array without
+  clobbering. File went from 19 → 27 tests.
+
+Full suite: **388 tests passing across 23 files** (was 390; the net
+-2 reflects -11 in tools.test.ts for the deleted DDG suite, +8 for
+collectServerToolCalls, +1 for the new server-tool registry test
+elsewhere). TypeScript clean.
+
+**INBOX disclaim repro should now resolve.** The 2026-04-26
+disclaim-repro entry ("Search isn't cooperating this morning" with no
+`webSearch:*` log line) was caused by Slice 1 not yet being live.
+Post-Slice-1 deploy, webSearch fired but DDG returned no_results —
+the symptom moved from "didn't run" to "ran but found nothing". This
+migration replaces DDG with Anthropic's higher-quality grounded
+search. Re-test with the same compost-search query post-deploy:
+should return a footer like `_Memu just: searched the web_` plus
+genuinely-grounded prose with citations Anthropic surfaced.
+
+**Deploy:** standard `git pull` + rebuild on Z2.
+
 ### Self-awareness Slice 1 — capabilities authority + tool-call footer (2026-04-26)
 
 First slice of build-plan item 2 (the meta-cognition pair to today's

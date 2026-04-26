@@ -22,7 +22,7 @@
  *     echo real names back into the Claude loop
  */
 
-import type { ClaudeToolSchema } from './claude';
+import type { ClaudeServerSideTool, ClaudeToolSchema } from './claude';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { addItem, type ListType } from '../lists/store';
 import { upsertSpace, findSpaceByUri, findSpaceBySlug } from '../spaces/store';
@@ -608,126 +608,13 @@ async function executeAddCalendarEvent(rawInput: unknown, ctx: ToolContext): Pro
 }
 
 // ---------------------------------------------------------------------------
-// webSearch
-// ---------------------------------------------------------------------------
-
-const WEB_SEARCH_SCHEMA: ClaudeToolSchema = {
-  name: 'webSearch',
-  description:
-    'Search the web for information. Use this when you need real-world context, ' +
-    'local businesses (e.g., "carpet cleaner in Ivybridge"), current events, or ' +
-    'general knowledge that you do not already possess. Keep queries concise. ' +
-    'IMPORTANT: queries are sent verbatim to a public search engine — they MUST ' +
-    'use public terms only (postcodes, place names, generic categories). Never ' +
-    'put a personal anonymous token (Adult-1, Child-2, Person-N) into a query — ' +
-    'the search engine cannot resolve them and the result will be useless.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description:
-          'The search query to execute on the web. Use only public terms — ' +
-          'no personal anonymous tokens, no internal labels.',
-      },
-    },
-    required: ['query'],
-  },
-};
-
-interface WebSearchInput {
-  query: string;
-}
-
-// Anonymous-token shape used by the Twin: Adult-1, Child-2, Person-3, Place-4...
-const ANON_TOKEN_RE = /\b(?:Adult|Child|Person|Place|Institution|Detail)-\d+\b/;
-
-async function executeWebSearch(rawInput: unknown, _ctx: ToolContext): Promise<ToolExecutionResult> {
-  const input = rawInput as Partial<WebSearchInput>;
-  if (!input || typeof input !== 'object') {
-    return { ok: false, error: 'missing input object' };
-  }
-  if (typeof input.query !== 'string' || input.query.trim().length === 0) {
-    return { ok: false, error: 'query is required' };
-  }
-
-  const query = input.query.trim();
-
-  // Privacy invariant: never translate anonymous tokens back to real names
-  // before sending to a third-party search engine. The query is sent verbatim.
-  // If Claude emitted an anonymous token by mistake, refuse rather than leak.
-  if (ANON_TOKEN_RE.test(query)) {
-    return {
-      ok: false,
-      error:
-        'query contains an anonymous token (e.g. Adult-1). Rephrase using public terms only — ' +
-        'place names, postcodes, generic categories.',
-    };
-  }
-
-  try {
-    console.log(`[WEB SEARCH] Query: ${query}`);
-
-    const response = await fetch('https://lite.duckduckgo.com/lite/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      body: `q=${encodeURIComponent(query)}`,
-    });
-
-    if (!response.ok) {
-      return { ok: false, error: `search failed with status ${response.status}` };
-    }
-
-    const html = await response.text();
-    const results: { title: string; snippet: string; url: string }[] = [];
-    const rows = html.split('<tr');
-    let currentTitle = '';
-    let currentUrl = '';
-
-    for (const row of rows) {
-      if (row.includes('class="result-snippet"')) {
-        const snippetMatch = row.match(/class="result-snippet"[^>]*>(.*?)<\/td>/);
-        if (snippetMatch && currentTitle) {
-          results.push({
-            title: currentTitle,
-            url: currentUrl,
-            snippet: snippetMatch[1].replace(/<[^>]*>?/gm, '').trim(),
-          });
-          currentTitle = '';
-        }
-      } else if (row.includes('class="result-title"')) {
-        const titleMatch = row.match(/class="result-title"[^>]*>(.*?)<\/a>/);
-        const urlMatch = row.match(/href="(.*?)"/);
-        if (titleMatch) currentTitle = titleMatch[1].replace(/<[^>]*>?/gm, '').trim();
-        if (urlMatch) currentUrl = urlMatch[1];
-      }
-    }
-
-    const topResults = results.slice(0, 4);
-
-    if (topResults.length === 0) {
-      // Honest no-result. Never invent fake businesses — that would damage
-      // trust the moment the user tried to call one.
-      console.log('[WEB SEARCH] No results parsed (rate limit, captcha, or genuine empty).');
-      return { ok: false, error: 'no_results' };
-    }
-
-    return {
-      ok: true,
-      output: { results: topResults },
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `webSearch failed: ${message}` };
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
+//
+// Local-function tools — Memu executes these in-process via `execute()`.
+// The Twin invariant is enforced inside each executor (real-name
+// translation only inside the function; tool outputs back to Claude stay
+// anonymous-safe / structural).
 
 export const interactiveQueryTools: Record<string, ToolDefinition> = {
   addToList: {
@@ -750,11 +637,34 @@ export const interactiveQueryTools: Record<string, ToolDefinition> = {
     schema: ADD_CALENDAR_EVENT_SCHEMA,
     execute: executeAddCalendarEvent,
   },
-  webSearch: {
-    schema: WEB_SEARCH_SCHEMA,
-    execute: executeWebSearch,
-  },
 };
+
+// Anthropic server-side tools — Anthropic resolves these on their
+// infrastructure and includes the result inline in Claude's response. The
+// router does NOT execute them locally; it only synthesises a
+// ToolCallLogEntry per invocation so the orchestrator's footer can
+// surface what happened.
+//
+// `web_search_20260209` migrated from a local DDG-Lite scraper
+// (2026-04-26) — the scraper was returning `no_results` reliably from
+// the Z2's IP (rate-limit / captcha / parse drift) so the capability was
+// effectively broken. Anthropic's managed search has its own infra and
+// integrates directly with Claude's reasoning loop.
+//
+// Privacy note: search queries pass through Anthropic's search proxy and
+// then to a third-party search engine. Twin tokens MUST stay out of the
+// query — the SKILL.md webSearch description carries the warning.
+// Anthropic, like any LLM provider in Memu's design, sees the
+// anonymous-namespace prompt; this just adds one extra hop for the
+// search query specifically. Net privacy posture is unchanged from DDG
+// (which also forwarded queries to a third party).
+export const interactiveQueryServerTools: ClaudeServerSideTool[] = [
+  {
+    type: 'web_search_20260209',
+    name: 'web_search',
+    max_uses: 3,
+  },
+];
 
 export function toolSchemas(tools: Record<string, ToolDefinition>): ClaudeToolSchema[] {
   return Object.values(tools).map(t => t.schema);

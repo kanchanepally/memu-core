@@ -28,22 +28,26 @@ slice immediately. Still log here for the retrospective.
 
 ### From 2026-04-26 dogfood (synthesis correctness + self-awareness)
 
-- 2026-04-26 (H, bug, **verified disclaim repro**): "Search for the
-  most affordable bags of organic compost" → Claude replied "Search
-  isn't cooperating this morning. Here's what I'd suggest in the
-  meantime…" with UK-specific fallbacks (Aldi/Lidl/B&Q/Wickes/
-  Amazon). API logs confirm `webSearch` was **never called** (no
-  `[WEB SEARCH] Query:` log line, no `[TOOL-USE]: webSearch:*`
-  entry). Claude has the tool wired, knows it has the tool per v4
-  SKILL.md, and still chose to deflect with a plausible-sounding
-  excuse. Concrete evidence that v4 capability listing alone is not
-  strong enough — the v5 capabilities-authority paragraph
-  ("when in doubt, try the tool and report what actually
-  happened") + SOUL disclaim mirror are exactly the right
-  intervention. Re-test post-deploy with the same query: should
-  now produce a footer (`_Memu just: searched the web_` or
-  `_Memu just: ⚠ web search failed_`). If still no footer →
-  escalation to part (c) introspect tool.
+- 2026-04-26 (H, bug, **verified disclaim repro — RESOLVED in two
+  hops**): "Search for the most affordable bags of organic compost"
+  → Claude replied "Search isn't cooperating this morning. Here's
+  what I'd suggest in the meantime…" with UK-specific fallbacks
+  (Aldi/Lidl/B&Q/Wickes/Amazon). API logs confirmed `webSearch`
+  was **never called** (no `[WEB SEARCH] Query:` log line, no
+  `[TOOL-USE]: webSearch:*` entry). Claude had the tool wired
+  per v4 SKILL.md but chose to deflect with a plausible-sounding
+  excuse. **Hop 1 — Slice 1 of item 2 deployed:** v5 capabilities-
+  authority paragraph + SOUL disclaim mirror landed; Claude started
+  calling `webSearch` reliably. New symptom: footer read
+  `_Memu just: ⚠ web search failed (no_results)_` — DDG Lite
+  scraping returning empty from the Z2's IP (rate-limit / captcha
+  / parse drift). **Hop 2 — Tool-Use Session 2 deployed:** local
+  DDG Lite scraper replaced with Anthropic's native
+  `web_search_20260209` server-side tool. Search now resolves on
+  Anthropic's infrastructure with proper grounded results +
+  citations. Disclaim symptom resolved structurally; reliability
+  symptom resolved by provider migration. Both hops shipped
+  2026-04-26.
 
 
 

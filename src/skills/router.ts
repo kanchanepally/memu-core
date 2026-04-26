@@ -4,6 +4,7 @@ import {
   callClaude,
   type ClaudeCallInput,
   type ClaudeContentBlock,
+  type ClaudeServerSideTool,
   type ConversationMessage,
 } from '../intelligence/claude';
 import { callGemini, toGeminiContents } from '../intelligence/gemini';
@@ -73,6 +74,16 @@ export interface DispatchInput {
    */
   tools?: Record<string, ToolDefinition>;
   toolContext?: ToolContext;
+
+  /**
+   * Optional Anthropic server-side tools (e.g. web_search_20250305).
+   * Sent alongside local tools in the same `tools` array on the API call.
+   * Claude may invoke them mid-turn; Anthropic resolves them server-side
+   * and returns the result inline as `web_search_tool_result` blocks. The
+   * router does NOT execute these locally — it only synthesises a
+   * ToolCallLogEntry per `server_tool_use` block for telemetry / footer.
+   */
+  serverTools?: ClaudeServerSideTool[];
 }
 
 export interface ToolCallLogEntry {
@@ -262,6 +273,84 @@ async function writeLedger(
 // Dispatch
 // ----------------------------------------------------------------------------
 
+/**
+ * Scan a Claude response's content array for server-side tool invocations
+ * (e.g. web_search) and append a synthesised `ToolCallLogEntry` for each.
+ *
+ * Server-side tools come back as a pair of blocks:
+ *   { type: 'server_tool_use', id, name, input } — Claude invoked the tool
+ *   { type: 'web_search_tool_result', tool_use_id, content } — the result
+ *
+ * We pair them by tool_use_id and decide ok/fail from the result's content
+ * shape: an array of result items → ok; an object with type
+ * 'web_search_tool_result_error' → fail. Anthropic resolved the call —
+ * Memu's only job is to surface what happened in the footer.
+ *
+ * Naming: we use `webSearch` (camelCase) for the synthesised entry's
+ * `name` field so `formatToolSummaryFooter`'s existing case branch
+ * matches without a renaming pass. The wire-level Anthropic name is
+ * `web_search` (snake_case); we translate at this boundary.
+ */
+export function collectServerToolCalls(
+  content: ClaudeContentBlock[],
+  toolCalls: ToolCallLogEntry[],
+): void {
+  // Build a map of tool_use_id → result for pairing.
+  const resultsByToolUseId = new Map<string, unknown>();
+  for (const block of content) {
+    if (block.type === 'web_search_tool_result') {
+      resultsByToolUseId.set(block.tool_use_id, block.content);
+    }
+  }
+
+  for (const block of content) {
+    if (block.type !== 'server_tool_use') continue;
+    if (block.name !== 'web_search') continue;
+
+    const result = resultsByToolUseId.get(block.id);
+    let ok = true;
+    let error: string | undefined;
+    let output: Record<string, unknown> | undefined;
+
+    if (result === undefined) {
+      // Server tool was invoked but no result block came back. Treat as
+      // pending / unknown — surface as a soft failure so the user sees
+      // something rather than nothing.
+      ok = false;
+      error = 'no_result_returned';
+    } else if (
+      typeof result === 'object' &&
+      result !== null &&
+      (result as { type?: unknown }).type === 'web_search_tool_result_error'
+    ) {
+      ok = false;
+      const r = result as { error_code?: unknown };
+      error = typeof r.error_code === 'string' ? r.error_code : 'web_search_error';
+    } else {
+      // Array of result items (or other ok shape). We don't echo the
+      // actual results into output — they're public web content but
+      // surfacing them in toolCalls would feed real names back to
+      // future-turn analysis. Just mark ok with the count.
+      const count = Array.isArray(result) ? result.length : 0;
+      output = { count };
+      if (count === 0) {
+        // Search ran but returned zero matches. Surface as a failure for
+        // user clarity — the footer's "searched the web" wording would
+        // mislead if nothing came back.
+        ok = false;
+        error = 'no_results';
+      }
+    }
+
+    toolCalls.push({
+      name: 'webSearch',
+      ok,
+      error,
+      output,
+    });
+  }
+}
+
 function buildClaudeMessages(input: DispatchInput, userPrompt: string): ClaudeCallInput['messages'] {
   const history = input.history ?? [];
   if (input.images && input.images.length > 0) {
@@ -405,8 +494,13 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
         effectiveUserPrompt,
       );
       const tools = input.tools;
-      const hasTools = !!(tools && Object.keys(tools).length > 0 && input.toolContext);
-      const schemas = hasTools ? toolSchemas(tools!) : undefined;
+      const serverTools = input.serverTools ?? [];
+      const hasLocalTools = !!(tools && Object.keys(tools).length > 0 && input.toolContext);
+      const localSchemas = hasLocalTools ? toolSchemas(tools!) : [];
+      const combinedTools =
+        localSchemas.length > 0 || serverTools.length > 0
+          ? [...localSchemas, ...serverTools]
+          : undefined;
 
       let totalIn = 0;
       let totalOut = 0;
@@ -423,7 +517,7 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
           maxTokens: input.maxTokens,
           temperature: input.temperature,
           apiKey: callKey.apiKey,
-          tools: schemas,
+          tools: combinedTools,
         });
         totalIn += result.tokensIn;
         totalOut += result.tokensOut;
@@ -431,7 +525,14 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
         dummy = dummy || result.dummy;
         finalText = result.text;
 
-        if (!hasTools || result.stopReason !== 'tool_use' || result.dummy) {
+        // Scan server-side tool invocations for telemetry. Anthropic
+        // resolves these server-side; we only synthesise a
+        // ToolCallLogEntry so the orchestrator's footer can surface
+        // "searched the web". Done every iteration — server-side calls
+        // can fire on any iteration, not just the last.
+        collectServerToolCalls(result.content, toolCalls);
+
+        if (!hasLocalTools || result.stopReason !== 'tool_use' || result.dummy) {
           break;
         }
 
