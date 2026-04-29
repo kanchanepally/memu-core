@@ -76,7 +76,7 @@ export type ClaudeAnyTool = ClaudeToolSchema | ClaudeServerSideTool;
 
 export interface ClaudeCallInput {
   model: string;
-  system?: string;
+  system?: string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }>;
   messages: Array<{
     role: 'user' | 'assistant';
     content: string | ClaudeContentBlock[];

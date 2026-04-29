@@ -161,7 +161,7 @@ export function listSkills(): Skill[] {
  * skill bodies — putting the auto-inject any higher up the stack misses
  * those call sites.
  */
-function getSoulBodyOrUndefined(): string | undefined {
+export function getSoulBodyOrUndefined(): string | undefined {
   try {
     return ensureLoaded().get('soul')?.body;
   } catch {

@@ -1,5 +1,5 @@
 import { pool } from '../db/connection';
-import { getSkill, renderTemplate, type Skill, type SkillModel, type SkillCostTier } from './loader';
+import { getSkill, renderTemplate, getSoulBodyOrUndefined, type Skill, type SkillModel, type SkillCostTier } from './loader';
 import {
   callClaude,
   type ClaudeCallInput,
@@ -532,6 +532,20 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
           ? [...localSchemas, ...serverTools]
           : undefined;
 
+      // Slice 4: Implement cache_control for the SOUL skill.
+      // We extract the SOUL block from the already-anonymised system prompt
+      // and pass it as a separate block to Anthropic to leverage Prompt Caching.
+      let claudeSystem: ClaudeCallInput['system'] = effectiveSystemPrompt;
+      const soulBody = getSoulBodyOrUndefined();
+      if (effectiveSystemPrompt && soulBody && effectiveSystemPrompt.includes(soulBody)) {
+        const parts = effectiveSystemPrompt.split(soulBody);
+        const blocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [];
+        if (parts[0]) blocks.push({ type: 'text', text: parts[0] });
+        blocks.push({ type: 'text', text: soulBody, cache_control: { type: 'ephemeral' } });
+        if (parts[1]) blocks.push({ type: 'text', text: parts[1] });
+        claudeSystem = blocks;
+      }
+
       let totalIn = 0;
       let totalOut = 0;
       let totalLatency = 0;
@@ -542,7 +556,7 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
       for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
         const result = await callClaude({
           model: plan.concreteModel,
-          system: effectiveSystemPrompt,
+          system: claudeSystem,
           messages,
           maxTokens: input.maxTokens,
           temperature: input.temperature,
