@@ -33,6 +33,22 @@ async function api(path, opts = {}) {
     });
     return res;
 }
+
+// Onboarding gate — fire-and-redirect. If the user has any pending
+// onboarding steps, send them to the conversational flow first. Soft-fails
+// (network error, server down) by simply continuing into the dashboard
+// rather than blocking. The onboarding page itself reverses the redirect
+// when the flow is complete, so this is one of two complementary checks.
+(async function onboardingGate() {
+    try {
+        const res = await api('/api/onboarding/state');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.complete && data.nextStep) {
+            window.location.replace('/onboarding.html');
+        }
+    } catch (err) { /* network — fall through to dashboard */ }
+})();
 </script>
 
 <!-- App shell: sidebar + main. Sidebar toggles between visible (desktop default,

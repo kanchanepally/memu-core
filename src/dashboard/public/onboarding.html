@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memu — Setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-29-today-redesign">
+
+    <!-- Onboarding-specific styles. The conversational pattern (Memu bubble +
+         input + skip/continue) is purpose-built for this flow and not reused
+         elsewhere on PWA, so it lives inline rather than in style.css. -->
+    <style>
+        .onboarding-page {
+            min-height: 100vh;
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .onboarding-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-md) var(--space-lg);
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-lowest);
+        }
+        .onboarding-bar-logo {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            font-family: var(--font-headline, 'Manrope', sans-serif);
+            font-weight: 800;
+            font-size: 18px;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+        .onboarding-bar-logo svg { width: 28px; height: 28px; }
+        .onboarding-bar-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--indigo-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .onboarding-skip-all {
+            font-size: 13px;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .onboarding-skip-all:hover { color: var(--text-secondary); }
+
+        .onboarding-canvas {
+            flex: 1;
+            max-width: 640px;
+            width: 100%;
+            margin: 0 auto;
+            padding: var(--space-2xl) var(--space-lg) 120px;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }
+
+        .onboarding-progress {
+            display: flex;
+            justify-content: center;
+            gap: var(--space-sm);
+            margin-bottom: var(--space-lg);
+        }
+        .onboarding-progress-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: var(--surface-high);
+        }
+        .onboarding-progress-dot.active { background: var(--indigo-primary-container); }
+        .onboarding-progress-dot.current {
+            background: var(--indigo-primary);
+            width: 24px;
+        }
+
+        /* Memu chat-bubble — left-aligned with avatar mark, soft tertiary
+           surface (the "AI element" colour from Indigo Sanctuary).
+           Mirrors mobile/components/MemuBubble.tsx visually. */
+        .memu-bubble {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-md);
+            margin-bottom: var(--space-lg);
+        }
+        .memu-bubble-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 18px;
+            background: var(--indigo-tertiary-container);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .memu-bubble-avatar svg { width: 20px; height: 20px; }
+        .memu-bubble-body {
+            flex: 1;
+            background: var(--surface-lowest);
+            border-top-left-radius: 6px;
+            border-top-right-radius: var(--radius-lg);
+            border-bottom-left-radius: var(--radius-lg);
+            border-bottom-right-radius: var(--radius-lg);
+            padding: var(--space-md) var(--space-lg);
+            box-shadow: var(--shadow-sm);
+        }
+        .memu-bubble-body.ack { background: var(--indigo-tertiary-container); }
+        .memu-bubble-ack-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--indigo-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: var(--space-xs);
+        }
+        .memu-bubble-text {
+            font-size: 15px;
+            line-height: 1.55;
+            color: var(--text-primary);
+        }
+        .memu-bubble-helper {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-top: var(--space-sm);
+            line-height: 1.4;
+        }
+
+        /* User's answer echoed back as a sent-message bubble after submit. */
+        .user-bubble-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: var(--space-lg);
+        }
+        .user-bubble {
+            max-width: 85%;
+            background: var(--indigo-primary-container);
+            color: var(--on-surface);
+            padding: var(--space-md) var(--space-lg);
+            border-top-left-radius: var(--radius-lg);
+            border-top-right-radius: 6px;
+            border-bottom-left-radius: var(--radius-lg);
+            border-bottom-right-radius: var(--radius-lg);
+            font-size: 15px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .onboarding-input {
+            width: 100%;
+            background: var(--surface-lowest);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
+            padding: var(--space-md) var(--space-lg);
+            font-size: 15px;
+            line-height: 1.55;
+            color: var(--text-primary);
+            font-family: inherit;
+            resize: vertical;
+            min-height: 120px;
+            box-shadow: var(--shadow-sm);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .onboarding-input:focus {
+            outline: none;
+            border-color: var(--indigo-primary);
+            box-shadow: var(--shadow-md);
+        }
+        .onboarding-input::placeholder {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .onboarding-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+        .onboarding-edit-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            margin-top: var(--space-xl);
+            font-size: 12px;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        /* Channels step — slightly different layout: a single CTA card
+           rather than a textarea. */
+        .onboarding-channel-card {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            background: var(--surface-lowest);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            box-shadow: var(--shadow-sm);
+        }
+        .onboarding-channel-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: var(--indigo-secondary-container);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+        .onboarding-channel-info { flex: 1; }
+        .onboarding-channel-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+        .onboarding-channel-body {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        /* Preview step's "what's saved" card. */
+        .preview-summary {
+            background: var(--surface-lowest);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            box-shadow: var(--shadow-sm);
+            margin-bottom: var(--space-lg);
+        }
+        .preview-summary-header {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: var(--space-md);
+        }
+        .preview-summary-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            padding: 6px 0;
+        }
+        .preview-summary-row-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .preview-summary-row-icon.answered { background: rgba(58, 125, 92, 0.15); color: var(--color-success); }
+        .preview-summary-row-icon.skipped  { background: var(--surface-high); color: var(--text-muted); }
+        .preview-summary-row-icon.pending  { background: var(--surface-high); color: var(--text-muted); }
+        .preview-summary-row-label {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text-primary);
+        }
+        .preview-summary-row-status {
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        @media (max-width: 640px) {
+            .onboarding-canvas { padding-left: var(--space-md); padding-right: var(--space-md); padding-top: var(--space-xl); }
+            .onboarding-bar { padding: var(--space-sm) var(--space-md); }
+        }
+    </style>
+</head>
+<body>
+<!-- Auth gate — same pattern as dashboard.html. Onboarding requires an
+     authenticated profile; magic-link arrivals (Rach scenario) come here
+     after index.html has set the auth tokens in localStorage. -->
+<script>
+const AUTH_KEY = 'memu_auth';
+function getAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; } catch { return {}; } }
+const auth = getAuth();
+if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
+
+async function api(path, opts = {}) {
+    return fetch(auth.serverUrl + path, {
+        ...opts,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + auth.apiKey,
+            ...(opts.headers || {}),
+        },
+    });
+}
+</script>
+
+<div class="onboarding-page">
+    <header class="onboarding-bar">
+        <a class="onboarding-bar-logo" href="/dashboard.html" aria-label="Memu home">
+            <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <defs>
+                    <linearGradient id="ob-logo-grad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stop-color="#5054B5"/>
+                        <stop offset="1" stop-color="#9094FA"/>
+                    </linearGradient>
+                </defs>
+                <circle cx="30" cy="50" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                <circle cx="50" cy="50" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                <circle cx="40" cy="32" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+            </svg>
+            <span>Memu</span>
+        </a>
+        <span class="onboarding-bar-title">Setup</span>
+        <button class="onboarding-skip-all" onclick="skipAll()">Skip all &#x2192;</button>
+    </header>
+
+    <main class="onboarding-canvas">
+        <!-- Progress dots — populated by render() based on current step. -->
+        <div class="onboarding-progress" id="progress"></div>
+
+        <!-- Memu's prompt bubble -->
+        <div class="memu-bubble" id="prompt-bubble">
+            <div class="memu-bubble-avatar">
+                <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="30" cy="50" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                    <circle cx="50" cy="50" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                    <circle cx="40" cy="32" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                </svg>
+            </div>
+            <div class="memu-bubble-body">
+                <div class="memu-bubble-text" id="prompt-text">Catching up…</div>
+                <div class="memu-bubble-helper" id="prompt-helper" hidden></div>
+            </div>
+        </div>
+
+        <!-- User's answer (only when ack shown) -->
+        <div class="user-bubble-row" id="user-bubble-row" hidden>
+            <div class="user-bubble" id="user-bubble"></div>
+        </div>
+
+        <!-- Memu's ack (only after a successful submission) -->
+        <div class="memu-bubble" id="ack-bubble" hidden>
+            <div class="memu-bubble-avatar">
+                <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="30" cy="50" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                    <circle cx="50" cy="50" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                    <circle cx="40" cy="32" r="18" fill="url(#ob-logo-grad)" opacity="0.85"/>
+                </svg>
+            </div>
+            <div class="memu-bubble-body ack">
+                <span class="memu-bubble-ack-label">&#x2728; Memu</span>
+                <div class="memu-bubble-text" id="ack-text"></div>
+            </div>
+        </div>
+
+        <!-- Step-specific content area (textarea, channel card, or preview summary) -->
+        <div id="step-body"></div>
+
+        <!-- Error banner -->
+        <div id="onboarding-error" class="error-banner hidden" style="margin-top: var(--space-md);"></div>
+
+        <!-- Skip + Continue actions -->
+        <div class="onboarding-actions" id="actions"></div>
+
+        <!-- Edit-your-answer link (only when ack shown for a conversational step) -->
+        <button class="onboarding-edit-link" id="edit-link" hidden onclick="editAnswer()">
+            <span aria-hidden="true">&#x270F;&#xFE0F;</span>
+            <span>Edit your answer</span>
+        </button>
+    </main>
+</div>
+
+<script>
+// ============================================================
+// Onboarding state machine
+// ============================================================
+
+const STEP_ORDER = ['people', 'rhythm', 'focus', 'preview', 'channels'];
+
+// Loaded from /api/onboarding/state. Holds:
+//   { state, nextStep, complete, stepOrder, copy }
+let cachedState = null;
+let currentStep = null;
+let currentCopy = null;
+let isSubmitting = false;
+let ackShowing = false;
+
+// ----- Helpers -----
+
+function esc(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function capitalize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function showError(msg) {
+    const banner = document.getElementById('onboarding-error');
+    banner.textContent = msg;
+    banner.classList.remove('hidden');
+}
+
+function clearError() {
+    document.getElementById('onboarding-error').classList.add('hidden');
+}
+
+// ----- Boot -----
+
+(async function init() {
+    try {
+        const res = await api('/api/onboarding/state');
+        if (!res.ok) {
+            // Server unreachable or auth failed — bounce home.
+            window.location.href = '/';
+            return;
+        }
+        cachedState = await res.json();
+        if (cachedState.complete) {
+            // Already done — go straight to the dashboard.
+            window.location.href = '/dashboard.html';
+            return;
+        }
+        currentStep = cachedState.nextStep || 'people';
+        currentCopy = cachedState.copy;
+        render();
+    } catch (err) {
+        console.error('[ONBOARDING] init failed', err);
+        showError('Could not load setup. Refresh to try again.');
+    }
+})();
+
+// ----- Rendering -----
+
+function render() {
+    clearError();
+    ackShowing = false;
+    document.getElementById('user-bubble-row').hidden = true;
+    document.getElementById('ack-bubble').hidden = true;
+    document.getElementById('edit-link').hidden = true;
+
+    renderProgress();
+    renderPromptBubble();
+    renderStepBody();
+    renderActions();
+}
+
+function renderProgress() {
+    const wrap = document.getElementById('progress');
+    const idx = STEP_ORDER.indexOf(currentStep);
+    wrap.innerHTML = STEP_ORDER.map((_, i) => {
+        let cls = 'onboarding-progress-dot';
+        if (i < idx) cls += ' active';
+        if (i === idx) cls += ' current';
+        return `<div class="${cls}"></div>`;
+    }).join('');
+}
+
+function renderPromptBubble() {
+    const text = document.getElementById('prompt-text');
+    const helper = document.getElementById('prompt-helper');
+    const copy = currentCopy || fallbackCopy(currentStep);
+    text.textContent = copy.prompt;
+    if (copy.helper) {
+        helper.textContent = copy.helper;
+        helper.hidden = false;
+    } else {
+        helper.hidden = true;
+    }
+}
+
+function renderStepBody() {
+    const body = document.getElementById('step-body');
+    const priorAnswer = (cachedState.state.answers || {})[currentStep] || '';
+
+    if (currentStep === 'people' || currentStep === 'rhythm' || currentStep === 'focus') {
+        const placeholder = (currentCopy && currentCopy.placeholder) || '';
+        body.innerHTML = `
+            <textarea
+                id="step-input"
+                class="onboarding-input"
+                placeholder="${esc(placeholder)}"
+                rows="4">${esc(priorAnswer)}</textarea>
+        `;
+        // Autofocus on desktop, not on touch (avoid keyboard pop).
+        if (!('ontouchstart' in window)) {
+            setTimeout(() => document.getElementById('step-input').focus(), 50);
+        }
+        return;
+    }
+
+    if (currentStep === 'preview') {
+        const s = cachedState.state;
+        const rows = [
+            { step: 'people',  label: 'People' },
+            { step: 'rhythm',  label: 'Weekly rhythm' },
+            { step: 'focus',   label: 'Current focus' },
+        ].map(r => {
+            const status = s[r.step] || 'pending';
+            const note = status === 'answered' ? 'Saved'
+                : status === 'skipped' ? 'Skipped — pick up later'
+                : 'Not yet';
+            const icon = status === 'answered' ? '&#x2713;'
+                : status === 'skipped' ? '&#x2014;'
+                : '&#x22EF;';
+            return `
+                <div class="preview-summary-row">
+                    <div class="preview-summary-row-icon ${status}">${icon}</div>
+                    <span class="preview-summary-row-label">${r.label}</span>
+                    <span class="preview-summary-row-status" style="color:var(--text-muted)">${note}</span>
+                </div>
+            `;
+        }).join('');
+
+        body.innerHTML = `
+            <div class="preview-summary">
+                <div class="preview-summary-header">What's saved on your hardware</div>
+                ${rows}
+            </div>
+        `;
+        return;
+    }
+
+    if (currentStep === 'channels') {
+        // Calendar OAuth lives in the Settings tab; we surface it here as a
+        // soft prompt but allow Skip → dashboard. The actual OAuth round-trip
+        // lands the user back on dashboard so they don't need to come back
+        // here.
+        body.innerHTML = `
+            <div class="onboarding-channel-card">
+                <div class="onboarding-channel-icon">&#x1F4C5;</div>
+                <div class="onboarding-channel-info">
+                    <div class="onboarding-channel-title">Google Calendar</div>
+                    <div class="onboarding-channel-body">
+                        Today's events on the home screen, conflict detection in the morning brief,
+                        and one-tap "add to calendar" actions in chat.
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="connectCalendar()">Connect</button>
+            </div>
+        `;
+    }
+}
+
+function renderActions() {
+    const actions = document.getElementById('actions');
+    const skipLabel = (currentCopy && currentCopy.skipLabel) || 'Skip';
+
+    if (ackShowing) {
+        actions.innerHTML = `
+            <button class="btn btn-primary" onclick="advance()">Continue &#x2192;</button>
+        `;
+        return;
+    }
+
+    if (currentStep === 'preview' || currentStep === 'channels') {
+        // No textarea — actions are just skip/continue or a finish button.
+        const continueLabel = currentStep === 'channels' ? 'Open Today &#x2192;' : 'Continue &#x2192;';
+        actions.innerHTML = `
+            <button class="btn btn-secondary" onclick="skipStep()">${esc(skipLabel)}</button>
+            <button class="btn btn-primary" onclick="advance()">${continueLabel}</button>
+        `;
+        return;
+    }
+
+    // Conversational steps: skip + continue, continue disabled when input empty.
+    actions.innerHTML = `
+        <button class="btn btn-secondary" onclick="skipStep()">${esc(skipLabel)}</button>
+        <button class="btn btn-primary" id="continue-btn" onclick="submitAnswer()">Continue &#x2192;</button>
+    `;
+    // Wire up disabled state on input.
+    const input = document.getElementById('step-input');
+    const btn = document.getElementById('continue-btn');
+    if (input && btn) {
+        const sync = () => { btn.disabled = !input.value.trim() || isSubmitting; };
+        sync();
+        input.addEventListener('input', sync);
+    }
+}
+
+// ----- Submission -----
+
+async function submitAnswer() {
+    if (isSubmitting) return;
+    const input = document.getElementById('step-input');
+    if (!input) return;
+    const answer = input.value.trim();
+    if (!answer) return;
+
+    isSubmitting = true;
+    clearError();
+    const btn = document.getElementById('continue-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    try {
+        const res = await api('/api/onboarding/answer', {
+            method: 'POST',
+            body: JSON.stringify({ step: currentStep, answer }),
+        });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            showError(body.error || `Could not save: HTTP ${res.status}`);
+            isSubmitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = 'Continue →'; }
+            return;
+        }
+        const data = await res.json();
+        // Update cached state from server's authoritative response.
+        cachedState.state = data.state;
+        // Show user's answer + Memu's ack inline. The Continue button now
+        // navigates to the next step.
+        document.getElementById('user-bubble').textContent = answer;
+        document.getElementById('user-bubble-row').hidden = false;
+        document.getElementById('ack-text').textContent = data.acknowledgement || 'Got it.';
+        document.getElementById('ack-bubble').hidden = false;
+        document.getElementById('edit-link').hidden = false;
+        // Hide the textarea so the conversation feels resolved.
+        document.getElementById('step-body').innerHTML = '';
+        ackShowing = true;
+        renderActions();
+    } catch (err) {
+        showError('Network error — try again?');
+    } finally {
+        isSubmitting = false;
+    }
+}
+
+async function skipStep() {
+    if (isSubmitting) return;
+    isSubmitting = true;
+    clearError();
+    try {
+        await api('/api/onboarding/skip', {
+            method: 'POST',
+            body: JSON.stringify({ step: currentStep }),
+        });
+        // Move to next step locally — we don't need to refetch state.
+        cachedState.state[currentStep] = 'skipped';
+        await advance();
+    } catch (err) {
+        showError('Could not skip — try again?');
+    } finally {
+        isSubmitting = false;
+    }
+}
+
+async function advance() {
+    // Determine the next step by re-fetching authoritative state. (Simpler
+    // than tracking locally; the server is the source of truth.)
+    try {
+        const res = await api('/api/onboarding/state');
+        if (!res.ok) {
+            window.location.href = '/dashboard.html';
+            return;
+        }
+        cachedState = await res.json();
+    } catch (err) {
+        // Soft fail — try to advance using local order.
+        const idx = STEP_ORDER.indexOf(currentStep);
+        const next = STEP_ORDER[idx + 1];
+        if (!next) { window.location.href = '/dashboard.html'; return; }
+        currentStep = next;
+        currentCopy = null;
+        render();
+        return;
+    }
+
+    if (cachedState.complete || !cachedState.nextStep) {
+        // All steps decided — mark complete and exit to dashboard.
+        await markComplete();
+        return;
+    }
+    currentStep = cachedState.nextStep;
+    currentCopy = cachedState.copy;
+    render();
+}
+
+async function markComplete() {
+    try {
+        await api('/api/onboarding/complete', {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+    } catch (err) {
+        // If marking complete fails, the dashboard banner will show "resume"
+        // again — the user can try once more from there.
+    }
+    window.location.href = '/dashboard.html';
+}
+
+async function skipAll() {
+    if (!confirm('Finish setup later? You can revisit any step from Settings.')) return;
+    await markComplete();
+}
+
+function editAnswer() {
+    // Hide the ack and re-render the input with the prior answer prefilled
+    // (which renderStepBody does automatically via cachedState.answers).
+    ackShowing = false;
+    document.getElementById('user-bubble-row').hidden = true;
+    document.getElementById('ack-bubble').hidden = true;
+    document.getElementById('edit-link').hidden = true;
+    renderStepBody();
+    renderActions();
+}
+
+async function connectCalendar() {
+    try {
+        const res = await api('/api/auth/google?source=pwa');
+        const data = await res.json();
+        if (data.url) {
+            // Mark the channels step answered before we leave — when the user
+            // returns from Google's OAuth round-trip they should land on
+            // dashboard.html, not back here.
+            await api('/api/onboarding/answer', {
+                method: 'POST',
+                body: JSON.stringify({ step: 'channels', answer: 'connected' }),
+            });
+            await markComplete();
+            window.location.href = data.url;
+        }
+    } catch (err) {
+        showError('Could not start calendar setup — try again?');
+    }
+}
+
+// ----- Fallback copy (when server didn't return a personalised one) -----
+
+function fallbackCopy(step) {
+    const map = {
+        people: {
+            prompt: "Hi. I'm Memu — your private chief of staff. Before anything else, who are the people who matter most to your day?",
+            placeholder: "e.g. Rach (wife), Robin (7yo) — or 'Just me' if it's only you.",
+            helper: "First names are enough. I'll keep them on your hardware and never send your real names to any cloud AI.",
+            skipLabel: 'Skip — start blank',
+        },
+        rhythm: {
+            prompt: "What's the shape of your week — the recurring things that don't change much?",
+            placeholder: "Recurring weekly anchors.",
+            helper: "These become routine Spaces I can reference when something might clash.",
+            skipLabel: 'Skip',
+        },
+        focus: {
+            prompt: "What's on your plate right now? Big things, small things — anything that matters.",
+            placeholder: "Big things, small things — anything that matters.",
+            helper: "These become commitment Spaces and stream cards. Time-sensitive ones land on your Today tab.",
+            skipLabel: 'Skip',
+        },
+        preview: {
+            prompt: "I've got the shape of your life now. Want me to brief you on it?",
+            placeholder: '',
+            helper: "I'll send a daily push at the time you choose. You can change anything I've remembered by just chatting with me.",
+            skipLabel: 'Skip notifications',
+        },
+        channels: {
+            prompt: "Last thing — want to plug in your Google Calendar? Optional, but it makes the morning briefing a lot more useful.",
+            placeholder: '',
+            helper: "The OAuth happens in your browser. I only see the events on this calendar.",
+            skipLabel: 'Skip — connect later',
+        },
+    };
+    return map[step];
+}
+</script>
+
+</body>
+</html>

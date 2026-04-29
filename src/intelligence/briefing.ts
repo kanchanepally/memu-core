@@ -115,13 +115,42 @@ export async function runUnifiedBriefing(
 
     // 2. Calendar + deterministic collision detector. Bookkeeping, not LLM —
     // the LLM gets a structured collisions list, not raw events.
+    //
+    // Events are split into today_events (events whose start date is in the
+    // current local day) and upcoming_events (everything else within the 48h
+    // collision window). Without this split the LLM sees a list like
+    // "Fri 1 May 11:00 Zoom" with no anchor for what today is, and routinely
+    // picks the only-event-on-the-list as "today" — the 2026-04-29 incident
+    // where Wednesday's brief reported "a genuinely calm Friday" because
+    // the only Calendar event in the window was Friday's Zoom.
     const upcoming = await fetchUpcomingEvents(profileId);
     const normalised = normaliseEvents(upcoming);
     const horizon = new Date(Date.now() + COLLISION_WINDOW_MS);
     const inWindow = normalised.filter(e => !e.startDate || e.startDate <= horizon);
-    const eventsStr = inWindow.length === 0
-      ? 'No events in the next 48h.'
-      : inWindow.map(formatEventLine).join('\n');
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    const todayLabel = todayStart.toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+
+    const todayEvents = inWindow.filter(e =>
+      e.startDate && e.startDate >= todayStart && e.startDate < tomorrowStart,
+    );
+    const upcomingEvents = inWindow.filter(e =>
+      !e.startDate || e.startDate >= tomorrowStart,
+    );
+
+    const todayEventsStr = todayEvents.length === 0
+      ? 'No events scheduled for today.'
+      : todayEvents.map(formatEventLine).join('\n');
+    const upcomingEventsStr = upcomingEvents.length === 0
+      ? 'Nothing else in the next 48 hours.'
+      : upcomingEvents.map(formatEventLine).join('\n');
+
     const collisionsStr = detectCollisions(inWindow);
 
     // 3. Active stream cards (open commitments).
@@ -146,9 +175,10 @@ export async function runUnifiedBriefing(
     // 5. Twin invariant: every field that reaches the LLM is anonymised.
     // The Twin guard would refuse the call in throw mode anyway; doing it
     // here keeps the privacy ledger free of "auto-anonymised" noise.
-    const [anonInbox, anonEvents, anonCollisions, anonCards, anonHeader] = await Promise.all([
+    const [anonInbox, anonTodayEvents, anonUpcomingEvents, anonCollisions, anonCards, anonHeader] = await Promise.all([
       translateToAnonymous(inboxTranscript),
-      translateToAnonymous(eventsStr),
+      translateToAnonymous(todayEventsStr),
+      translateToAnonymous(upcomingEventsStr),
       translateToAnonymous(collisionsStr),
       translateToAnonymous(streamStr),
       translateToAnonymous(domainHeaderRaw),
@@ -189,8 +219,10 @@ export async function runUnifiedBriefing(
     const { text: llmRaw } = await dispatch({
       skill: 'briefing',
       templateVars: {
+        today_label: todayLabel,
         domain_header: anonHeader,
-        calendar_events: anonEvents,
+        today_events: anonTodayEvents,
+        upcoming_events: anonUpcomingEvents,
         active_cards: anonCards,
         inbox_transcript: anonInbox,
         collisions: anonCollisions,

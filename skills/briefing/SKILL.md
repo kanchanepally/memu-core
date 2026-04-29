@@ -4,14 +4,18 @@ description: The unified briefing engine. Composes a single executive briefing f
 model: sonnet
 cost_tier: standard
 requires_twin: true
-version: 3
+version: 4
 ---
 
 # Briefing
 
-Sent as the user prompt to the model. Template variables: `{{domain_header}}`, `{{calendar_events}}`, `{{active_cards}}`, `{{inbox_transcript}}`, `{{collisions}}`, `{{channel}}`, `{{max_paragraphs}}`.
+Sent as the user prompt to the model. Template variables: `{{today_label}}`, `{{domain_header}}`, `{{today_events}}`, `{{upcoming_events}}`, `{{active_cards}}`, `{{inbox_transcript}}`, `{{collisions}}`, `{{channel}}`, `{{max_paragraphs}}`.
 
 `{{channel}}` is `whatsapp`, `push`, or `app`. WhatsApp needs plain text (no markdown bolding). Push and app can take light markdown.
+
+`{{today_label}}` is the absolute date the briefing is FOR (e.g. "Wednesday 29 April 2026"). It is the anchor — every reference to "today" in your prose MUST mean this date and no other.
+
+`{{today_events}}` are the events whose start time falls on `{{today_label}}`. `{{upcoming_events}}` are events later in the 48h window — tomorrow, the day after. They are NOT today. Do not conflate them. (v3 of this skill produced the famous "a genuinely calm Friday" briefing on a Wednesday because only Friday had an event in the window and the model assumed Friday was today.)
 
 `{{inbox_transcript}}` is the anonymised text of any messages received since the last briefing. When the value is "No new messages." the briefing is a pure morning briefing — do not invent inbox content.
 
@@ -33,11 +37,13 @@ If the header has any ⚠ or ✕ lines, gently surface in the prose what action 
 
 1. **Anticipations.** If `{{collisions}}` lists overlaps, flag them at the top of the prose — they are time-sensitive and the reader's morning depends on this. Use the format "10:00 swim clashes with 10:30 dentist — both involve the same person." Ask once, gently, how to handle it. Do not invent collisions if none were detected.
 
-2. **Today's calendar.** Weave today's events into one short paragraph, in chronological order. Do not bullet-list them — synthesise.
+2. **Today's calendar.** Today is **{{today_label}}**. Weave the events from `{{today_events}}` into one short paragraph, in chronological order. Do not bullet-list — synthesise. If `{{today_events}}` says "No events scheduled for today.", say so directly ("Calendar's clear today.") and move on. **Never** describe an event from `{{upcoming_events}}` as if it were today. If the only events in the next 48h fall on a later day, name that day explicitly (e.g. "tomorrow's 11:00 Zoom is the only thing in your diary right now") rather than treating it as today's.
 
-3. **Inbox triage** (only if `{{inbox_transcript}}` is non-empty and substantive). Group what arrived by sphere (Family / Admin / Work / Social). Surface only what's new, novel, or actionable. Skip "ok", "thanks", reaction-only messages, and noise. If the entire inbox is noise, say so in one line and move on. Do not pretend otherwise.
+3. **Looking ahead** (only if `{{upcoming_events}}` is non-empty and substantive). One sentence noting the most relevant upcoming event in the 48h window — the one that would most affect today's planning. Skip if everything's routine.
 
-4. **Open commitments** (`{{active_cards}}`). Mention 1–2 items that have been open longest or are sphere-relevant to the day. Do not list everything — that's what the Today tab is for.
+4. **Inbox triage** (only if `{{inbox_transcript}}` is non-empty and substantive). Group what arrived by sphere (Family / Admin / Work / Social). Surface only what's new, novel, or actionable. Skip "ok", "thanks", reaction-only messages, and noise. If the entire inbox is noise, say so in one line and move on. Do not pretend otherwise.
+
+5. **Open commitments** (`{{active_cards}}`). Mention 1–2 items that have been open longest or are sphere-relevant to the day. Do not list everything — that's what the Today tab is for.
 
 ## Drafted next-actions
 
@@ -73,13 +79,18 @@ Keep the prose firmly under {{max_paragraphs}} short paragraphs. The domain head
 
 ## Context
 
+TODAY IS: {{today_label}}
+
 DOMAIN HEALTH:
 {{domain_header}}
 
-CALENDAR (today + next 48h):
-{{calendar_events}}
+EVENTS ON {{today_label}} (today only):
+{{today_events}}
 
-CALENDAR COLLISIONS (deterministic detector):
+UPCOMING EVENTS (later in the next 48h, NOT today):
+{{upcoming_events}}
+
+CALENDAR COLLISIONS (deterministic detector — spans full 48h window):
 {{collisions}}
 
 OPEN COMMITMENTS (stream cards still active):
