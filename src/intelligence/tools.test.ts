@@ -87,6 +87,31 @@ describe('interactiveQueryTools registry', () => {
     expect(schema.description).toMatch(/when in doubt, append/i);
   });
 
+  it('createSpace schema exposes optional parentSpaceUri (Spaces Canvas v2)', () => {
+    const schema = interactiveQueryTools.createSpace.schema;
+    const parent = schema.input_schema.properties.parentSpaceUri as { type: string; description: string } | undefined;
+    expect(parent).toBeDefined();
+    expect(parent!.type).toBe('string');
+    expect(parent!.description).toMatch(/two-level/i);
+    // parentSpaceUri must NOT be in the required list — top-level Spaces are still legal.
+    expect(schema.input_schema.required).not.toContain('parentSpaceUri');
+  });
+
+  it('updateSpace schema exposes optional parentSpaceUri (Spaces Canvas v2)', () => {
+    const schema = interactiveQueryTools.updateSpace.schema;
+    const parent = schema.input_schema.properties.parentSpaceUri as { type: string; description: string } | undefined;
+    expect(parent).toBeDefined();
+    expect(parent!.description).toMatch(/empty string/i); // un-parent guidance
+    expect(schema.input_schema.required).not.toContain('parentSpaceUri');
+  });
+
+  it('findSpaces description tells Claude to use parentSpaceUri + childCount on returned shape', () => {
+    const schema = interactiveQueryTools.findSpaces.schema;
+    expect(schema.description).toMatch(/parentSpaceUri/);
+    expect(schema.description).toMatch(/childCount/);
+    expect(schema.description).toMatch(/top-level results/i);
+  });
+
   it('readLists schema enumerates the allowed list types and status', () => {
     const schema = interactiveQueryTools.readLists.schema;
     const list = schema.input_schema.properties.list as { enum: string[] };

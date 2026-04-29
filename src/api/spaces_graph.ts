@@ -49,6 +49,7 @@ export interface GraphSpace {
   confidence: number;
   bodyMarkdown: string;
   lastUpdated: Date;
+  parentSpaceUri?: string | null;
 }
 
 export interface GraphNode {
@@ -66,9 +67,14 @@ export interface GraphNode {
   wordcount: number;
   excerpt: string;
   lastUpdated: string;
+  parentSpaceUri: string | null;
+  childCount: number;
+  /** Server-computed pixel size for direct binding in Cytoscape stylesheet. */
+  nodeWidth: number;
+  nodeHeight: number;
 }
 
-export type GraphEdgeType = 'wikilink' | 'shared_person' | 'shared_tag' | 'shared_domain';
+export type GraphEdgeType = 'wikilink' | 'shared_person' | 'shared_tag' | 'shared_domain' | 'parent_child';
 
 export interface GraphEdge {
   source: string;
@@ -83,11 +89,44 @@ export interface GraphResult {
 }
 
 const EDGE_WEIGHTS: Record<GraphEdgeType, number> = {
+  parent_child: 2.0,
   wikilink: 1.0,
   shared_person: 0.5,
   shared_tag: 0.4,
   shared_domain: 0.3,
 };
+
+/**
+ * Spec-compliant node sizing — log(charcount) * recencyFactor.
+ *
+ * "Thick" Spaces (richly-written, recently-touched) render larger so
+ * the canvas tells you at a glance which Spaces have substance.
+ * Computed server-side and shipped per node so the canvas binds
+ * directly in the stylesheet without re-doing maths client-side.
+ */
+export function nodeSize(bodyMarkdown: string, lastUpdated: Date | string): { width: number; height: number } {
+  const charCount = bodyMarkdown.length;
+  const wordcountProxy = Math.log10(charCount + 10); // 0 .. ~3.5
+  const richness = Math.min(1, wordcountProxy / 3.5); // 0..1
+
+  const lastDate = lastUpdated instanceof Date ? lastUpdated : new Date(lastUpdated);
+  const daysSinceUpdate = (Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+  const recencyFactor =
+    daysSinceUpdate < 7 ? 1.0 :
+    daysSinceUpdate < 30 ? 0.85 :
+    daysSinceUpdate < 90 ? 0.7 : 0.55;
+
+  const baseWidth = 100;
+  const widthGrowth = 100;
+  const baseHeight = 50;
+  const heightGrowth = 40;
+
+  const factor = (0.5 + 0.5 * richness) * recencyFactor;
+  return {
+    width: Math.round(baseWidth + widthGrowth * factor),
+    height: Math.round(baseHeight + heightGrowth * factor),
+  };
+}
 
 const WIKILINK_RE = /\[\[([^\]\n]+?)\]\]/g;
 
@@ -174,22 +213,39 @@ export interface DeriveGraphOptions {
 export function deriveGraph(spaces: GraphSpace[], opts: DeriveGraphOptions = {}): GraphResult {
   const includeDomain = opts.includeDomain === true || opts.facet === 'domain';
 
-  const nodes: GraphNode[] = spaces.map(s => ({
-    id: s.id,
-    uri: s.uri,
-    slug: s.slug,
-    category: s.category,
-    title: s.title,
-    description: s.description,
-    domains: [...s.domains],
-    people: [...s.people],
-    tags: [...s.tags],
-    visibility: Array.isArray(s.visibility) ? [...s.visibility] : s.visibility,
-    confidence: s.confidence,
-    wordcount: countWords(s.bodyMarkdown),
-    excerpt: buildExcerpt(s.bodyMarkdown),
-    lastUpdated: s.lastUpdated instanceof Date ? s.lastUpdated.toISOString() : new Date(s.lastUpdated).toISOString(),
-  }));
+  // Pre-compute child counts so each node's `childCount` is one-pass.
+  const childCountByUri = new Map<string, number>();
+  for (const s of spaces) {
+    if (s.parentSpaceUri) {
+      childCountByUri.set(s.parentSpaceUri, (childCountByUri.get(s.parentSpaceUri) ?? 0) + 1);
+    }
+  }
+  const uriToId = new Map<string, string>();
+  for (const s of spaces) uriToId.set(s.uri, s.id);
+
+  const nodes: GraphNode[] = spaces.map(s => {
+    const sz = nodeSize(s.bodyMarkdown, s.lastUpdated);
+    return {
+      id: s.id,
+      uri: s.uri,
+      slug: s.slug,
+      category: s.category,
+      title: s.title,
+      description: s.description,
+      domains: [...s.domains],
+      people: [...s.people],
+      tags: [...s.tags],
+      visibility: Array.isArray(s.visibility) ? [...s.visibility] : s.visibility,
+      confidence: s.confidence,
+      wordcount: countWords(s.bodyMarkdown),
+      excerpt: buildExcerpt(s.bodyMarkdown),
+      lastUpdated: s.lastUpdated instanceof Date ? s.lastUpdated.toISOString() : new Date(s.lastUpdated).toISOString(),
+      parentSpaceUri: s.parentSpaceUri ?? null,
+      childCount: childCountByUri.get(s.uri) ?? 0,
+      nodeWidth: sz.width,
+      nodeHeight: sz.height,
+    };
+  });
 
   const wikilinkIndex = buildWikilinkIndex(spaces);
   const edgesByKey = new Map<string, GraphEdge>();
@@ -205,6 +261,16 @@ export function deriveGraph(spaces: GraphSpace[], opts: DeriveGraphOptions = {})
     const [source, target] = a < b ? [a, b] : [b, a];
     edgesByKey.set(key, { source, target, type, weight });
   };
+
+  // Parent-child edges — strongest visual treatment per spec §4.5.
+  // Stored undirected for layout symmetry but the relationship itself
+  // is directed (child → parent). Direction is recoverable from each
+  // node's parentSpaceUri, so the canvas can style appropriately.
+  for (const s of spaces) {
+    if (!s.parentSpaceUri) continue;
+    const parentId = uriToId.get(s.parentSpaceUri);
+    if (parentId) upsert(s.id, parentId, 'parent_child');
+  }
 
   for (const s of spaces) {
     const targets = extractWikilinkTargets(s.bodyMarkdown);
@@ -271,6 +337,7 @@ interface GraphRow {
   confidence: string;
   body_markdown: string | null;
   last_updated_at: Date;
+  parent_space_uri: string | null;
 }
 
 function parseStoredVisibility(raw: string): Visibility {
@@ -285,17 +352,27 @@ function parseStoredVisibility(raw: string): Visibility {
   return raw as Visibility;
 }
 
+export interface LoadGraphOptions {
+  /**
+   * Optional Space URI. When set, the graph returns only that Space
+   * and its direct children — focus/zoom mode (§4.6). When omitted,
+   * the full visible graph is returned.
+   */
+  focusUri?: string;
+}
+
 export async function loadGraphForViewer(
   familyId: string,
   viewerProfileId: string,
   facet: GraphFacet,
   visibility: GraphVisibility,
+  opts: LoadGraphOptions = {},
 ): Promise<GraphResult> {
   const [roster, rows] = await Promise.all([
     loadRoster(familyId),
     pool.query<GraphRow>(
       `SELECT id, uri, slug, title, category, description, domains, people, tags,
-              visibility, confidence, body_markdown, last_updated_at
+              visibility, confidence, body_markdown, last_updated_at, parent_space_uri
          FROM synthesis_pages WHERE family_id = $1
         ORDER BY last_updated_at DESC`,
       [familyId],
@@ -317,9 +394,27 @@ export async function loadGraphForViewer(
       confidence: Number(r.confidence),
       bodyMarkdown: r.body_markdown || '',
       lastUpdated: r.last_updated_at,
+      parentSpaceUri: r.parent_space_uri,
     }))
     .filter(s => canSee(viewerProfileId, { visibility: s.visibility, people: s.people }, roster));
 
-  const filtered = applyVisibilityFilter(spaces, viewerProfileId, visibility, roster);
+  let filtered = applyVisibilityFilter(spaces, viewerProfileId, visibility, roster);
+
+  // Focus mode (§4.6) — narrow to a container's children + the parent
+  // itself. Applied after visibility filtering so a viewer cannot focus
+  // a Space they cannot see.
+  if (opts.focusUri) {
+    const focusUri = opts.focusUri;
+    const focusedRoot = filtered.find(s => s.uri === focusUri);
+    if (focusedRoot) {
+      filtered = filtered.filter(s => s.uri === focusUri || s.parentSpaceUri === focusUri);
+    } else {
+      // Focus target not visible to this viewer (or doesn't exist) —
+      // return an empty graph rather than the full one to avoid the
+      // canvas silently falling back to "show everything".
+      filtered = [];
+    }
+  }
+
   return deriveGraph(filtered, { facet });
 }

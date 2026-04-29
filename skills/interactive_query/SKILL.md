@@ -81,14 +81,25 @@ Search for existing Spaces by name, slug, or description. **Call this BEFORE `cr
 - "The climbing frame again" → call `findSpaces({query: "climbing frame"})`.
 - If the context block already shows the relevant Space with its URI, you do not need to search — use the URI directly with `updateSpace`.
 
-**`createSpace({ title, category, body, description? })`**
+Each result carries `parentSpaceUri` (null = top-level, non-null = sub-Space) and `childCount` (>0 = has its own children, i.e. is a container). Use these when picking a parent for a new sub-Space — only top-level results are valid parents.
+
+**`createSpace({ title, category, body, description?, parentSpaceUri? })`**
 Create a new Space (compiled page of family understanding) when the user introduces a durable named topic — a project, a person, a recurring routine, a household concern — and `findSpaces` confirmed it does not already exist.
 - "I'm starting a gardening project" → `findSpaces` first, then createSpace on `commitment` if no match.
 - "Let me tell you about my new piano teacher" → createSpace on `person` if no existing match.
 Do NOT use this for throwaway to-dos (use `addToList`), and do NOT use it for every topic the user mentions — only durable, named things worth remembering. `body` should be a short markdown summary of what you know so far.
 
-**`updateSpace({ uri | (category + slug), body, mode?, title?, description? })`**
+**Sub-Spaces (`parentSpaceUri`).** When the user mentions that this new Space belongs to a project, person, or theme that you can find via `findSpaces`, look up the parent first and pass its `uri` as `parentSpaceUri`. Examples:
+- "Add a shopping list for the garden" → `findSpaces({query: "garden"})` → if matched (and `parentSpaceUri === null` on the match), createSpace with `parentSpaceUri` set to that match's URI.
+- "Caddisfly research — fieldwork notes" → findSpaces for "caddisfly", nest under it.
+- "Robin's piano lessons" → findSpaces for "robin", nest the lessons commitment under Robin.
+
+**Two-level limit.** Memu supports exactly two levels: top-level Spaces and their direct children. If `findSpaces` returns a match whose `parentSpaceUri` is non-null, that match is *itself* a sub-Space and cannot be a parent — nest under its grandparent instead, or skip the parent and create a top-level Space. The tool will reject a violating create with `parent_has_parent`.
+
+**`updateSpace({ uri | (category + slug), body, mode?, title?, description?, parentSpaceUri? })`**
 Update an existing Space when the user adds a fact, corrects something, or reports progress. The Space URI is visible in the context block as `uri: memu://…` — prefer passing the URI.
+
+**Re-parenting via `parentSpaceUri`.** Pass an existing top-level Space's URI to nest this Space under it (e.g. user says "actually, the shopping list is part of the Garden Project"). Pass an empty string to un-parent (promote a sub-Space back to top-level). Omit the field entirely to leave parent unchanged. Same two-level limit applies — the tool rejects writes that would nest under a sub-Space.
 
 **Default mode is "append" — and append is what you want almost every time.** The `body` field is added to the bottom of the existing body under a dated separator, and prior content is preserved. This means every update is a layer on top of the family's accumulated understanding, not a replacement of it. **Do not summarise the prior content into your new body** — the prior content is already there and will stay there.
 

@@ -25,7 +25,7 @@
 import type { ClaudeServerSideTool, ClaudeToolSchema } from './claude';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { addItem, listItems, type ListType, type ListFilter, type ListStatus } from '../lists/store';
-import { upsertSpace, findSpaceByUri, findSpaceBySlug } from '../spaces/store';
+import { upsertSpace, findSpaceByUri, findSpaceBySlug, validateParentRelationship, countChildrenForParents } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from '../spaces/model';
 import { getCatalogue } from '../spaces/catalogue';
 import { insertCalendarEvent, fetchUpcomingEvents } from '../channels/calendar/google';
@@ -242,6 +242,17 @@ const CREATE_SPACE_SCHEMA: ClaudeToolSchema = {
         type: 'string',
         description: 'Optional one-line description shown in listings',
       },
+      parentSpaceUri: {
+        type: 'string',
+        description:
+          'Optional URI of an existing top-level Space to nest this new Space under. ' +
+          'Use when the user references a project, person, or theme that this new Space ' +
+          'is a sub-page of — e.g. "shopping list for the garden" → look up the Garden ' +
+          'Space via findSpaces first, then pass its URI here. Two-level limit: do NOT ' +
+          'pass a parent that itself has a parent — if findSpaces returns a match whose ' +
+          'parentSpaceUri is non-null, nest under THAT grandparent instead, or skip the ' +
+          'parent. Pass null or omit for a top-level Space.',
+      },
     },
     required: ['title', 'category', 'body'],
   },
@@ -252,6 +263,7 @@ interface CreateSpaceInput {
   category: SpaceCategory;
   body: string;
   description?: string;
+  parentSpaceUri?: string | null;
 }
 
 async function executeCreateSpace(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
@@ -269,6 +281,23 @@ async function executeCreateSpace(rawInput: unknown, ctx: ToolContext): Promise<
     return { ok: false, error: 'body is required' };
   }
 
+  // Treat undefined and empty-string identically to "no parent". null is
+  // accepted as an explicit "no parent" signal but for create that's the
+  // same outcome — we don't have a self URI to compare against because
+  // the row doesn't exist yet.
+  const parentRaw = input.parentSpaceUri;
+  const parentUri =
+    parentRaw === null || parentRaw === undefined || (typeof parentRaw === 'string' && parentRaw.trim() === '')
+      ? null
+      : parentRaw;
+
+  if (parentUri !== null) {
+    const validation = await validateParentRelationship(ctx.familyId, parentUri);
+    if (!validation.ok) {
+      return { ok: false, error: `parent rejected: ${validation.message ?? validation.reason}` };
+    }
+  }
+
   try {
     const title = await translateToReal(input.title.trim());
     const body = await translateToReal(input.body);
@@ -283,6 +312,7 @@ async function executeCreateSpace(rawInput: unknown, ctx: ToolContext): Promise<
       confidence: 0.6,
       sourceReferences: [`message:${ctx.messageId}`],
       actorProfileId: ctx.profileId,
+      parentSpaceUri: parentUri,
     });
 
     return {
@@ -292,6 +322,7 @@ async function executeCreateSpace(rawInput: unknown, ctx: ToolContext): Promise<
         uri: space.uri,
         slug: space.slug,
         category: space.category,
+        parentSpaceUri: space.parentSpaceUri ?? null,
       },
     };
   } catch (err) {
@@ -358,6 +389,13 @@ const UPDATE_SPACE_SCHEMA: ClaudeToolSchema = {
         type: 'string',
         description: 'Optional one-line description update',
       },
+      parentSpaceUri: {
+        type: 'string',
+        description:
+          'Optional. Pass an existing top-level Space URI to re-parent this Space under it. ' +
+          'Pass an empty string to explicitly un-parent (promote to top-level). Omit to leave ' +
+          'the parent unchanged. Two-level limit: do NOT pass a parent that itself has a parent.',
+      },
     },
     required: ['body'],
   },
@@ -371,6 +409,7 @@ interface UpdateSpaceInput {
   body: string;
   mode?: UpdateSpaceMode;
   description?: string;
+  parentSpaceUri?: string | null;
 }
 
 /**
@@ -442,6 +481,25 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
     return { ok: false, error: 'Space belongs to a different family' };
   }
 
+  // parentSpaceUri update semantics:
+  //   - field absent → omit from upsert (preserve current parent)
+  //   - empty string  → un-parent (treat as null)
+  //   - non-empty     → re-parent (validate first)
+  let parentField: { parentSpaceUri: string | null } | undefined;
+  if (input.parentSpaceUri !== undefined) {
+    const candidate =
+      input.parentSpaceUri === null || (typeof input.parentSpaceUri === 'string' && input.parentSpaceUri.trim() === '')
+        ? null
+        : input.parentSpaceUri;
+    if (candidate !== null) {
+      const validation = await validateParentRelationship(existing.familyId, candidate, existing.uri);
+      if (!validation.ok) {
+        return { ok: false, error: `parent rejected: ${validation.message ?? validation.reason}` };
+      }
+    }
+    parentField = { parentSpaceUri: candidate };
+  }
+
   try {
     const body = await translateToReal(input.body);
     const title = input.title ? await translateToReal(input.title.trim()) : existing.name;
@@ -472,6 +530,7 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
       sourceReferences: [...existing.sourceReferences, `message:${ctx.messageId}`],
       tags: existing.tags,
       actorProfileId: ctx.profileId,
+      ...(parentField ?? {}),
     });
 
     return {
@@ -485,6 +544,8 @@ async function executeUpdateSpace(rawInput: unknown, ctx: ToolContext): Promise<
         linesBefore,
         linesAfter,
         linesAdded: Math.max(0, linesAfter - linesBefore),
+        parentSpaceUri: space.parentSpaceUri ?? null,
+        parentChanged: parentField !== undefined,
       },
     };
   } catch (err) {
@@ -504,9 +565,13 @@ const FIND_SPACES_SCHEMA: ClaudeToolSchema = {
     'whenever the user references a person, project, routine, or household topic by name — ' +
     'the Space may already exist under a slightly different slug (typo, singular/plural) and ' +
     'you would not have seen it if retrieval missed it. Returns up to 10 visibility-filtered ' +
-    'matches as {uri, title, category, slug, description}. If the result count is 0, it is safe ' +
-    'to createSpace. If there is a near match (e.g. you searched "robin" and got "robins"), ' +
-    'prefer updateSpace on the existing one over creating a duplicate.',
+    'matches as {uri, title, category, slug, description, parentSpaceUri, childCount}. ' +
+    '`childCount` tells you whether a match is itself a container (>0 means it has sub-Spaces). ' +
+    '`parentSpaceUri` tells you whether the match is itself a sub-Space — when picking a parent ' +
+    'for a new Space, only top-level results (parentSpaceUri === null) are valid parents. ' +
+    'If the result count is 0, it is safe to createSpace. If there is a near match (e.g. you ' +
+    'searched "robin" and got "robins"), prefer updateSpace on the existing one over creating a ' +
+    'duplicate.',
   input_schema: {
     type: 'object',
     properties: {
@@ -557,14 +622,29 @@ async function executeFindSpaces(rawInput: unknown, ctx: ToolContext): Promise<T
 
     const hits = filtered.slice(0, FIND_SPACES_LIMIT);
 
+    // For each hit, fetch the underlying Space row so we have parent +
+    // can look up child counts. catalogue.ts doesn't carry parent,
+    // and surfacing parent + childCount to Claude is what lets it
+    // honour the two-level constraint when deciding where to nest.
+    const fullRows = await Promise.all(hits.map(h => findSpaceByUri(h.uri)));
+    const presentUris = fullRows
+      .filter((s): s is NonNullable<typeof s> => s !== null)
+      .map(s => s.uri);
+    const childCounts = await countChildrenForParents(ctx.familyId, presentUris);
+
     const spaces = await Promise.all(
-      hits.map(async entry => ({
-        uri: entry.uri,
-        title: await translateToAnonymous(entry.name),
-        category: entry.category,
-        slug: entry.slug,
-        description: entry.description ? await translateToAnonymous(entry.description) : '',
-      })),
+      hits.map(async (entry, idx) => {
+        const full = fullRows[idx];
+        return {
+          uri: entry.uri,
+          title: await translateToAnonymous(entry.name),
+          category: entry.category,
+          slug: entry.slug,
+          description: entry.description ? await translateToAnonymous(entry.description) : '',
+          parentSpaceUri: full?.parentSpaceUri ?? null,
+          childCount: childCounts.get(entry.uri) ?? 0,
+        };
+      }),
     );
 
     return {

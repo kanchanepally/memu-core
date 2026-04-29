@@ -164,6 +164,76 @@ export interface SpaceWriteInput {
   tags?: string[];
   slug?: string;
   actorProfileId?: string;
+  /**
+   * URI of an existing top-level Space to nest this one under. Pass
+   * null to explicitly un-parent. Omit to leave parent unchanged on
+   * update; on insert, omitting means top-level.
+   *
+   * The caller is responsible for running validateParentRelationship
+   * BEFORE calling upsertSpace — upsertSpace itself does not validate
+   * because the v1 callers (autolearn, synthesis) write thousands of
+   * times per day and don't touch parents. Only the v2 endpoints
+   * that mutate parent_space_uri need to validate.
+   */
+  parentSpaceUri?: string | null;
+}
+
+export interface ParentValidationResult {
+  ok: boolean;
+  /** Discriminated reason on failure — usable by the API layer to map to 422 + message. */
+  reason?:
+    | 'parent_not_found'
+    | 'parent_cross_family'
+    | 'parent_is_self'
+    | 'parent_has_parent'
+    | 'invalid_uri';
+  message?: string;
+}
+
+/**
+ * Validate that `parentUri` is a legal parent for a Space in `familyId`.
+ *
+ * - parent must exist
+ * - parent must belong to the same family
+ * - parent must not be the Space itself (when `selfUri` provided)
+ * - parent must not itself have a parent (two-level constraint)
+ *
+ * Pass `parentUri = null` to skip validation entirely (un-parenting is
+ * always legal). Pass an empty/undefined parentUri only via the
+ * orchestrating endpoint — the validator treats it as invalid because
+ * "explicitly unset" should be `null`, not absent.
+ */
+export async function validateParentRelationship(
+  familyId: string,
+  parentUri: string | null,
+  selfUri?: string,
+): Promise<ParentValidationResult> {
+  if (parentUri === null) return { ok: true };
+  if (typeof parentUri !== 'string' || parentUri.trim() === '') {
+    return { ok: false, reason: 'invalid_uri', message: 'parentSpaceUri must be a non-empty string or null' };
+  }
+  if (selfUri && parentUri === selfUri) {
+    return { ok: false, reason: 'parent_is_self', message: 'A Space cannot be its own parent.' };
+  }
+  const res = await pool.query<{ family_id: string; parent_space_uri: string | null }>(
+    `SELECT family_id, parent_space_uri FROM synthesis_pages WHERE uri = $1 LIMIT 1`,
+    [parentUri],
+  );
+  if (!res.rows[0]) {
+    return { ok: false, reason: 'parent_not_found', message: `No Space found at ${parentUri}.` };
+  }
+  if (res.rows[0].family_id !== familyId) {
+    return { ok: false, reason: 'parent_cross_family', message: 'Parent Space belongs to a different family.' };
+  }
+  if (res.rows[0].parent_space_uri) {
+    return {
+      ok: false,
+      reason: 'parent_has_parent',
+      message:
+        'Two-level limit: the chosen parent already has a parent of its own. Pick a top-level Space, or its parent, instead.',
+    };
+  }
+  return { ok: true };
 }
 
 /**
@@ -197,12 +267,29 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
 
     const profileId = input.actorProfileId ?? input.familyId;
 
+    // parent_space_uri write semantics (Spaces Canvas v2):
+    //   - input.parentSpaceUri === undefined → leave column unchanged
+    //     on update (omit from SET), default to NULL on insert
+    //   - input.parentSpaceUri === null     → explicitly un-parent
+    //   - input.parentSpaceUri = string     → set/replace
+    //
+    // We thread this through with COALESCE-style logic on update to
+    // avoid clobbering a previously-set parent when v1 callers
+    // (autolearn / synthesis) upsert a body without thinking about
+    // parents.
+    const parentInsertValue = input.parentSpaceUri === undefined ? null : input.parentSpaceUri;
+    const parentUpdateMode = input.parentSpaceUri === undefined ? 'preserve' : 'replace';
+
+    const updateClauseParent = parentUpdateMode === 'replace'
+      ? 'parent_space_uri = EXCLUDED.parent_space_uri,'
+      : ''; // preserve — omit from the SET list
+
     await client.query(
       `INSERT INTO synthesis_pages (
          id, profile_id, family_id, uri, slug, category, title, body_markdown,
          description, domains, people, visibility, confidence,
-         source_references, tags, last_updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, NOW())
+         source_references, tags, parent_space_uri, last_updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, NOW())
        ON CONFLICT (id) DO UPDATE SET
          title = EXCLUDED.title,
          body_markdown = EXCLUDED.body_markdown,
@@ -213,6 +300,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
          confidence = EXCLUDED.confidence,
          source_references = EXCLUDED.source_references,
          tags = EXCLUDED.tags,
+         ${updateClauseParent}
          last_updated_at = NOW()`,
       [
         id,
@@ -230,6 +318,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
         input.confidence ?? 0.5,
         input.sourceReferences ?? [],
         input.tags ?? [],
+        parentInsertValue,
       ],
     );
 
@@ -247,6 +336,21 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
 
     await client.query('COMMIT');
 
+    // Resolve effective parent for the in-memory Space we hand back —
+    // either the just-written value (replace mode) or the pre-existing
+    // value (preserve mode). For inserts (existingId === null), the
+    // parent is whatever we wrote.
+    let effectiveParent: string | null;
+    if (existingId === null || parentUpdateMode === 'replace') {
+      effectiveParent = parentInsertValue;
+    } else {
+      const r = await client.query<{ parent_space_uri: string | null }>(
+        `SELECT parent_space_uri FROM synthesis_pages WHERE id = $1`,
+        [id],
+      );
+      effectiveParent = r.rows[0]?.parent_space_uri ?? null;
+    }
+
     const space: Space = {
       uri,
       id,
@@ -263,6 +367,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       tags: input.tags ?? [],
       bodyMarkdown: input.bodyMarkdown,
       lastUpdated: new Date(),
+      parentSpaceUri: effectiveParent,
     };
 
     await writeToDisk(space, existingId ? 'updated' : 'created', input.actorProfileId);
@@ -276,7 +381,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
 }
 
 function renderFrontmatter(space: Space): string {
-  const fm = {
+  const fm: Record<string, unknown> = {
     id: space.uri,
     name: space.name,
     category: space.category,
@@ -289,6 +394,9 @@ function renderFrontmatter(space: Space): string {
     source_references: space.sourceReferences,
     tags: space.tags,
   };
+  // Only emit parent_space_uri when there's a parent — keeps top-level
+  // .md files clean and stops legacy diff churn.
+  if (space.parentSpaceUri) fm.parent_space_uri = space.parentSpaceUri;
   return matter.stringify(space.bodyMarkdown.endsWith('\n') ? space.bodyMarkdown : `${space.bodyMarkdown}\n`, fm);
 }
 
@@ -337,6 +445,7 @@ interface SpaceRow {
   source_references: string[];
   tags: string[];
   last_updated_at: Date;
+  parent_space_uri: string | null;
 }
 
 function rowToSpace(row: SpaceRow): Space {
@@ -366,15 +475,17 @@ function rowToSpace(row: SpaceRow): Space {
     tags: row.tags,
     bodyMarkdown: row.body_markdown,
     lastUpdated: row.last_updated_at,
+    parentSpaceUri: row.parent_space_uri,
   };
 }
 
+const SPACE_ROW_COLUMNS = `id, family_id, uri, slug, category, title, body_markdown,
+       description, domains, people, visibility, confidence,
+       source_references, tags, last_updated_at, parent_space_uri`;
+
 export async function findSpaceByUri(uri: string): Promise<Space | null> {
   const res = await pool.query<SpaceRow>(
-    `SELECT id, family_id, uri, slug, category, title, body_markdown,
-            description, domains, people, visibility, confidence,
-            source_references, tags, last_updated_at
-       FROM synthesis_pages WHERE uri = $1`,
+    `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages WHERE uri = $1`,
     [uri],
   );
   return res.rows[0] ? rowToSpace(res.rows[0]) : null;
@@ -382,10 +493,7 @@ export async function findSpaceByUri(uri: string): Promise<Space | null> {
 
 export async function findSpaceBySlug(familyId: string, category: SpaceCategory, slug: string): Promise<Space | null> {
   const res = await pool.query<SpaceRow>(
-    `SELECT id, family_id, uri, slug, category, title, body_markdown,
-            description, domains, people, visibility, confidence,
-            source_references, tags, last_updated_at
-       FROM synthesis_pages
+    `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages
       WHERE family_id = $1 AND category = $2 AND slug = $3`,
     [familyId, category, slug],
   );
@@ -394,12 +502,47 @@ export async function findSpaceBySlug(familyId: string, category: SpaceCategory,
 
 export async function listSpaces(familyId: string): Promise<Space[]> {
   const res = await pool.query<SpaceRow>(
-    `SELECT id, family_id, uri, slug, category, title, body_markdown,
-            description, domains, people, visibility, confidence,
-            source_references, tags, last_updated_at
-       FROM synthesis_pages WHERE family_id = $1
+    `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages WHERE family_id = $1
       ORDER BY last_updated_at DESC`,
     [familyId],
+  );
+  return res.rows.map(rowToSpace);
+}
+
+/**
+ * Return the count of children for each Space URI in `parentUris`.
+ * Used by the graph endpoint to surface childCount per node and by
+ * findSpaces (Claude tool) to tell Claude whether a match is itself
+ * a container.
+ */
+export async function countChildrenForParents(
+  familyId: string,
+  parentUris: string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (parentUris.length === 0) return result;
+  const res = await pool.query<{ parent_space_uri: string; n: string }>(
+    `SELECT parent_space_uri, COUNT(*)::text AS n
+       FROM synthesis_pages
+      WHERE family_id = $1 AND parent_space_uri = ANY($2::text[])
+      GROUP BY parent_space_uri`,
+    [familyId, parentUris],
+  );
+  for (const row of res.rows) result.set(row.parent_space_uri, Number(row.n));
+  return result;
+}
+
+/**
+ * List the children of a parent Space. Order: most-recently-updated
+ * first, matching listSpaces. Visibility filtering is the caller's
+ * responsibility — store.ts is the data layer.
+ */
+export async function listChildren(parentUri: string): Promise<Space[]> {
+  const res = await pool.query<SpaceRow>(
+    `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages
+      WHERE parent_space_uri = $1
+      ORDER BY last_updated_at DESC`,
+    [parentUri],
   );
   return res.rows.map(rowToSpace);
 }
@@ -433,6 +576,25 @@ export async function deleteSpace(
     }
     removedUri = existing.rows[0].uri;
     removedTitle = existing.rows[0].title;
+
+    // Orphan children before deleting the parent — sub-Spaces are
+    // independent content; the parent relationship was contextual,
+    // not constitutive. The orphaned children are noted in spaces_log
+    // so audit history shows the reason their parent went away.
+    const orphaned = await client.query<{ uri: string }>(
+      `UPDATE synthesis_pages SET parent_space_uri = NULL
+        WHERE family_id = $1 AND parent_space_uri = $2
+        RETURNING uri`,
+      [familyId, removedUri],
+    );
+    if (orphaned.rows.length > 0) {
+      const orphanLog = orphaned.rows.map(r => r.uri).join(', ');
+      await client.query(
+        `INSERT INTO spaces_log (family_id, space_uri, event, summary, actor_profile_id)
+         VALUES ($1, $2, 'updated', $3, $4)`,
+        [familyId, removedUri, `Orphaned ${orphaned.rows.length} child Space(s) — parent deleted: ${orphanLog}`, actorProfileId ?? null],
+      );
+    }
 
     await client.query(
       `DELETE FROM synthesis_pages WHERE family_id = $1 AND category = $2 AND slug = $3`,
