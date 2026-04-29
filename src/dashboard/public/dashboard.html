@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-26-littlebird-4">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-29-today-redesign">
 </head>
 <body>
 <!-- Auth gate -->
@@ -104,59 +104,65 @@ async function api(path, opts = {}) {
     <h1 class="topbar-title" id="topbar-title">Today</h1>
 </header>
 
-<!-- ==================== TODAY TAB ==================== -->
-<div id="view-today" class="today-grid">
-    <!-- Sidebar -->
-    <aside class="today-sidebar">
-        <div class="sidebar-card">
-            <div class="sidebar-card-header">
-                <div class="sidebar-card-title">
-                    <span>&#x1F6D2;</span> Shopping
-                </div>
-                <span class="sidebar-card-count" id="shopping-count">0</span>
-            </div>
-            <div id="shopping-list" class="shopping-list"></div>
-            <div id="shopping-empty" class="sidebar-empty hidden">
-                Nothing on the list yet.<br>
-                Say <em>"add milk to shopping"</em> below.
-            </div>
-        </div>
+<!-- ==================== TODAY TAB ====================
+     Single-column canvas, ~840px wide, max. Hero AI-insight card carries
+     the synthesis (or honest empty-state when there's nothing yet — no
+     fabricated platitudes). Sections below: calendar strip, stream cards,
+     shopping summary widget, privacy footer. The previous layout had
+     shopping as a 280px sidebar — accumulating to 26 items it dominated
+     the page. Lists belong in the Lists tab; this tab summarises. -->
+<div id="view-today" class="today-canvas">
 
-        <div class="sidebar-card">
-            <div class="sidebar-card-header">
-                <div class="sidebar-card-title">
-                    <span>&#x1F441;</span> Privacy
-                </div>
-            </div>
-            <div style="font-size:13px;color:var(--text-secondary);line-height:1.4;">
-                All queries anonymised via Digital Twin.
-            </div>
-            <a href="#" onclick="switchTab('ledger');return false;" style="display:inline-block;margin-top:var(--space-sm);font-size:13px;color:var(--color-accent);font-weight:500;text-decoration:none;">See what Claude saw &#x203A;</a>
-        </div>
-    </aside>
-
-    <!-- Main -->
-    <main class="today-main">
-        <header class="morning-briefing-header">
-            <div class="briefing-eyebrow" id="briefing-eyebrow">Today's brief</div>
-            <div class="briefing-title" id="greeting"></div>
-            <div class="briefing-subtitle" id="date-text"></div>
+    <!-- Hero — AI insight (synthesis or honest empty-state). Filled by
+         loadSynthesis() which calls /api/dashboard/synthesis. The backend
+         empty-state gate (briefing.ts isFullyEmpty) returns null when
+         there's nothing to brief on; we render the honest fallback. -->
+    <article class="today-insight">
+        <header class="today-insight-header">
+            <span class="today-insight-eyebrow">Today's brief</span>
+            <span class="today-insight-greeting" id="greeting"></span>
+            <span class="today-insight-date" id="date-text"></span>
         </header>
+        <div class="today-insight-body" id="today-insight-body">
+            <p class="today-insight-loading">Catching up…</p>
+        </div>
+    </article>
 
-        <div id="error-banner" class="error-banner hidden"></div>
+    <div id="error-banner" class="error-banner hidden"></div>
 
-        <!-- Calendar -->
-        <section class="section">
-            <div class="section-label">&#x1F4C5; Today's Schedule</div>
-            <div id="calendar-section"></div>
-        </section>
+    <!-- Today's schedule — calendar strip with chip times, NOT full event
+         cards. Up to 4 visible + "see calendar" link for the rest. -->
+    <section class="today-section">
+        <div class="today-section-label">Today's schedule</div>
+        <div id="calendar-section" class="calendar-strip"></div>
+    </section>
 
-        <!-- Stream Cards -->
-        <section class="section" id="stream-section" style="display:none;">
-            <div class="section-label">&#x1F4A1; Intelligence</div>
-            <div id="stream-container"></div>
-        </section>
-    </main>
+    <!-- Stream — cards from briefing / extraction / reflection. Section
+         hides when empty (avoids a "nothing yet" placeholder noise; user
+         knows this is dynamic). -->
+    <section class="today-section hidden" id="stream-section">
+        <div class="today-section-label">Stream</div>
+        <div id="stream-container" class="stream-container"></div>
+    </section>
+
+    <!-- Shopping — SUMMARY only (count + 3 most recent items + open-list
+         link). Full list lives on the Lists tab. -->
+    <a class="today-summary" id="shopping-summary" href="#" onclick="switchTab('lists');return false;">
+        <div class="today-summary-icon">&#x1F6D2;</div>
+        <div class="today-summary-body">
+            <div class="today-summary-title" id="shopping-summary-title">Shopping list</div>
+            <div class="today-summary-sub" id="shopping-summary-sub">Loading…</div>
+        </div>
+        <div class="today-summary-arrow">&#x203A;</div>
+    </a>
+
+    <!-- Privacy footer — used to be a sidebar card (over-promoted). One
+         line at the bottom keeps the trust signal without dominating. -->
+    <footer class="today-footer">
+        <span aria-hidden="true">&#x1F6E1;</span>
+        <span>Every query anonymised via Digital Twin.</span>
+        <a href="#" onclick="switchTab('ledger');return false;">See the ledger &#x2192;</a>
+    </footer>
 </div>
 
 <!-- Persistent quick composer (Today tab only) -->
@@ -729,7 +735,7 @@ function switchTab(tab) {
     // Auto-close sidebar on mobile after a tab tap so the canvas is visible
     if (isMobileViewport()) closeSidebar();
     // Load data on tab switch
-    if (tab === 'today') loadBrief();
+    if (tab === 'today') { loadBrief(); loadSynthesis(); }
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
     if (tab === 'lists') loadLists();
@@ -769,31 +775,74 @@ function getSourceColor(source) {
 document.getElementById('greeting').textContent = getGreeting();
 document.getElementById('date-text').textContent = formatDate();
 
+// Synthesis hero — fetches from /api/dashboard/synthesis (15-min cached
+// server-side). Renders the briefing markdown if present, or the honest
+// empty-state copy if the backend's data-availability gate returned null.
+// Critical: never falls back to "you're all caught up" — that's the
+// confabulation pattern the audit flagged.
+async function loadSynthesis() {
+    const bodyEl = document.getElementById('today-insight-body');
+    if (!bodyEl) return;
+    try {
+        const res = await api('/api/dashboard/synthesis');
+        if (!res.ok) {
+            bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
+            return;
+        }
+        const data = await res.json();
+        if (data && data.synthesis) {
+            bodyEl.innerHTML = renderMarkdown(data.synthesis);
+        } else {
+            // Empty-state honest copy — matches mobile (tabs)/index.tsx
+            bodyEl.innerHTML = '<p>I don’t have anything to brief you on yet. Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.</p>';
+        }
+    } catch (err) {
+        bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
+    }
+}
+
 async function loadBrief() {
     try {
         const res = await api('/api/dashboard/brief');
         const data = await res.json();
 
-        // Calendar
+        // Calendar — rendered as a strip of chip-time + title rows. Up to 4
+        // visible; "+N more" link to the calendar tab for the rest. Replaces
+        // the previous block-card-per-event layout that ate vertical space.
         const calEl = document.getElementById('calendar-section');
         if (!data.isCalendarConnected) {
-            calEl.innerHTML = '<div class="empty-state">&#x2600;&#65039; Calendar not connected yet.</div>';
-        } else if (data.events.length === 0) {
-            calEl.innerHTML = '<div class="empty-state">&#x2600;&#65039; No events today — your day is wide open.</div>';
+            calEl.innerHTML = '<div class="calendar-strip-empty">' +
+                '<span aria-hidden="true">&#x1F4C5;</span>' +
+                '<span>Calendar not connected.</span>' +
+                '<a href="#" onclick="switchTab(\'settings\');return false;">Connect &#x2192;</a>' +
+                '</div>';
+        } else if (!data.events || data.events.length === 0) {
+            calEl.innerHTML = '<div class="calendar-strip-empty">' +
+                '<span aria-hidden="true">&#x2600;&#65039;</span>' +
+                '<span>No events today — your day is wide open.</span>' +
+                '</div>';
         } else {
-            calEl.innerHTML = data.events.map(e => `
-                <div class="event-card">
-                    <div class="event-time">${formatTime(e.startTime)}</div>
-                    <div class="event-title">${esc(e.title)}</div>
+            const visible = data.events.slice(0, 4);
+            const rest = data.events.length - visible.length;
+            const rows = visible.map(e => `
+                <div class="calendar-strip-row">
+                    <span class="calendar-strip-time">${formatTime(e.startTime) || '—'}</span>
+                    <span class="calendar-strip-title">${esc(e.title)}</span>
                 </div>
             `).join('');
+            const more = rest > 0
+                ? `<a class="calendar-strip-more" href="#" onclick="switchTab('calendar');return false;">+${rest} more · see calendar</a>`
+                : '';
+            calEl.innerHTML = rows + more;
         }
 
-        // Stream cards
+        // Stream cards — section toggles via the .hidden class on the parent
+        // <section>, NOT inline display:none, so the new responsive layout
+        // doesn't get stale visibility state.
         const streamEl = document.getElementById('stream-container');
         const streamSection = document.getElementById('stream-section');
         if (data.streamCards && data.streamCards.length > 0) {
-            streamSection.style.display = '';
+            streamSection.classList.remove('hidden');
             streamEl.innerHTML = data.streamCards.map(card => {
                 const color = getSourceColor(card.source);
                 const sourceName = card.source.replace(/_/g, ' ');
@@ -836,28 +885,23 @@ async function loadBrief() {
                 </div>`;
             }).join('');
         } else {
-            streamSection.style.display = 'none';
+            streamSection.classList.add('hidden');
         }
 
-        // Shopping sidebar
-        const listEl = document.getElementById('shopping-list');
-        const emptyEl = document.getElementById('shopping-empty');
-        const countEl = document.getElementById('shopping-count');
+        // Shopping — SUMMARY widget on Today (count + 3 most recent). The
+        // full list lives on the Lists tab. Previous design rendered the
+        // entire list inline; with 26 items it dominated the page.
         const items = data.shoppingItems || [];
-        countEl.textContent = items.length;
-        if (items.length > 0) {
-            emptyEl.classList.add('hidden');
-            listEl.innerHTML = items.map(item => {
-                const title = esc(item.title || '');
-                const body = item.body && item.body !== item.title ? `<div class="shopping-item-body">${esc(item.body)}</div>` : '';
-                return `<div class="shopping-item">
-                    <div class="shopping-item-dot"></div>
-                    <div class="shopping-item-text">${title}${body}</div>
-                </div>`;
-            }).join('');
+        const titleEl = document.getElementById('shopping-summary-title');
+        const subEl = document.getElementById('shopping-summary-sub');
+        if (items.length === 0) {
+            titleEl.textContent = 'Shopping list';
+            subEl.textContent = 'Empty — say "add milk to shopping" below to start.';
         } else {
-            listEl.innerHTML = '';
-            emptyEl.classList.remove('hidden');
+            titleEl.textContent = `Shopping list · ${items.length} item${items.length === 1 ? '' : 's'}`;
+            const preview = items.slice(0, 3).map(i => i.title || '').filter(Boolean).join(', ');
+            const tail = items.length > 3 ? `, +${items.length - 3} more` : '';
+            subEl.textContent = preview + tail;
         }
 
         document.getElementById('error-banner').classList.add('hidden');
@@ -2557,6 +2601,7 @@ function renderSelectedDay() {
 
 // ========== INIT ==========
 loadBrief();
+loadSynthesis();
 </script>
 </body>
 </html>
