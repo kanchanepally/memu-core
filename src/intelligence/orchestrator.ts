@@ -264,8 +264,20 @@ export async function processIntelligencePipeline(
   const toolFooter = formatToolSummaryFooter(dispatchResult.toolCalls);
   const realResponse = toolFooter ? `${realResponseBase}${toolFooter}` : realResponseBase;
 
+  // 5d. Empty-Context Honesty Gate (Slice 3)
+  // If retrieval returned absolutely nothing (no Spaces, no embeddings) and
+  // Claude didn't execute any tools (which would mean it's answering purely
+  // from its internal weights without any grounding), prefix the UI marker.
+  const isEmptyContext = retrieval.spaces.length === 0 && retrieval.embeddingContexts.length === 0;
+  const noToolsCalled = !dispatchResult.toolCalls || dispatchResult.toolCalls.length === 0;
+  
+  let finalResponse = realResponse;
+  if (isEmptyContext && noToolsCalled) {
+    finalResponse = `[EMPTY_CONTEXT_MARKER]\n${finalResponse}`;
+  }
+
   // 6. Immutable Message Storage (Audit Trail)
-  await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
+  await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, finalResponse, channel, messageId);
 
   // 6b. Provenance record — what retrieval path answered this message.
   // Helps debugging and feeds the Spaces-tab "recent queries" UI.
@@ -288,7 +300,7 @@ export async function processIntelligencePipeline(
     console.error('[SYNTHESIS] Background synthesis update failed:', err);
   });
 
-  return realResponse;
+  return finalResponse;
 }
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
