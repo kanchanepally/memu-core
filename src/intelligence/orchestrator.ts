@@ -265,19 +265,27 @@ export async function processIntelligencePipeline(
   const realResponse = toolFooter ? `${realResponseBase}${toolFooter}` : realResponseBase;
 
   // 5d. Empty-Context Honesty Gate (Slice 3)
-  // If retrieval returned absolutely nothing (no Spaces, no embeddings) and
-  // Claude didn't execute any tools (which would mean it's answering purely
-  // from its internal weights without any grounding), prefix the UI marker.
-  const isEmptyContext = retrieval.spaces.length === 0 && retrieval.embeddingContexts.length === 0;
+  // The honesty guarantee lives in skills/interactive_query/SKILL.md Rule 11
+  // — Claude is told not to confabulate from training weights when the context
+  // block is empty. We log when that condition holds so the privacy ledger /
+  // future UI can surface it, but we do NOT inject a user-facing marker:
+  //   (a) no consumer existed for it (it would render literally in chat), and
+  //   (b) Slice 2's fallback (onboarding answers + 2 person/routine spaces)
+  //       counts as context, so the gate must respect that or it contradicts
+  //       the very fallback it's meant to coexist with.
+  const hasFallback =
+    (retrieval.fallbackSpaces?.length ?? 0) > 0 || !!retrieval.fallbackOnboardingText;
+  const isEmptyContext =
+    retrieval.spaces.length === 0 &&
+    retrieval.embeddingContexts.length === 0 &&
+    !hasFallback;
   const noToolsCalled = !dispatchResult.toolCalls || dispatchResult.toolCalls.length === 0;
-  
-  let finalResponse = realResponse;
   if (isEmptyContext && noToolsCalled) {
-    finalResponse = `[EMPTY_CONTEXT_MARKER]\n${finalResponse}`;
+    console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (no spaces, no embeddings, no fallback, no tools).`);
   }
 
   // 6. Immutable Message Storage (Audit Trail)
-  await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, finalResponse, channel, messageId);
+  await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
 
   // 6b. Provenance record — what retrieval path answered this message.
   // Helps debugging and feeds the Spaces-tab "recent queries" UI.
@@ -300,7 +308,7 @@ export async function processIntelligencePipeline(
     console.error('[SYNTHESIS] Background synthesis update failed:', err);
   });
 
-  return finalResponse;
+  return realResponse;
 }
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
