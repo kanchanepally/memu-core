@@ -24,11 +24,11 @@
 
 import type { ClaudeServerSideTool, ClaudeToolSchema } from './claude';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { addItem, type ListType } from '../lists/store';
+import { addItem, listItems, type ListType, type ListFilter, type ListStatus } from '../lists/store';
 import { upsertSpace, findSpaceByUri, findSpaceBySlug } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from '../spaces/model';
 import { getCatalogue } from '../spaces/catalogue';
-import { insertCalendarEvent } from '../channels/calendar/google';
+import { insertCalendarEvent, fetchUpcomingEvents } from '../channels/calendar/google';
 
 export interface ToolContext {
   familyId: string;
@@ -138,6 +138,73 @@ async function executeAddToList(rawInput: unknown, ctx: ToolContext): Promise<To
       requested: cleaned.length,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// readLists
+// ---------------------------------------------------------------------------
+
+const READ_LISTS_SCHEMA: ClaudeToolSchema = {
+  name: 'readLists',
+  description:
+    'Read items from the family\'s shopping list or task list. ' +
+    'Use this whenever the user asks about what is on their list or requests to see their lists. ' +
+    'It returns the current pending items by default.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      list: {
+        type: 'string',
+        enum: ['shopping', 'task', 'custom'],
+        description: 'Optional filter by list type. Omit to fetch from all lists.',
+      },
+      status: {
+        type: 'string',
+        enum: ['pending', 'done'],
+        description: 'Filter by item status. Defaults to "pending".',
+      },
+    },
+  },
+};
+
+interface ReadListsInput {
+  list?: ListType;
+  status?: ListStatus;
+}
+
+async function executeReadLists(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const input = rawInput as Partial<ReadListsInput> | undefined;
+  const listType = input?.list;
+  const status = input?.status ?? 'pending';
+
+  try {
+    const filter: ListFilter = { familyId: ctx.familyId, status };
+    if (listType) {
+      filter.listType = listType;
+    }
+    const items = await listItems(filter);
+    
+    // Anonymise the output before sending back to Claude
+    const anonymisedItems = await Promise.all(items.map(async item => ({
+      id: item.id,
+      list_type: item.list_type,
+      list_name: item.list_name,
+      item_text: await translateToAnonymous(item.item_text),
+      note: item.note ? await translateToAnonymous(item.note) : null,
+      due_at: item.due_at,
+    })));
+
+    return {
+      ok: true,
+      output: {
+        count: items.length,
+        items: anonymisedItems,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `readLists failed: ${message}` };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -608,6 +675,55 @@ async function executeAddCalendarEvent(rawInput: unknown, ctx: ToolContext): Pro
 }
 
 // ---------------------------------------------------------------------------
+// readUpcomingEvents
+// ---------------------------------------------------------------------------
+
+const READ_UPCOMING_EVENTS_SCHEMA: ClaudeToolSchema = {
+  name: 'readUpcomingEvents',
+  description:
+    "Fetch upcoming events from the user's connected Google Calendar. " +
+    "Use this whenever the user asks about their schedule, meetings, or calendar. " +
+    "Returns the upcoming events for the next 7 days.",
+  input_schema: {
+    type: 'object',
+    properties: {},
+  },
+};
+
+async function executeReadUpcomingEvents(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  try {
+    const events = await fetchUpcomingEvents(ctx.profileId);
+    
+    // Anonymise the events before sending back to Claude
+    const anonymisedEvents = await Promise.all(events.map(async e => {
+      const summary = e.summary ? await translateToAnonymous(e.summary) : '(untitled event)';
+      const location = e.location ? await translateToAnonymous(e.location) : undefined;
+      const description = e.description ? await translateToAnonymous(e.description) : undefined;
+      return {
+        id: e.id,
+        summary,
+        start: e.start,
+        end: e.end,
+        location,
+        description,
+        htmlLink: e.htmlLink,
+      };
+    }));
+
+    return {
+      ok: true,
+      output: {
+        count: events.length,
+        events: anonymisedEvents,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `readUpcomingEvents failed: ${message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 //
@@ -636,6 +752,14 @@ export const interactiveQueryTools: Record<string, ToolDefinition> = {
   addCalendarEvent: {
     schema: ADD_CALENDAR_EVENT_SCHEMA,
     execute: executeAddCalendarEvent,
+  },
+  readLists: {
+    schema: READ_LISTS_SCHEMA,
+    execute: executeReadLists,
+  },
+  readUpcomingEvents: {
+    schema: READ_UPCOMING_EVENTS_SCHEMA,
+    execute: executeReadUpcomingEvents,
   },
 };
 

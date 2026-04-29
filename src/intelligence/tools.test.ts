@@ -25,13 +25,15 @@ describe('interactiveQueryTools registry', () => {
       'addToList',
       'createSpace',
       'findSpaces',
+      'readLists',
+      'readUpcomingEvents',
       'updateSpace',
     ]);
   });
 
   it('toolSchemas() returns one schema per client-side tool with required Claude fields', () => {
     const schemas = toolSchemas(interactiveQueryTools);
-    expect(schemas).toHaveLength(5);
+    expect(schemas).toHaveLength(7);
     for (const s of schemas) {
       expect(typeof s.name).toBe('string');
       expect(typeof s.description).toBe('string');
@@ -83,6 +85,20 @@ describe('interactiveQueryTools registry', () => {
     const schema = interactiveQueryTools.updateSpace.schema;
     expect(schema.description).toMatch(/default mode is "append"/i);
     expect(schema.description).toMatch(/when in doubt, append/i);
+  });
+
+  it('readLists schema enumerates the allowed list types and status', () => {
+    const schema = interactiveQueryTools.readLists.schema;
+    const list = schema.input_schema.properties.list as { enum: string[] };
+    expect(list.enum).toEqual(['shopping', 'task', 'custom']);
+    const status = schema.input_schema.properties.status as { enum: string[] };
+    expect(status.enum).toEqual(['pending', 'done']);
+    expect(schema.input_schema.required).toBeUndefined();
+  });
+
+  it('readUpcomingEvents schema has no required properties', () => {
+    const schema = interactiveQueryTools.readUpcomingEvents.schema;
+    expect(schema.input_schema.required).toBeUndefined();
   });
 });
 
