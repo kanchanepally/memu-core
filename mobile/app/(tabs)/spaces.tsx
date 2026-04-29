@@ -6,7 +6,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
+import QRCode from 'react-native-qrcode-svg';
 import { getSpaces, updateSpace, createSpace, type SynthesisPage } from '../../lib/api';
+import { loadAuthState } from '../../lib/auth';
 import { useToast } from '../../components/Toast';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import { stripMarkdown } from '../../lib/markdown';
@@ -54,7 +56,25 @@ export default function SpacesScreen() {
   const [newTitle, setNewTitle] = useState('');
   const [newBody, setNewBody] = useState('');
   const [creatingSaving, setCreatingSaving] = useState(false);
+  const [canvasModal, setCanvasModal] = useState(false);
+  const [canvasUrl, setCanvasUrl] = useState<string>('');
   const toast = useToast();
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAuthState().then(auth => {
+      if (cancelled) return;
+      if (auth.serverUrl) setCanvasUrl(auth.serverUrl.replace(/\/$/, '') + '/canvas.html');
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const shareCanvasLink = useCallback(async () => {
+    if (!canvasUrl) return;
+    try {
+      await Share.share({ message: canvasUrl, url: canvasUrl, title: 'Spaces Canvas' });
+    } catch { /* user cancelled */ }
+  }, [canvasUrl]);
 
   const loadSpaces = useCallback(async () => {
     const { data } = await getSpaces();
@@ -158,6 +178,24 @@ export default function SpacesScreen() {
           accent="quietly alive"
         />
 
+        {/* Canvas CTA — the map view works best on a larger screen, so on
+            mobile we surface a discreet card instead of cramming Cytoscape
+            onto a phone. */}
+        {canvasUrl ? (
+          <Pressable style={styles.canvasCta} onPress={() => setCanvasModal(true)}>
+            <View style={styles.canvasCtaIcon}>
+              <Ionicons name="git-network-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.canvasCtaTitle}>Spaces Canvas</Text>
+              <Text style={styles.canvasCtaHint} numberOfLines={2}>
+                See how your Spaces connect — best on a tablet or laptop.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.tertiary} />
+          </Pressable>
+        ) : null}
+
         {/* Category chips */}
         <ScrollView
           horizontal
@@ -238,6 +276,49 @@ export default function SpacesScreen() {
           </View>
         )}
       </ScreenContainer>
+
+      {/* Canvas modal — QR + URL + share. Stays modest on mobile; the
+          actual canvas is at /canvas.html on a larger display. */}
+      <Modal visible={canvasModal} animationType="slide" transparent onRequestClose={() => setCanvasModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <View style={styles.modalIconChip}>
+                  <Ionicons name="git-network-outline" size={20} color={colors.tertiary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalCategory}>Canvas</Text>
+                  <Text style={styles.modalTitle}>How it all connects</Text>
+                </View>
+                <Pressable onPress={() => setCanvasModal(false)} hitSlop={12}>
+                  <Ionicons name="close" size={22} color={colors.tertiary} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.canvasModalBody}>
+              <Text style={styles.canvasModalHint}>
+                Open this on a tablet or laptop on the same network.
+                Scan the code or share the link to yourself.
+              </Text>
+              {canvasUrl ? (
+                <View style={styles.canvasQrWrap}>
+                  <QRCode value={canvasUrl} size={200} backgroundColor="#FFFFFF" color="#1F1B2E" />
+                </View>
+              ) : null}
+              <Text style={styles.canvasUrlText} numberOfLines={1}>{canvasUrl}</Text>
+              <View style={styles.canvasModalActions}>
+                <Pressable style={styles.canvasShareBtn} onPress={shareCanvasLink}>
+                  <Ionicons name="share-outline" size={16} color={colors.onPrimary} />
+                  <Text style={styles.canvasShareBtnText}>Share link</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Create FAB */}
       <Pressable style={styles.fab} onPress={openCreate} accessibilityLabel="Create new space">
@@ -733,6 +814,85 @@ const styles = StyleSheet.create({
   },
   categoryChipLabelActive: {
     color: colors.onTertiaryContainer,
+  },
+  canvasCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  canvasCtaIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  canvasCtaTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.onSurface,
+    fontFamily: typography.families.body,
+  },
+  canvasCtaHint: {
+    fontSize: 12.5,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+    fontFamily: typography.families.body,
+  },
+  canvasModalBody: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  canvasModalHint: {
+    fontSize: 13,
+    color: colors.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontFamily: typography.families.body,
+  },
+  canvasQrWrap: {
+    padding: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  canvasUrlText: {
+    fontSize: 12,
+    color: colors.tertiary,
+    fontFamily: typography.families.body,
+    textAlign: 'center',
+  },
+  canvasModalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  canvasShareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  canvasShareBtnText: {
+    color: colors.onPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: typography.families.body,
   },
 });
 

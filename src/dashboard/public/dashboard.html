@@ -258,9 +258,17 @@ async function api(path, opts = {}) {
     <!-- List view: chips + grid + feature card -->
     <div id="spaces-list-view">
         <header class="spaces-masthead">
-            <div class="briefing-eyebrow">Spaces</div>
-            <div class="briefing-title">What Memu knows</div>
-            <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
+            <div class="spaces-masthead-row">
+                <div>
+                    <div class="briefing-eyebrow">Spaces</div>
+                    <div class="briefing-title">What Memu knows</div>
+                    <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
+                </div>
+                <a class="spaces-canvas-link" href="/canvas.html" title="Open the Spaces Canvas">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+                    <span>Canvas view</span>
+                </a>
+            </div>
         </header>
 
         <div id="spaces-chips" class="spaces-chips"></div>
@@ -2030,6 +2038,20 @@ async function loadSpaces() {
         spacesState.spaces = data.spaces || [];
         renderSpaceChips();
         renderSpaces();
+        // If we arrived back from /canvas.html with ?space=<id>, jump
+        // straight into that Space's detail. Strip the query so reloads
+        // don't re-open it. The URL hash (#spaces) is preserved.
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const wantId = params.get('space');
+            if (wantId && spacesState.spaces.some(s => s.id === wantId)) {
+                openSpaceDetail(wantId);
+                params.delete('space');
+                const qs = params.toString();
+                const url = window.location.pathname + (qs ? '?' + qs : '') + (window.location.hash || '');
+                window.history.replaceState({}, '', url);
+            }
+        } catch (e) { /* non-fatal */ }
     } catch (err) {
         document.getElementById('spaces-empty').textContent = "Couldn't load Spaces.";
         document.getElementById('spaces-empty').classList.remove('hidden');
@@ -2881,8 +2903,21 @@ function renderSelectedDay() {
 }
 
 // ========== INIT ==========
-loadBrief();
-loadSynthesis();
+// If we arrived via /canvas.html → /dashboard.html#spaces?space=<id>, jump
+// straight to the Spaces tab. The ?space= param is consumed in loadSpaces()
+// once the catalogue has loaded.
+(function applyDeepLink() {
+    try {
+        const hash = (window.location.hash || '').replace(/^#/, '');
+        const wantSpaces = hash === 'spaces' || new URLSearchParams(window.location.search).has('space');
+        if (wantSpaces) {
+            switchTab('spaces');
+            return;
+        }
+    } catch (e) { /* fall through */ }
+    loadBrief();
+    loadSynthesis();
+})();
 </script>
 </body>
 </html>

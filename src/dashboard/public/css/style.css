@@ -2065,6 +2065,34 @@ textarea.input {
   margin-bottom: var(--space-lg);
 }
 
+.spaces-masthead-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.spaces-canvas-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(80, 84, 181, 0.22);
+  background: rgba(80, 84, 181, 0.06);
+  color: #5054B5;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.spaces-canvas-link:hover {
+  background: #5054B5;
+  border-color: #5054B5;
+  color: #FFFFFF;
+}
+
 .spaces-chips {
   display: flex;
   flex-wrap: wrap;
