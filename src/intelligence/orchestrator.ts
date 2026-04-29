@@ -5,6 +5,7 @@ import type { ConversationMessage } from './claude';
 import { dispatch } from '../skills/router';
 import { type Visibility } from './context';
 import { processGroupMessageExtraction } from './extraction';
+import { normaliseJid } from '../channels/whatsapp';
 import { processVisualDocumentExtraction } from './vision';
 import { extractAndStoreFacts } from './autolearn';
 import { handleListCommand } from './listCommands';
@@ -326,14 +327,33 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
       return;
     }
 
-    // WhatsApp Group Observer — extract but don't reply
-    if (senderJid.endsWith('@g.us')) {
+    // Real-time observation path — fires extraction (stream cards, autolearn-driven
+    // Spaces) immediately rather than queueing for a batch worker that doesn't exist.
+    //
+    // Two channels reach this path:
+    //   1. Group chats (@g.us) — passive observation of messages the user sees
+    //      in family / friend group threads.
+    //   2. Self-chat (the user forwarding messages to their own "Message yourself"
+    //      thread) — primary curation surface. The user copies/forwards interesting
+    //      content here, expects Memu to extract and synthesise it. Detected by
+    //      remoteJid matching the bot's own JID after device-suffix normalisation
+    //      (`447xxx:17@s.whatsapp.net` → `447xxx@s.whatsapp.net`).
+    //
+    // Pre-2026-04-29: only `@g.us` was routed here. Self-chat fell through to
+    // the inbox_messages queue below — which has no batch processor, so self-chat
+    // ingestion was a silent no-op. Hareesh forwarded Rach's messages into self-chat
+    // for two weeks before we noticed nothing was happening with them.
+    const ownJidNormalised = normaliseJid(sock.user?.id);
+    const senderJidNormalised = normaliseJid(senderJid);
+    const isGroupChat = senderJid.endsWith('@g.us');
+    const isSelfChat = !!ownJidNormalised && senderJidNormalised === ownJidNormalised;
+    if (isGroupChat || isSelfChat) {
       await processGroupMessageExtraction(profileId, content, senderJid, msg.key?.id || 'unknown');
       return;
     }
 
-    // Phase 1: Omnivorous Batched Ingestion
-    // We log the raw message to the new inbox queue. The batched Chief of Staff engine will process it later.
+    // Phase 1: Omnivorous Batched Ingestion (legacy — only reached in MEMU_WHATSAPP_INGESTION=all mode).
+    // We log the raw message to the inbox queue. The batched Chief of Staff engine will process it later.
     const messageId = msg.key?.id || `msg-${Date.now()}`;
     await pool.query(
       `INSERT INTO inbox_messages (id, profile_id, channel, sender_jid, content, is_image) 

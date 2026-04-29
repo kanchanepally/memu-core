@@ -309,22 +309,46 @@ export default function TodayScreen() {
           accent={masthead.accent}
         />
 
-        {/* Hero: AI synthesis */}
+        {/* Hero: AI synthesis. The backend gates Sonnet behind a data-availability
+            check (briefing.ts isFullyEmpty), so `synthesis` arrives as null
+            when there is nothing meaningful to synthesise. We render an honest
+            empty-state in that case rather than a generic "all caught up"
+            platitude — when Memu has no calendar, no cards, and no inbox, the
+            truthful answer is "I don't know what to tell you yet." */}
         <View style={styles.heroSlot}>
-          <AIInsightCard
-            label="Memu Insight"
-            icon="sparkles"
-            title={synthesis || "You're all caught up for today."}
-            body={
-              error
-                ? "Can't reach your home server. Pull to retry."
+          {(() => {
+            const isFullyEmpty = !synthesis
+              && events.length === 0
+              && cards.length === 0
+              && shoppingCount === 0;
+
+            const title = synthesis
+              ? synthesis
+              : isFullyEmpty
+                ? "I don't have anything to brief you on yet."
+                : "You're all caught up for today.";
+
+            const body = error
+              ? "Can't reach your home server. Pull to retry."
+              : isFullyEmpty
+                ? !calendarConnected
+                  ? 'Connect your calendar, or tell me what’s happening this week — I’ll build from there.'
+                  : 'Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.'
                 : cards.length > 0
                   ? `${cards.length} item${cards.length === 1 ? '' : 's'} await your attention below.`
-                  : 'Your stream is quiet. Memu is listening in the background.'
-            }
-            ctaLabel={cards.length > 0 ? 'Review stream' : undefined}
-            onCta={cards.length > 0 ? undefined : undefined}
-          />
+                  : 'Your stream is quiet. Memu is listening in the background.';
+
+            return (
+              <AIInsightCard
+                label="Memu Insight"
+                icon="sparkles"
+                title={title}
+                body={body}
+                ctaLabel={cards.length > 0 ? 'Review stream' : undefined}
+                onCta={cards.length > 0 ? undefined : undefined}
+              />
+            );
+          })()}
         </View>
 
         {/* Calendar strip */}

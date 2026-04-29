@@ -337,6 +337,28 @@ export async function runBriefingNow(channel: 'app' | 'push' = 'app') {
   });
 }
 
+// Push notification diagnostics — surfaced in Settings → Notifications. Lets
+// the user verify whether their device has actually been registered for push
+// (until 2026-04-29 the registration path swallowed errors silently and zero
+// users had tokens, so morning briefings never delivered).
+export interface PushTokenSummary {
+  suffix: string;
+  platform: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+export async function getPushDiagnostics() {
+  return request<{ tokenCount: number; tokens: PushTokenSummary[] }>('/api/push/diagnose');
+}
+
+export async function sendTestPush() {
+  return request<{ success: boolean; attempted: number }>('/api/push/test', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 // Lists (shopping / task / custom)
 export type ListItemType = 'shopping' | 'task' | 'custom';
 export type ListItemStatus = 'pending' | 'done';

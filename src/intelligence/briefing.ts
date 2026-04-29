@@ -154,6 +154,34 @@ export async function runUnifiedBriefing(
       translateToAnonymous(domainHeaderRaw),
     ]);
 
+    // Empty-state gate. Memu's worst current pattern is generating confident
+    // platitudes from nothing — Sonnet asked "what's happening today?" against
+    // a fully empty context block returns "you have a quiet day, enjoy", which
+    // sounds like wisdom but is fabrication. Better to admit the gap than
+    // perform knowledge.
+    //
+    // Skip dispatch entirely when there is no inbox, no events, no active
+    // stream cards, and no amber/red domain signals. The cron path returns
+    // null (callers like pushMorningBriefingToMobile already handle null by
+    // not sending). The /api/dashboard/synthesis path also returns null;
+    // the mobile Today screen renders an honest empty-state fallback instead
+    // of a generated platitude.
+    //
+    // The 'whatsapp' channel keeps its old behaviour because that path is
+    // user-initiated (`/briefing` slash command); the user explicitly asked
+    // for a briefing and we respect that.
+    const hasInbox = messageIds.length > 0;
+    const hasEvents = inWindow.length > 0;
+    const hasCards = streamRes.rows.length > 0;
+    const hasDomainSignal = domainStates.some(d => d.health === 'amber' || d.health === 'red');
+    const isFullyEmpty = !hasInbox && !hasEvents && !hasCards && !hasDomainSignal;
+    if (isFullyEmpty && channel !== 'whatsapp') {
+      console.log(
+        `[BRIEFING] Empty-state — skipping LLM dispatch for ${profileId} (no inbox, calendar, cards, or domain signals).`,
+      );
+      return null;
+    }
+
     console.log(
       `[BRIEFING] Composing for ${profileId} — inbox=${messageIds.length} events=${inWindow.length} cards=${streamRes.rows.length} channel=${channel}`,
     );
@@ -259,10 +287,22 @@ export async function generateProactiveSynthesis(profileId: string): Promise<str
   return await runUnifiedBriefing(profileId, 'app');
 }
 
-export async function generateAndPushMorningBriefing(profileId: string) {
+/**
+ * Generate the briefing TEXT for app-channel delivery. Does NOT push anywhere
+ * — the caller decides what to do with the returned markdown (return as JSON
+ * to /api/briefing/run-now, persist as a stream card via runUnifiedBriefing's
+ * own logic, or display directly).
+ *
+ * Renamed from `generateAndPushMorningBriefing` 2026-04-29 — the old name
+ * implied delivery that the function never performed.
+ */
+export async function generateBriefingText(profileId: string): Promise<string | null> {
   console.log(`[BRIEFING ENGINE] Triggered for ${profileId}`);
   return await runUnifiedBriefing(profileId, 'app');
 }
+
+/** @deprecated Use generateBriefingText. Kept as a transitional alias. */
+export const generateAndPushMorningBriefing = generateBriefingText;
 
 // Mobile push delivery: same briefing, channel='push' so the skill knows it
 // is going to a notification body (light markdown allowed).

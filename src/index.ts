@@ -10,7 +10,8 @@ import { processIntelligencePipeline } from './intelligence/orchestrator';
 import { processChatVisionInput } from './intelligence/vision';
 import { processDocumentIngestion } from './intelligence/documentIngestion';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent, insertCalendarEvent } from './channels/calendar/google';
-import { generateAndPushMorningBriefing, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
+import { generateBriefingText, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
+import { getTokensForProfile, sendPush } from './channels/mobile';
 import { registerPushToken } from './channels/mobile';
 import { requireAuth, registerProfile } from './auth';
 import { verifyGoogleIdToken, signInWithGoogle, GoogleSignInRejected } from './channels/auth/google-signin';
@@ -814,15 +815,102 @@ server.delete('/api/auth/google', async (request, reply) => {
   }
 });
 
-// Synthesis Endpoint for App Landing Page
+// Synthesis Endpoint for App Landing Page.
+//
+// The mobile Today screen calls this on every focus event (tab switch, app
+// foreground, navigate-back). Without caching, each focus fired a fresh
+// Sonnet call against calendar+inbox+cards data that hadn't changed since
+// the previous call — observed 5–10 calls/day per user at ~£0.018 each on
+// 2026-04-27, scaling linearly with users.
+//
+// Cache is per-profile, in-memory, 15 minute TTL. Bust on demand via
+// invalidateSynthesisCache() — called from any endpoint that mutates the
+// underlying inputs (stream cards, calendar, inbox).
+const SYNTHESIS_CACHE_TTL_MS = 15 * 60 * 1000;
+const synthesisCache = new Map<string, { value: string | null; cachedAt: number }>();
+
+function invalidateSynthesisCache(profileId: string): void {
+  synthesisCache.delete(profileId);
+}
+
 server.get('/api/dashboard/synthesis', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
+
+    const cached = synthesisCache.get(profileId);
+    if (cached && Date.now() - cached.cachedAt < SYNTHESIS_CACHE_TTL_MS) {
+      return { synthesis: cached.value, cached: true };
+    }
+
     const synthesis = await generateProactiveSynthesis(profileId);
-    return { synthesis };
+    synthesisCache.set(profileId, { value: synthesis, cachedAt: Date.now() });
+    return { synthesis, cached: false };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to generate synthesis' });
+  }
+});
+
+// Push notification diagnostics — exposes registration state to the mobile
+// Settings screen so users can see whether push has actually been wired up.
+//
+// Until 2026-04-29 the mobile registration path silently swallowed errors
+// (`.catch(() => {})` on the POST to /api/push/register), and the result
+// was: zero rows in push_tokens for any user, ever, including the dev's
+// primary device. The morning briefing — Memu's primary "sticky" feature —
+// has never been delivered as a push notification to anyone.
+//
+// This endpoint exposes token state. The companion /api/push/test endpoint
+// fires a real push to the caller's tokens so the user can confirm
+// end-to-end delivery from inside the app.
+server.get('/api/push/diagnose', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const res = await pool.query<{ token: string; platform: string | null; created_at: Date; last_seen_at: Date }>(
+      `SELECT token, platform, created_at, last_seen_at
+         FROM push_tokens
+        WHERE profile_id = $1
+        ORDER BY last_seen_at DESC`,
+      [profileId],
+    );
+    return {
+      tokenCount: res.rows.length,
+      tokens: res.rows.map(r => ({
+        // Only the last 8 chars of the token — enough to disambiguate devices,
+        // not enough to spoof a push from elsewhere.
+        suffix: r.token.slice(-8),
+        platform: r.platform,
+        createdAt: r.created_at,
+        lastSeenAt: r.last_seen_at,
+      })),
+    };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Diagnose failed' });
+  }
+});
+
+server.post('/api/push/test', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const tokens = await getTokensForProfile(profileId);
+    if (tokens.length === 0) {
+      return reply.code(409).send({
+        error: 'No push tokens registered for this profile',
+        hint: 'Open the app on a device with notifications enabled, then retry.',
+      });
+    }
+    await sendPush(tokens, {
+      title: 'Memu push is working',
+      body: 'You’ll get your morning briefing here at 07:00.',
+      data: { kind: 'push_test' },
+    });
+    return { success: true, attempted: tokens.length };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Test push failed' });
   }
 });
 
@@ -1697,7 +1785,7 @@ server.get('/api/admin/trigger-briefing', async (request, reply) => {
        }
        profileId = res.rows[0].id;
     }
-    const message = await generateAndPushMorningBriefing(profileId);
+    const message = await generateBriefingText(profileId);
     return { success: true, messagePushed: message };
   } catch (err: any) {
     server.log.error(err);
@@ -1724,7 +1812,7 @@ server.post('/api/briefing/run-now', async (request, reply) => {
       const briefing = await pushMorningBriefingToMobile(profileId);
       return { success: true, briefing, channel: 'push' };
     }
-    const briefing = await generateAndPushMorningBriefing(profileId);
+    const briefing = await generateBriefingText(profileId);
     return { success: true, briefing, channel: 'app' };
   } catch (err: any) {
     server.log.error(err);
@@ -2139,12 +2227,13 @@ const start = async () => {
     server.log.info(`PWA running at http://localhost:3100`);
 
     // Schedule morning briefings at 07:00 Europe/London every day.
-    // Mobile push is the primary delivery. WhatsApp is a legacy fallback for
-    // profiles that still have a linked channel.
+    // Mobile push is the only delivery channel. The previous "WhatsApp legacy
+    // fallback" branch called generateAndPushMorningBriefing — which generated
+    // text but never pushed anywhere — so it burned a Sonnet call per profile
+    // with no user-visible delivery. Removed 2026-04-29.
     cron.schedule('0 7 * * *', async () => {
       server.log.info('Running daily morning briefings...');
 
-      // Mobile push path: any adult/admin with a registered Expo token.
       const pushRes = await pool.query(`
         SELECT DISTINCT p.id, p.display_name
         FROM profiles p
@@ -2160,25 +2249,8 @@ const start = async () => {
         }
       }
 
-      // Legacy WhatsApp path.
-      const waRes = await pool.query(`
-        SELECT p.id, p.display_name
-        FROM profiles p
-        INNER JOIN profile_channels pc
-          ON pc.profile_id = p.id AND pc.channel = 'whatsapp'
-        WHERE p.role IN ('adult', 'admin')
-      `);
-      for (const row of waRes.rows) {
-        try {
-          server.log.info(`Pushing WhatsApp briefing to ${row.display_name} (${row.id})`);
-          await generateAndPushMorningBriefing(row.id);
-        } catch (err) {
-          server.log.error({ err, profileId: row.id }, 'WhatsApp briefing failed');
-        }
-      }
-
-      if (pushRes.rows.length === 0 && waRes.rows.length === 0) {
-        server.log.warn('No recipients registered for briefings — skipping');
+      if (pushRes.rows.length === 0) {
+        server.log.warn('No push-registered recipients — morning briefing skipped. (Open the mobile app on a device with notifications enabled to register a push token.)');
       }
     }, { timezone: 'Europe/London' });
 

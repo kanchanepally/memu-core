@@ -13,8 +13,10 @@ import {
   updateProfile, clearChatHistory, exportData, getGoogleAuthUrl,
   getBYOKStatus, setBYOKKey, revokeBYOKKey, toggleBYOKKey,
   runBriefingNow,
-  type BYOKKeyStatus,
+  getPushDiagnostics, sendTestPush,
+  type BYOKKeyStatus, type PushTokenSummary,
 } from '../../lib/api';
+import { registerForPushNotifications, type PushRegistrationResult } from '../../lib/push';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
@@ -97,16 +99,23 @@ export default function SettingsScreen() {
   const [byokInput, setByokInput] = useState('');
   const [byokSaving, setByokSaving] = useState(false);
 
+  // Push notification diagnostic state.
+  const [pushTokens, setPushTokens] = useState<PushTokenSummary[]>([]);
+  const [pushModal, setPushModal] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushLastResult, setPushLastResult] = useState<PushRegistrationResult | null>(null);
+
   const refresh = useCallback(async () => {
-    const [authState, loadedPrefs, byok, brief] = await Promise.all([
+    const [authState, loadedPrefs, byok, brief, push] = await Promise.all([
       loadAuthState(),
       loadPrefs(),
       getBYOKStatus(),
       import('../../lib/api').then(m => m.getTodayBrief()),
+      getPushDiagnostics(),
     ]);
     setAuth({ serverUrl: authState.serverUrl, displayName: authState.displayName });
     setPrefs(loadedPrefs);
-    
+
     if (byok.data) {
       setByokIsChild(!!byok.data.reason);
       const anthropic = byok.data.keys.find(k => k.provider === 'anthropic');
@@ -115,6 +124,10 @@ export default function SettingsScreen() {
 
     if (brief.data) {
       setIsCalendarConnected(brief.data.isCalendarConnected);
+    }
+
+    if (push.data) {
+      setPushTokens(push.data.tokens);
     }
   }, []);
 
@@ -164,6 +177,44 @@ export default function SettingsScreen() {
       return;
     }
     toast.show('Test briefing sent — check your notifications');
+  };
+
+  // Push diagnostic — re-runs registration and surfaces the actual reason
+  // for any failure. Until 2026-04-29 this path silently swallowed every
+  // error and the user had no way to know push was broken.
+  const handleRetryPushRegistration = async () => {
+    setPushBusy(true);
+    const result = await registerForPushNotifications();
+    setPushLastResult(result);
+    if (result.ok) {
+      const { data } = await getPushDiagnostics();
+      if (data) setPushTokens(data.tokens);
+      toast.show('Push registered — try the test notification');
+    } else if (result.reason === 'permission_denied') {
+      // Can't re-prompt once permanently denied — point them at OS settings.
+      Alert.alert(
+        'Notifications disabled',
+        'Memu can only send push notifications if you enable them for the app in your device Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+    } else {
+      toast.show(`Could not register: ${result.reason}`, 'error');
+    }
+    setPushBusy(false);
+  };
+
+  const handleSendTestNotification = async () => {
+    setPushBusy(true);
+    const { data, error } = await sendTestPush();
+    setPushBusy(false);
+    if (error) {
+      toast.show(error.length > 80 ? 'Could not send test' : error, 'error');
+      return;
+    }
+    toast.show(`Test sent to ${data?.attempted ?? 0} device${data?.attempted === 1 ? '' : 's'}`);
   };
 
   const handleSaveBriefing = async (enabled: boolean, time: string) => {
@@ -387,6 +438,17 @@ export default function SettingsScreen() {
             title="Morning briefing"
             subtitle={prefs.briefingEnabled ? `${prefs.briefingTime} · every day` : 'Off'}
             onPress={openBriefingEditor}
+          />
+          <Row
+            icon="notifications-outline"
+            title="Notifications"
+            subtitle={
+              pushTokens.length === 0
+                ? 'Not registered — tap to set up'
+                : `Registered on ${pushTokens.length} device${pushTokens.length === 1 ? '' : 's'}`
+            }
+            onPress={() => setPushModal(true)}
+            destructive={pushTokens.length === 0}
           />
         </View>
 
@@ -639,6 +701,73 @@ export default function SettingsScreen() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Notifications diagnostic modal */}
+      <Modal visible={pushModal} animationType="slide" transparent onRequestClose={() => setPushModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Notifications</Text>
+            <Text style={styles.modalHint}>
+              Memu sends a push notification at your morning briefing time, plus reminders for things you ask it to remember.
+              Push only works once this device is registered with the server.
+            </Text>
+
+            <Text style={styles.modalLabel}>Status</Text>
+            {pushTokens.length === 0 ? (
+              <View style={styles.byokCurrent}>
+                <Ionicons name="alert-circle-outline" size={18} color={colors.error} />
+                <Text style={[styles.byokHint, { letterSpacing: 0 }]}>Not registered on this server</Text>
+              </View>
+            ) : (
+              <View style={{ gap: spacing.sm }}>
+                {pushTokens.map((t) => (
+                  <View key={t.suffix} style={styles.byokCurrent}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.byokHint, { letterSpacing: 0 }]}>
+                        {t.platform || 'device'} · …{t.suffix}
+                      </Text>
+                      <Text style={styles.testHint}>
+                        Last seen {new Date(t.lastSeenAt).toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {pushLastResult && !pushLastResult.ok ? (
+              <Text style={[styles.testHint, { marginTop: spacing.md, color: colors.error }]}>
+                Last attempt: {pushLastResult.reason}{pushLastResult.detail ? ` — ${pushLastResult.detail}` : ''}
+              </Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <GradientButton
+                label="Re-register this device"
+                variant="ghost"
+                loading={pushBusy}
+                onPress={handleRetryPushRegistration}
+              />
+              <GradientButton
+                label="Send test"
+                loading={pushBusy}
+                onPress={handleSendTestNotification}
+                disabled={pushTokens.length === 0}
+              />
+            </View>
+
+            <View style={[styles.modalActions, { marginTop: 0 }]}>
+              <GradientButton
+                label="Close"
+                variant="ghost"
+                onPress={() => setPushModal(false)}
+              />
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Briefing modal */}

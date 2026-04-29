@@ -292,7 +292,11 @@ CREATE TABLE stream_cards (
   title TEXT NOT NULL,
   body TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN (
-    'whatsapp_group', 'calendar', 'email', 'document', 'manual', 'proactive'
+    'whatsapp_group', 'whatsapp_dm',
+    'calendar', 'email', 'document',
+    'manual', 'proactive',
+    'mobile', 'pwa',
+    'briefing'
   )),
   source_message_id TEXT,          -- links to the original context_entry
   actions JSONB DEFAULT '[]',      -- [{"label": "Reschedule", "type": "action_id"}, ...]
