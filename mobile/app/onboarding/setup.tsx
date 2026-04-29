@@ -109,7 +109,7 @@ export default function SetupScreen() {
     });
 
     // Navigate to channels setup
-    router.replace('/onboarding/channels');
+    router.replace('/onboarding/people');
   };
 
   const handleGoogleSignIn = async () => {
@@ -139,7 +139,7 @@ export default function SetupScreen() {
         displayName: data.displayName,
       });
       setGoogleLoading(false);
-      router.replace('/onboarding/channels');
+      router.replace('/onboarding/people');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Google sign-in failed');
       setGoogleLoading(false);

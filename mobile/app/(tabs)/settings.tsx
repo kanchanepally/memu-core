@@ -14,7 +14,9 @@ import {
   getBYOKStatus, setBYOKKey, revokeBYOKKey, toggleBYOKKey,
   runBriefingNow,
   getPushDiagnostics, sendTestPush,
+  getOnboardingState,
   type BYOKKeyStatus, type PushTokenSummary,
+  type OnboardingStep, type OnboardingState,
 } from '../../lib/api';
 import { registerForPushNotifications, type PushRegistrationResult } from '../../lib/push';
 import ScreenHeader from '../../components/ScreenHeader';
@@ -66,6 +68,10 @@ const AI_MODE_LABELS: Record<AIMode, { label: string; subtitle: string }> = {
   off: { label: 'Off', subtitle: 'Stays silent until you ask' },
 };
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export default function SettingsScreen() {
   const router = useRouter();
   const [auth, setAuth] = useState<{ serverUrl: string | null; displayName: string | null }>({
@@ -105,13 +111,19 @@ export default function SettingsScreen() {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushLastResult, setPushLastResult] = useState<PushRegistrationResult | null>(null);
 
+  // Onboarding state for the Setup section.
+  const [onboardingState, setOnboardingState] = useState<OnboardingState | null>(null);
+  const [onboardingNext, setOnboardingNext] = useState<OnboardingStep | null>(null);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+
   const refresh = useCallback(async () => {
-    const [authState, loadedPrefs, byok, brief, push] = await Promise.all([
+    const [authState, loadedPrefs, byok, brief, push, onboarding] = await Promise.all([
       loadAuthState(),
       loadPrefs(),
       getBYOKStatus(),
       import('../../lib/api').then(m => m.getTodayBrief()),
       getPushDiagnostics(),
+      getOnboardingState(),
     ]);
     setAuth({ serverUrl: authState.serverUrl, displayName: authState.displayName });
     setPrefs(loadedPrefs);
@@ -128,6 +140,12 @@ export default function SettingsScreen() {
 
     if (push.data) {
       setPushTokens(push.data.tokens);
+    }
+
+    if (onboarding.data) {
+      setOnboardingState(onboarding.data.state);
+      setOnboardingNext(onboarding.data.nextStep);
+      setOnboardingComplete(onboarding.data.complete);
     }
   }, []);
 
@@ -403,6 +421,52 @@ export default function SettingsScreen() {
             subtitle="How Memu addresses you"
             onPress={openNameEditor}
           />
+        </View>
+
+        {/* Setup — onboarding state. Visible whether complete or in-progress
+            so the user can revisit any answer at any time. */}
+        <Text style={styles.sectionLabel}>Setup</Text>
+        <View style={styles.section}>
+          <Row
+            icon="sparkles-outline"
+            title={onboardingComplete ? 'Onboarding complete' : 'Resume onboarding'}
+            subtitle={(() => {
+              if (!onboardingState) return 'Loading…';
+              if (onboardingComplete) return 'Tap any step below to revisit';
+              const total = 5;
+              let done = 0;
+              (['people', 'rhythm', 'focus', 'preview', 'channels'] as OnboardingStep[]).forEach(s => {
+                if (onboardingState[s] !== 'pending') done += 1;
+              });
+              return `${done} of ${total} steps done — next: ${onboardingNext ?? 'preview'}`;
+            })()}
+            onPress={() => {
+              const target = onboardingNext ?? 'people';
+              router.push(`/onboarding/${target}` as any);
+            }}
+          />
+          {onboardingState ? (
+            <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 6 }}>
+              {(['people', 'rhythm', 'focus', 'preview', 'channels'] as OnboardingStep[]).map(s => {
+                const status = onboardingState[s];
+                const tone = status === 'answered' ? colors.success : status === 'skipped' ? colors.textMuted : colors.outline;
+                const label = status === 'answered' ? 'Saved' : status === 'skipped' ? 'Skipped' : 'Not yet';
+                return (
+                  <Pressable
+                    key={s}
+                    style={styles.setupSubRow}
+                    onPress={() => router.push(`/onboarding/${s}` as any)}
+                  >
+                    <Text style={styles.setupSubRowLabel}>{capitalize(s)}</Text>
+                    <View style={styles.setupSubRowRight}>
+                      <Text style={[styles.setupSubRowStatus, { color: tone }]}>{label}</Text>
+                      <Ionicons name="chevron-forward" size={12} color={colors.outline} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
 
         {/* Connection */}
@@ -880,6 +944,28 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     marginTop: 2,
     lineHeight: 16,
+  },
+
+  setupSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+  },
+  setupSubRowLabel: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+  },
+  setupSubRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  setupSubRowStatus: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.bodyMedium,
   },
 
   footer: {

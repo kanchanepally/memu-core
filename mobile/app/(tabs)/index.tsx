@@ -11,7 +11,9 @@ import {
   getTodayBrief, getSynthesis, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
   executeAddToListAction, executeAddCalendarEventAction, executeUpdateSpaceAction, ackReplyDraftAction,
   completeCareStandard,
+  getOnboardingState,
   type BriefEvent, type StreamCard as StreamCardData, type StreamCardAction,
+  type OnboardingStep,
 } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { loadAuthState } from '../../lib/auth';
@@ -74,6 +76,28 @@ export default function TodayScreen() {
 
   const masthead = useMasthead(displayName);
 
+  // Onboarding resume banner — shows when the user has not finished the
+  // conversational seed flow. Tapping it sends them back to the next
+  // pending step. They can keep using the app and the banner just sits.
+  const [onboardingNextStep, setOnboardingNextStep] = useState<OnboardingStep | null>(null);
+  const [onboardingProgress, setOnboardingProgress] = useState({ done: 0, total: 5 });
+
+  const loadOnboardingBanner = useCallback(async () => {
+    const { data } = await getOnboardingState();
+    if (!data) return;
+    if (data.complete) {
+      setOnboardingNextStep(null);
+      return;
+    }
+    setOnboardingNextStep(data.nextStep);
+    const total = data.stepOrder.length;
+    let done = 0;
+    for (const step of data.stepOrder) {
+      if (data.state[step] !== 'pending') done += 1;
+    }
+    setOnboardingProgress({ done, total });
+  }, []);
+
   const loadBrief = useCallback(async () => {
     const { data, error: err } = await getTodayBrief();
     if (err) {
@@ -98,16 +122,18 @@ export default function TodayScreen() {
     useCallback(() => {
       loadBrief();
       loadSynthesis();
-    }, [loadBrief, loadSynthesis])
+      loadOnboardingBanner();
+    }, [loadBrief, loadSynthesis, loadOnboardingBanner])
   );
 
   useEffect(() => {
     loadBrief();
     loadSynthesis();
+    loadOnboardingBanner();
     loadAuthState().then(auth => {
       if (auth.displayName) setDisplayName(auth.displayName);
     });
-  }, [loadBrief, loadSynthesis]);
+  }, [loadBrief, loadSynthesis, loadOnboardingBanner]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -308,6 +334,27 @@ export default function TodayScreen() {
           headline={masthead.headline}
           accent={masthead.accent}
         />
+
+        {/* Onboarding resume banner — shows when the conversational seed
+            flow isn't complete. Stays out of the way (above the hero card,
+            below the masthead) so it nudges without dominating. */}
+        {onboardingNextStep ? (
+          <Pressable
+            style={styles.onboardingBanner}
+            onPress={() => router.push(`/onboarding/${onboardingNextStep}` as any)}
+          >
+            <View style={styles.onboardingBannerIcon}>
+              <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
+            </View>
+            <View style={styles.onboardingBannerText}>
+              <Text style={styles.onboardingBannerTitle}>Pick up where we left off</Text>
+              <Text style={styles.onboardingBannerSub}>
+                {onboardingProgress.done} of {onboardingProgress.total} done — next: {onboardingNextStep}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.outline} />
+          </Pressable>
+        ) : null}
 
         {/* Hero: AI synthesis. The backend gates Sonnet behind a data-availability
             check (briefing.ts isFullyEmpty), so `synthesis` arrives as null
@@ -537,6 +584,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginTop: spacing.xl,
     marginBottom: spacing.xl,
+  },
+
+  onboardingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    ...shadows.low,
+  },
+  onboardingBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  onboardingBannerText: { flex: 1 },
+  onboardingBannerTitle: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+  },
+  onboardingBannerSub: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+    textTransform: 'capitalize',
   },
 
   section: {

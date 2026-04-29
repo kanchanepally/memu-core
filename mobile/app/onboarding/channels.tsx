@@ -1,59 +1,94 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Linking, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, radius, typography } from '../../lib/tokens';
-import { getGoogleAuthUrl } from '../../lib/api';
+import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import {
+  getGoogleAuthUrl, completeOnboarding, getTodayBrief,
+} from '../../lib/api';
+import GradientButton from '../../components/GradientButton';
+import MemuBubble from '../../components/MemuBubble';
 
-export default function ChannelsScreen() {
+/**
+ * Channels — the final onboarding step. Just Google Calendar OAuth.
+ *
+ * Refactored 2026-04-29:
+ *   - Removed the "WhatsApp Forwarding (Soon)" and "Documents (Soon)"
+ *     placeholders. Both are now real features (WhatsApp self-chat
+ *     ingestion + document upload via Spaces). The "Soon" treatment
+ *     was misleading users into thinking the product had less than
+ *     it does.
+ *   - Calls completeOnboarding() on Continue or Skip so the Today
+ *     banner clears and the flow's `completedAt` lands.
+ */
+export default function ChannelsStep() {
   const router = useRouter();
   const [calendarConnecting, setCalendarConnecting] = useState(false);
-  const [calendarDone, setCalendarDone] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  // Re-check calendar state on focus — the OAuth round-trip happens in
+  // the system browser, so when the user comes back we want to reflect
+  // the new state without making them tap a refresh button.
+  useEffect(() => {
+    (async () => {
+      const { data } = await getTodayBrief();
+      if (data?.isCalendarConnected) setCalendarConnected(true);
+    })();
+  }, []);
 
   const handleConnectCalendar = useCallback(async () => {
     setCalendarConnecting(true);
-    const { data, error } = await getGoogleAuthUrl();
+    const { data } = await getGoogleAuthUrl('mobile');
     setCalendarConnecting(false);
-
     if (data?.url) {
       await Linking.openURL(data.url);
-      // Optimistically mark as done — user completes OAuth in browser
-      setCalendarDone(true);
+      // Optimistic — actual confirmation arrives via the brief poll above.
+      setCalendarConnected(true);
     }
   }, []);
 
-  const handleFinish = () => {
-    // Navigate to the main app — replace so there's no back to onboarding
+  const handleFinish = useCallback(async () => {
+    setCompleting(true);
+    await completeOnboarding();
+    setCompleting(false);
     router.replace('/(tabs)');
-  };
+  }, [router]);
 
   return (
     <View style={styles.container}>
-      {/* Progress */}
+      {/* Progress — full bar */}
       <View style={styles.progress}>
-        <View style={[styles.dot, styles.dotActive]} />
-        <View style={[styles.dot, styles.dotActive]} />
-        <View style={[styles.dot, styles.dotActive]} />
+        {[1, 2, 3, 4, 5].map(i => (
+          <View
+            key={i}
+            style={[styles.dot, styles.dotActive, i === 5 && styles.dotCurrent]}
+          />
+        ))}
       </View>
 
-      <Text style={styles.heading}>Connect your channels</Text>
-      <Text style={styles.subheading}>
-        These are optional. You can always connect them later in Settings.
-      </Text>
+      <MemuBubble
+        text="Last thing — want to plug in your Google Calendar? Optional, but it makes the morning briefing a lot more useful."
+        helper="The OAuth happens in your browser. I only see the events on this calendar — and only on this device."
+      />
 
-      {/* Google Calendar */}
+      {/* Calendar card */}
       <View style={styles.channelCard}>
         <View style={styles.channelIcon}>
-          <Ionicons name="calendar-outline" size={24} color={colors.accent} />
+          <Ionicons name="calendar-outline" size={22} color={colors.primary} />
         </View>
         <View style={styles.channelInfo}>
           <Text style={styles.channelTitle}>Google Calendar</Text>
           <Text style={styles.channelBody}>
-            See your schedule in the Today view. Memu can spot conflicts and suggest times.
+            Today's events on the home screen, conflict detection in the morning brief,
+            and one-tap "add to calendar" actions in chat.
           </Text>
         </View>
-        {calendarDone ? (
-          <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+        {calendarConnected ? (
+          <View style={styles.connectedChip}>
+            <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+            <Text style={styles.connectedChipText}>Linked</Text>
+          </View>
         ) : (
           <Pressable
             style={[styles.connectButton, calendarConnecting && { opacity: 0.6 }]}
@@ -61,7 +96,7 @@ export default function ChannelsScreen() {
             disabled={calendarConnecting}
           >
             {calendarConnecting ? (
-              <ActivityIndicator size="small" color={colors.accent} />
+              <ActivityIndicator size="small" color={colors.primary} />
             ) : (
               <Text style={styles.connectButtonText}>Connect</Text>
             )}
@@ -69,47 +104,19 @@ export default function ChannelsScreen() {
         )}
       </View>
 
-      {/* WhatsApp Forwarding — info only for now */}
-      <View style={styles.channelCard}>
-        <View style={styles.channelIcon}>
-          <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-        </View>
-        <View style={styles.channelInfo}>
-          <Text style={styles.channelTitle}>WhatsApp Forwarding</Text>
-          <Text style={styles.channelBody}>
-            Forward messages to Memu to build your family context. Coming soon — we'll email you when it's ready.
-          </Text>
-        </View>
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonText}>Soon</Text>
-        </View>
-      </View>
-
-      {/* Document Upload — info only */}
-      <View style={styles.channelCard}>
-        <View style={styles.channelIcon}>
-          <Ionicons name="document-text-outline" size={24} color={colors.sourceDocument} />
-        </View>
-        <View style={styles.channelInfo}>
-          <Text style={styles.channelTitle}>Documents</Text>
-          <Text style={styles.channelBody}>
-            Share school letters, appointment letters, or any document. Memu extracts the actions.
-          </Text>
-        </View>
-        <View style={styles.comingSoon}>
-          <Text style={styles.comingSoonText}>Soon</Text>
-        </View>
-      </View>
+      <Text style={styles.footnote}>
+        Other ways to feed Memu — WhatsApp self-chat forwarding, photo uploads, document
+        drops — work straight away. No setup needed.
+      </Text>
 
       <View style={styles.bottom}>
-        <Pressable style={styles.primaryButton} onPress={handleFinish}>
-          <Text style={styles.primaryButtonText}>Start using Memu</Text>
-          <Ionicons name="arrow-forward" size={18} color="#fff" />
-        </Pressable>
-
-        <Pressable style={styles.skipLink} onPress={handleFinish}>
-          <Text style={styles.skipLinkText}>Skip for now</Text>
-        </Pressable>
+        <GradientButton
+          label={completing ? 'Finishing…' : calendarConnected ? 'Open Today' : 'Continue without calendar'}
+          icon="arrow-forward"
+          onPress={handleFinish}
+          loading={completing}
+          full
+        />
       </View>
     </View>
   );
@@ -118,7 +125,7 @@ export default function ChannelsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.surface,
     padding: spacing.lg,
     paddingTop: spacing['2xl'],
   },
@@ -129,114 +136,76 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.xl,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
-  },
-  dotActive: {
-    backgroundColor: colors.accent,
-    width: 24,
-    borderRadius: 4,
-  },
-
-  heading: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  subheading: {
-    fontSize: typography.sizes.body,
-    color: colors.textSecondary,
-    lineHeight: 22,
-    marginBottom: spacing.lg,
-  },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.surfaceContainerHigh },
+  dotActive: { backgroundColor: colors.primaryFixedDim },
+  dotCurrent: { backgroundColor: colors.primary, width: 24, borderRadius: 4 },
 
   channelCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    ...shadows.low,
   },
   channelIcon: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: radius.md,
-    backgroundColor: colors.accentLight,
+    backgroundColor: colors.primaryContainer,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  channelInfo: {
-    flex: 1,
-  },
+  channelInfo: { flex: 1 },
   channelTitle: {
     fontSize: typography.sizes.body,
-    fontWeight: typography.weights.semibold,
-    color: colors.text,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
     marginBottom: 2,
   },
   channelBody: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
     lineHeight: 18,
   },
   connectButton: {
-    paddingVertical: spacing.sm,
+    paddingVertical: 8,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.primary,
   },
   connectButtonText: {
-    fontSize: typography.sizes.sm,
-    color: colors.accent,
-    fontWeight: typography.weights.semibold,
+    fontSize: typography.sizes.xs,
+    color: colors.primary,
+    fontFamily: typography.families.bodyMedium,
   },
-  comingSoon: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bg,
+  connectedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  comingSoonText: {
+  connectedChipText: {
+    fontSize: typography.sizes.xs,
+    color: colors.success,
+    fontFamily: typography.families.bodyMedium,
+  },
+
+  footnote: {
     fontSize: typography.sizes.xs,
     color: colors.textMuted,
-    fontWeight: typography.weights.medium,
+    fontFamily: typography.families.body,
+    fontStyle: 'italic',
+    lineHeight: 18,
+    marginBottom: spacing.xl,
   },
 
   bottom: {
     flex: 1,
     justifyContent: 'flex-end',
     paddingBottom: spacing.xl,
-  },
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    paddingVertical: 16,
-    paddingHorizontal: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: typography.sizes.body,
-    fontWeight: typography.weights.semibold,
-  },
-  skipLink: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  skipLinkText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textMuted,
   },
 });

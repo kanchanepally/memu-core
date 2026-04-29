@@ -12,6 +12,12 @@ import { processDocumentIngestion } from './intelligence/documentIngestion';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent, insertCalendarEvent } from './channels/calendar/google';
 import { generateBriefingText, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
 import { getTokensForProfile, sendPush } from './channels/mobile';
+import {
+  getOnboardingState, recordStep, markComplete,
+  type OnboardingStep, ONBOARDING_STEP_ORDER, nextPendingStep, isComplete,
+} from './onboarding/state';
+import { copyForStep, buildAcknowledgement } from './onboarding/prompts';
+import { processOnboardingAnswer } from './intelligence/onboarding';
 import { registerPushToken } from './channels/mobile';
 import { requireAuth, registerProfile } from './auth';
 import { verifyGoogleIdToken, signInWithGoogle, GoogleSignInRejected } from './channels/auth/google-signin';
@@ -888,6 +894,129 @@ server.get('/api/push/diagnose', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Diagnose failed' });
+  }
+});
+
+// Onboarding — conversational seed-context flow.
+//
+// The mobile app's onboarding screens (welcome → setup → people → rhythm →
+// focus → preview → channels) ask three free-form questions whose answers
+// flow through `processOnboardingAnswer` to create person / routine /
+// commitment Spaces and embedding-recall rows. State is per-profile;
+// closing the app mid-flow returns the user to the next pending step.
+//
+// Each endpoint here is "soft idempotent" — re-answering a step overwrites
+// the prior answer for that step (latest wins). The state machine never
+// regresses: an answered step stays answered until the user explicitly
+// re-runs the flow from Settings.
+server.get('/api/onboarding/state', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const state = await getOnboardingState(profileId);
+    const next = nextPendingStep(state);
+    return {
+      state,
+      nextStep: next,
+      complete: isComplete(state),
+      stepOrder: ONBOARDING_STEP_ORDER,
+      // The personalised prompt copy for the next step, ready to render.
+      // Returning it here means the mobile screen doesn't need to import
+      // the prompt module — single source of truth on the server.
+      copy: next ? copyForStep(next, state) : null,
+    };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load onboarding state' });
+  }
+});
+
+server.post('/api/onboarding/answer', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const body = (request.body || {}) as { step?: string; answer?: string };
+    const step = body.step as OnboardingStep | undefined;
+    const answer = (body.answer || '').trim();
+
+    if (!step || !ONBOARDING_STEP_ORDER.includes(step)) {
+      return reply.code(400).send({ error: 'Invalid step' });
+    }
+    if (!answer) {
+      return reply.code(400).send({ error: 'Answer is required (use /skip to skip)' });
+    }
+    // Preview + channels don't take a free-form answer through this path.
+    // Preview = "I'm ready to be briefed" (mark answered with a sentinel).
+    // Channels = OAuth happens elsewhere; mobile calls /skip or /complete.
+    if (step === 'preview' || step === 'channels') {
+      const updated = await recordStep(profileId, step, { status: 'answered', answer });
+      return {
+        state: updated,
+        acknowledgement: 'Got it.',
+        learnedNames: [],
+        observationCount: 0,
+        spacesAffected: [],
+      };
+    }
+
+    const result = await processOnboardingAnswer(profileId, step, answer);
+
+    // Persist the answer text + status. The status is 'answered' even when
+    // observationCount is 0 — the user did engage; they just didn't say
+    // something autolearn could structure. The acknowledgement reflects
+    // that honestly via buildAcknowledgement's empty-result branch.
+    const updated = await recordStep(profileId, step, { status: 'answered', answer });
+
+    // Bust the synthesis cache so the Today tab regenerates against the
+    // newly-seeded context the next time it loads.
+    invalidateSynthesisCache(profileId);
+
+    const acknowledgement = buildAcknowledgement({
+      step,
+      learnedNames: result.learnedNames,
+      observationCount: result.observationCount,
+    });
+
+    return {
+      state: updated,
+      acknowledgement,
+      learnedNames: result.learnedNames,
+      observationCount: result.observationCount,
+      spacesAffected: result.spacesAffected,
+    };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to process onboarding answer' });
+  }
+});
+
+server.post('/api/onboarding/skip', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const body = (request.body || {}) as { step?: string };
+    const step = body.step as OnboardingStep | undefined;
+    if (!step || !ONBOARDING_STEP_ORDER.includes(step)) {
+      return reply.code(400).send({ error: 'Invalid step' });
+    }
+    const updated = await recordStep(profileId, step, { status: 'skipped' });
+    return { state: updated };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to skip onboarding step' });
+  }
+});
+
+server.post('/api/onboarding/complete', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const updated = await markComplete(profileId);
+    invalidateSynthesisCache(profileId);
+    return { state: updated };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to mark onboarding complete' });
   }
 });
 

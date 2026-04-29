@@ -1,0 +1,23 @@
+-- 021_onboarding_state.sql
+--
+-- Track per-profile onboarding progress. The conversational onboarding flow
+-- (people → rhythm → focus → preview → channels) persists each answer
+-- immediately so closing the app mid-flow returns the user to the same step.
+-- A profile's `onboarding_state` is shaped:
+--   {
+--     "people":  "pending" | "answered" | "skipped",
+--     "rhythm":  "pending" | "answered" | "skipped",
+--     "focus":   "pending" | "answered" | "skipped",
+--     "preview": "pending" | "answered" | "skipped",
+--     "channels":"pending" | "answered" | "skipped",
+--     "completedAt": ISO timestamp | null,
+--     "answers": {                       -- raw text the user typed, for revisit/edit
+--       "people":  "Rach (wife) and Robin (7yo)",
+--       "rhythm":  "...",
+--       "focus":   "..."
+--     }
+--   }
+--
+-- Empty `{}` means a fresh profile that hasn't started — treated as if every
+-- step were "pending". Backend code defaults missing keys.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS onboarding_state JSONB DEFAULT '{}'::jsonb NOT NULL;

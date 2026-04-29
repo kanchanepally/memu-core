@@ -359,6 +359,73 @@ export async function sendTestPush() {
   });
 }
 
+// Onboarding — conversational seed-context flow.
+//
+// Mobile screens (people, rhythm, focus, preview, channels) call these to
+// fetch personalised copy and persist each answer. The backend uses
+// autolearn on every answer to create person / routine / commitment Spaces
+// so Day 0 ends with real content rather than the audit-flagged blank state.
+export type OnboardingStep = 'people' | 'rhythm' | 'focus' | 'preview' | 'channels';
+export type OnboardingStepStatus = 'pending' | 'answered' | 'skipped';
+
+export interface OnboardingStepCopy {
+  prompt: string;
+  placeholder: string;
+  helper: string;
+  skipLabel: string;
+}
+
+export interface OnboardingState {
+  people: OnboardingStepStatus;
+  rhythm: OnboardingStepStatus;
+  focus: OnboardingStepStatus;
+  preview: OnboardingStepStatus;
+  channels: OnboardingStepStatus;
+  completedAt: string | null;
+  answers: Partial<Record<OnboardingStep, string>>;
+}
+
+export interface OnboardingStateResponse {
+  state: OnboardingState;
+  nextStep: OnboardingStep | null;
+  complete: boolean;
+  stepOrder: OnboardingStep[];
+  copy: OnboardingStepCopy | null;
+}
+
+export interface OnboardingAnswerResponse {
+  state: OnboardingState;
+  acknowledgement: string;
+  learnedNames: string[];
+  observationCount: number;
+  spacesAffected: { uri: string; name: string; category: string; created: boolean }[];
+}
+
+export async function getOnboardingState() {
+  return request<OnboardingStateResponse>('/api/onboarding/state');
+}
+
+export async function submitOnboardingAnswer(step: OnboardingStep, answer: string) {
+  return request<OnboardingAnswerResponse>('/api/onboarding/answer', {
+    method: 'POST',
+    body: JSON.stringify({ step, answer }),
+  });
+}
+
+export async function skipOnboardingStep(step: OnboardingStep) {
+  return request<{ state: OnboardingState }>('/api/onboarding/skip', {
+    method: 'POST',
+    body: JSON.stringify({ step }),
+  });
+}
+
+export async function completeOnboarding() {
+  return request<{ state: OnboardingState }>('/api/onboarding/complete', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
 // Lists (shopping / task / custom)
 export type ListItemType = 'shopping' | 'task' | 'custom';
 export type ListItemStatus = 'pending' | 'done';
