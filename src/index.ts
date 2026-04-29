@@ -1138,6 +1138,29 @@ server.get('/api/dashboard/spaces', async (request, reply) => {
   }
 });
 
+// Spaces Canvas — graph view across the family's compiled understanding.
+// Same auth as /api/dashboard/spaces (apiKey preHandler → profileId), and
+// the catalogue's family_id = primary admin profile_id convention.
+import { loadGraphForViewer, type GraphFacet, type GraphVisibility } from './api/spaces_graph';
+
+server.get('/api/spaces/graph', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId as string;
+    const { facet: rawFacet, visibility: rawVisibility } = (request.query as Record<string, string | undefined>) || {};
+    const facet: GraphFacet =
+      rawFacet === 'category' || rawFacet === 'domain' || rawFacet === 'person' || rawFacet === 'tag' || rawFacet === 'none'
+        ? rawFacet
+        : 'category';
+    const visibility: GraphVisibility =
+      rawVisibility === 'mine' || rawVisibility === 'shared' || rawVisibility === 'all' ? rawVisibility : 'all';
+    const graph = await loadGraphForViewer(profileId, profileId, facet, visibility);
+    return graph;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to build spaces graph' });
+  }
+});
+
 // Create a new Space manually
 server.post('/api/spaces', async (request, reply) => {
   try {

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spaces Canvas — Memu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
+    <link rel="stylesheet" href="/canvas.css?v=2026-04-30-canvas-1">
+    <!-- Cytoscape + fcose layout. Vanilla, no React wrapper. -->
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.min.js"></script>
+</head>
+<body>
+<script>
+// Auth gate — same shape as dashboard.html.
+const AUTH_KEY = 'memu_auth';
+function getAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; } catch { return {}; } }
+const auth = getAuth();
+if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
+
+async function api(path, opts = {}) {
+    const res = await fetch(auth.serverUrl + path, {
+        ...opts,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + auth.apiKey,
+            ...(opts.headers || {}),
+        },
+    });
+    return res;
+}
+</script>
+
+<div class="canvas-shell">
+    <header class="canvas-topbar">
+        <a class="canvas-back" href="/dashboard.html#spaces" title="Back to Spaces">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
+            <span>Spaces</span>
+        </a>
+        <div class="canvas-title">
+            <span class="canvas-title-eyebrow">Canvas</span>
+            <h1 class="canvas-title-text">How it all connects</h1>
+        </div>
+        <div class="canvas-toolbar">
+            <div class="canvas-toolbar-group" role="group" aria-label="Facet">
+                <span class="canvas-toolbar-label">Connect by</span>
+                <button class="canvas-chip active" data-facet="category">Category</button>
+                <button class="canvas-chip" data-facet="domain">Domain</button>
+                <button class="canvas-chip" data-facet="person">Person</button>
+                <button class="canvas-chip" data-facet="tag">Tag</button>
+            </div>
+            <div class="canvas-toolbar-group" role="group" aria-label="Visibility">
+                <span class="canvas-toolbar-label">Show</span>
+                <button class="canvas-chip canvas-chip-vis active" data-visibility="all">All</button>
+                <button class="canvas-chip canvas-chip-vis" data-visibility="mine">Mine</button>
+                <button class="canvas-chip canvas-chip-vis" data-visibility="shared">Shared</button>
+            </div>
+            <div class="canvas-toolbar-group canvas-toolbar-group-right">
+                <input type="search" id="canvas-search" class="canvas-search" placeholder="Search Spaces…" aria-label="Search">
+                <button class="canvas-icon-btn" id="canvas-reset" title="Reset layout" aria-label="Reset layout">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15A9 9 0 0 1 5.64 18.36L1 14"/></svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="canvas-stage" id="canvas-stage">
+        <div class="canvas-loading" id="canvas-loading">
+            <div class="canvas-spinner"></div>
+            <p>Building the canvas…</p>
+        </div>
+        <div class="canvas-empty hidden" id="canvas-empty">
+            <h2>No Spaces yet</h2>
+            <p>The canvas lights up once you have a few Spaces. Head back and create one — or chat with Memu and let them build themselves.</p>
+            <a class="btn btn-primary btn-sm" href="/dashboard.html#spaces">Back to Spaces</a>
+        </div>
+        <div class="canvas-sparse hidden" id="canvas-sparse">
+            <p>Just a few Spaces so far — the canvas will get richer as the family's understanding compounds. Switch the <em>Connect by</em> facet to see different lenses.</p>
+        </div>
+        <div class="canvas-cy" id="cy"></div>
+
+        <!-- Hover preview card. Position is set via inline style on hover. -->
+        <div class="canvas-preview hidden" id="canvas-preview" role="tooltip" aria-hidden="true">
+            <div class="canvas-preview-meta">
+                <span class="canvas-preview-cat" id="preview-cat"></span>
+                <span class="canvas-preview-dot">·</span>
+                <span class="canvas-preview-updated" id="preview-updated"></span>
+            </div>
+            <h3 class="canvas-preview-title" id="preview-title"></h3>
+            <p class="canvas-preview-excerpt" id="preview-excerpt"></p>
+        </div>
+
+        <!-- Legend. Subtle, not modal. -->
+        <div class="canvas-legend" id="canvas-legend">
+            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-person"></span>Person</div>
+            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-routine"></span>Routine</div>
+            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-household"></span>Household</div>
+            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-commitment"></span>Commitment</div>
+            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-document"></span>Document</div>
+        </div>
+    </div>
+</div>
+
+<script src="/canvas.js?v=2026-04-30-canvas-1"></script>
+</body>
+</html>
