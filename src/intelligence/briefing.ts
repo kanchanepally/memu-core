@@ -11,6 +11,12 @@ import { interactiveQueryTools } from './tools';
 const MAX_BRIEFING_PARAGRAPHS = 4;
 const COLLISION_WINDOW_MS = 48 * 60 * 60 * 1000;
 
+interface CacheEntry {
+  briefing: string;
+  expiresAt: number;
+}
+const synthesisCache = new Map<string, CacheEntry>();
+
 type BriefingChannel = 'app' | 'push' | 'whatsapp';
 
 interface NormalisedEvent {
@@ -99,6 +105,17 @@ export async function runUnifiedBriefing(
   profileId: string,
   channel: BriefingChannel = 'app',
 ): Promise<string | null> {
+  const todayDate = new Date().toISOString().split('T')[0];
+  const cacheKey = `${profileId}:${todayDate}`;
+
+  if (channel === 'app') {
+    const cached = synthesisCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      console.log(`[BRIEFING] Returning 15-minute cached synthesis for ${profileId}`);
+      return cached.briefing;
+    }
+  }
+
   try {
     // 1. Inbox queue (WhatsApp accumulator). Empty is the morning-briefing case.
     const inboxRes = await pool.query(
@@ -321,6 +338,9 @@ export async function runUnifiedBriefing(
 
     if (!isSubstantive) {
       console.log('[BRIEFING] No substantive updates; not persisting a stream card.');
+      if (channel === 'app') {
+        synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
+      }
       return realBriefing;
     }
 
@@ -347,6 +367,9 @@ export async function runUnifiedBriefing(
     );
 
     console.log(`[BRIEFING] Persisted briefing card with ${realActions.length} suggested action(s).`);
+    if (channel === 'app') {
+      synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
+    }
     return realBriefing;
   } catch (err: any) {
     console.error('[BRIEFING ERROR]:', err);

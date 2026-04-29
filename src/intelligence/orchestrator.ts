@@ -149,10 +149,26 @@ export async function processIntelligencePipeline(
   for (const ctx of retrieval.embeddingContexts) {
     anonymousEmbeddings.push(await translateToAnonymous(ctx));
   }
+
+  const anonymousFallbackSpaces = retrieval.fallbackSpaces ? await Promise.all(
+    retrieval.fallbackSpaces.map(async s => ({
+      ...s,
+      bodyMarkdown: await translateToAnonymous(s.bodyMarkdown),
+      description: await translateToAnonymous(s.description),
+      name: await translateToAnonymous(s.name),
+    })),
+  ) : [];
+
+  const anonymousOnboardingText = retrieval.fallbackOnboardingText
+    ? await translateToAnonymous(retrieval.fallbackOnboardingText)
+    : undefined;
+
   const anonymousRetrieval = {
     ...retrieval,
     spaces: anonymousSpaces,
     embeddingContexts: anonymousEmbeddings,
+    fallbackSpaces: anonymousFallbackSpaces,
+    fallbackOnboardingText: anonymousOnboardingText,
   };
   console.log(
     `[RETRIEVAL -> ${retrieval.provenance.path}]: spaces=${retrieval.provenance.spaceUris.length} embeddings=${retrieval.provenance.embeddingHits}`,
@@ -247,6 +263,26 @@ export async function processIntelligencePipeline(
   //     from looping back into the prompt and confusing future turns.
   const toolFooter = formatToolSummaryFooter(dispatchResult.toolCalls);
   const realResponse = toolFooter ? `${realResponseBase}${toolFooter}` : realResponseBase;
+
+  // 5d. Empty-Context Honesty Gate (Slice 3)
+  // The honesty guarantee lives in skills/interactive_query/SKILL.md Rule 11
+  // — Claude is told not to confabulate from training weights when the context
+  // block is empty. We log when that condition holds so the privacy ledger /
+  // future UI can surface it, but we do NOT inject a user-facing marker:
+  //   (a) no consumer existed for it (it would render literally in chat), and
+  //   (b) Slice 2's fallback (onboarding answers + 2 person/routine spaces)
+  //       counts as context, so the gate must respect that or it contradicts
+  //       the very fallback it's meant to coexist with.
+  const hasFallback =
+    (retrieval.fallbackSpaces?.length ?? 0) > 0 || !!retrieval.fallbackOnboardingText;
+  const isEmptyContext =
+    retrieval.spaces.length === 0 &&
+    retrieval.embeddingContexts.length === 0 &&
+    !hasFallback;
+  const noToolsCalled = !dispatchResult.toolCalls || dispatchResult.toolCalls.length === 0;
+  if (isEmptyContext && noToolsCalled) {
+    console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (no spaces, no embeddings, no fallback, no tools).`);
+  }
 
   // 6. Immutable Message Storage (Audit Trail)
   await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
