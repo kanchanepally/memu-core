@@ -43,6 +43,14 @@ export interface Space {
   tags: string[];
   bodyMarkdown: string;
   lastUpdated: Date;
+  /**
+   * Optional URI of another Space that this one lives under. Two-level
+   * constraint: a parent's parent must itself be null. Enforced in
+   * app code via validateParentRelationship in src/spaces/store.ts —
+   * the schema permits N-level chains so the data model can flex
+   * later without a migration.
+   */
+  parentSpaceUri?: string | null;
 }
 
 export function buildSpaceUri(familyId: string, category: SpaceCategory, uuid: string): string {

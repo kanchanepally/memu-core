@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
-    <link rel="stylesheet" href="/canvas.css?v=2026-04-30-canvas-1">
+    <link rel="stylesheet" href="/canvas.css?v=2026-04-30-canvas-2">
     <!-- Cytoscape + fcose layout. Vanilla, no React wrapper. -->
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.min.js"></script>
@@ -42,9 +42,18 @@ async function api(path, opts = {}) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
             <span>Spaces</span>
         </a>
-        <div class="canvas-title">
+        <div class="canvas-title" id="canvas-title">
             <span class="canvas-title-eyebrow">Canvas</span>
             <h1 class="canvas-title-text">How it all connects</h1>
+            <span class="canvas-title-subtitle">Your Spaces, on one canvas.</span>
+        </div>
+        <div class="canvas-breadcrumb hidden" id="canvas-breadcrumb">
+            <a href="#" class="canvas-breadcrumb-link" id="breadcrumb-root">Canvas</a>
+            <span class="canvas-breadcrumb-sep">›</span>
+            <span class="canvas-breadcrumb-current" id="breadcrumb-current">…</span>
+            <button class="canvas-breadcrumb-exit" id="breadcrumb-exit" title="Exit focus mode (Esc)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
         </div>
         <div class="canvas-toolbar">
             <div class="canvas-toolbar-group" role="group" aria-label="Facet">
@@ -62,9 +71,6 @@ async function api(path, opts = {}) {
             </div>
             <div class="canvas-toolbar-group canvas-toolbar-group-right">
                 <input type="search" id="canvas-search" class="canvas-search" placeholder="Search Spaces…" aria-label="Search">
-                <button class="canvas-icon-btn" id="canvas-reset" title="Reset layout" aria-label="Reset layout">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15A9 9 0 0 1 5.64 18.36L1 14"/></svg>
-                </button>
             </div>
         </div>
     </header>
@@ -80,9 +86,32 @@ async function api(path, opts = {}) {
             <a class="btn btn-primary btn-sm" href="/dashboard.html#spaces">Back to Spaces</a>
         </div>
         <div class="canvas-sparse hidden" id="canvas-sparse">
-            <p>Just a few Spaces so far — the canvas will get richer as the family's understanding compounds. Switch the <em>Connect by</em> facet to see different lenses.</p>
+            <p>More connections will form as Memu finds patterns between your Spaces, or when you draw them yourself. Hover any node to start.</p>
+            <button class="canvas-sparse-dismiss" id="canvas-sparse-dismiss" title="Dismiss">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
         </div>
         <div class="canvas-cy" id="cy"></div>
+
+        <!-- Per-node action overlays — positioned in JS based on Cytoscape -->
+        <!-- coordinates. Plus button (Gesture 1), connect handle (Gesture 3), -->
+        <!-- and focus icon (containers). All hidden by default. -->
+        <div class="canvas-node-overlays hidden" id="node-overlays">
+            <button class="canvas-node-btn canvas-node-plus" id="node-plus" title="Add a sub-Space">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button class="canvas-node-btn canvas-node-connect" id="node-connect" title="Drag to another Space to connect">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+            <button class="canvas-node-btn canvas-node-focus hidden" id="node-focus" title="Focus on this container">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+        </div>
+
+        <!-- Drag-to-connect line — SVG overlay drawn during Gesture 3 -->
+        <svg class="canvas-drag-svg hidden" id="canvas-drag-svg">
+            <line id="canvas-drag-line" x1="0" y1="0" x2="0" y2="0" stroke="#5054B5" stroke-width="2" stroke-dasharray="4 4" />
+        </svg>
 
         <!-- Hover preview card. Position is set via inline style on hover. -->
         <div class="canvas-preview hidden" id="canvas-preview" role="tooltip" aria-hidden="true">
@@ -90,6 +119,7 @@ async function api(path, opts = {}) {
                 <span class="canvas-preview-cat" id="preview-cat"></span>
                 <span class="canvas-preview-dot">·</span>
                 <span class="canvas-preview-updated" id="preview-updated"></span>
+                <span class="canvas-preview-children hidden" id="preview-children"></span>
             </div>
             <h3 class="canvas-preview-title" id="preview-title"></h3>
             <p class="canvas-preview-excerpt" id="preview-excerpt"></p>
@@ -103,9 +133,55 @@ async function api(path, opts = {}) {
             <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-commitment"></span>Commitment</div>
             <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-document"></span>Document</div>
         </div>
+
+        <!-- Toast (post-action confirmations + Undo). 5-second auto-dismiss with progress bar. -->
+        <div class="canvas-toast hidden" id="canvas-toast" role="status" aria-live="polite">
+            <span class="canvas-toast-text" id="canvas-toast-text"></span>
+            <button class="canvas-toast-undo hidden" id="canvas-toast-undo">Undo</button>
+            <div class="canvas-toast-progress" id="canvas-toast-progress"></div>
+        </div>
     </div>
 </div>
 
-<script src="/canvas.js?v=2026-04-30-canvas-1"></script>
+<!-- Category-picker palette for Gesture 1's "+" — appears next to the node when invoked. -->
+<div class="canvas-cat-palette hidden" id="canvas-cat-palette" role="menu">
+    <button class="canvas-cat-chip" data-category="person"   role="menuitem">Person</button>
+    <button class="canvas-cat-chip" data-category="routine"  role="menuitem">Routine</button>
+    <button class="canvas-cat-chip" data-category="household" role="menuitem">Household</button>
+    <button class="canvas-cat-chip" data-category="commitment" role="menuitem">Commitment</button>
+    <button class="canvas-cat-chip" data-category="document" role="menuitem">Document</button>
+</div>
+
+<!-- Modal: create sub-Space. Reused by Gesture 1. -->
+<div class="canvas-modal-overlay hidden" id="create-modal">
+    <div class="canvas-modal-card">
+        <h3 class="canvas-modal-title">New Space</h3>
+        <p class="canvas-modal-hint" id="create-modal-hint">Under <strong id="create-modal-parent"></strong>.</p>
+        <label class="canvas-modal-label">Title</label>
+        <input type="text" class="canvas-modal-input" id="create-modal-title" placeholder="e.g. Shopping list">
+        <label class="canvas-modal-label">Body (optional)</label>
+        <textarea class="canvas-modal-textarea" id="create-modal-body" placeholder="What is this Space about?" rows="4"></textarea>
+        <div class="canvas-modal-actions">
+            <button class="btn btn-secondary btn-sm" id="create-modal-cancel">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="create-modal-save">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: label a manual link. Reused by Gesture 3. -->
+<div class="canvas-modal-overlay hidden" id="link-modal">
+    <div class="canvas-modal-card canvas-modal-card-narrow">
+        <h3 class="canvas-modal-title">Connect Spaces</h3>
+        <p class="canvas-modal-hint" id="link-modal-hint">From <strong id="link-modal-source"></strong> to <strong id="link-modal-target"></strong>.</p>
+        <label class="canvas-modal-label">Label</label>
+        <input type="text" class="canvas-modal-input" id="link-modal-label" placeholder="Related" value="Related">
+        <div class="canvas-modal-actions">
+            <button class="btn btn-secondary btn-sm" id="link-modal-cancel">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="link-modal-save">Connect</button>
+        </div>
+    </div>
+</div>
+
+<script src="/canvas.js?v=2026-04-30-canvas-2"></script>
 </body>
 </html>

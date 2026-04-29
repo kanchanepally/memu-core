@@ -44,7 +44,7 @@ import {
   type ListType,
   type ListStatus,
 } from './lists/store';
-import { upsertSpace, findSpaceBySlug } from './spaces/store';
+import { upsertSpace, findSpaceBySlug, findSpaceByUri, validateParentRelationship, listSpaces } from './spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from './spaces/model';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
@@ -1146,14 +1146,17 @@ import { loadGraphForViewer, type GraphFacet, type GraphVisibility } from './api
 server.get('/api/spaces/graph', async (request, reply) => {
   try {
     const profileId = (request as any).profileId as string;
-    const { facet: rawFacet, visibility: rawVisibility } = (request.query as Record<string, string | undefined>) || {};
+    const q = (request.query as Record<string, string | undefined>) || {};
+    const rawFacet = q.facet;
+    const rawVisibility = q.visibility;
+    const focusUri = (typeof q.focus === 'string' && q.focus.trim().length > 0) ? q.focus : undefined;
     const facet: GraphFacet =
       rawFacet === 'category' || rawFacet === 'domain' || rawFacet === 'person' || rawFacet === 'tag' || rawFacet === 'none'
         ? rawFacet
         : 'category';
     const visibility: GraphVisibility =
       rawVisibility === 'mine' || rawVisibility === 'shared' || rawVisibility === 'all' ? rawVisibility : 'all';
-    const graph = await loadGraphForViewer(profileId, profileId, facet, visibility);
+    const graph = await loadGraphForViewer(profileId, profileId, facet, visibility, { focusUri });
     return graph;
   } catch (err) {
     server.log.error(err);
@@ -1161,33 +1164,50 @@ server.get('/api/spaces/graph', async (request, reply) => {
   }
 });
 
-// Create a new Space manually
+// Create a new Space manually. Routes through upsertSpace so the DB row
+// + on-disk markdown + git history stay in lock-step (and so the v2
+// parent_space_uri field lands cleanly via the canvas create flow).
 server.post('/api/spaces', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    const { title, category, body_markdown } = request.body as {
+    const { title, category, body_markdown, parent_space_uri } = request.body as {
       title?: string;
       category?: string;
       body_markdown?: string;
+      parent_space_uri?: string | null;
     };
 
-    const validCategories = ['person', 'routine', 'household', 'commitment', 'document'];
+    const validCategories = ['person', 'routine', 'household', 'commitment', 'document'] as const;
     if (!title || !title.trim()) {
       return reply.code(400).send({ error: 'title is required' });
     }
-    if (!category || !validCategories.includes(category)) {
+    if (!category || !validCategories.includes(category as typeof validCategories[number])) {
       return reply.code(400).send({ error: 'category must be one of person, routine, household, commitment, document' });
     }
 
-    const res = await pool.query(
-      `INSERT INTO synthesis_pages (profile_id, category, title, body_markdown)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (profile_id, category, title)
-       DO UPDATE SET body_markdown = EXCLUDED.body_markdown, last_updated_at = NOW()
-       RETURNING *`,
-      [profileId, category, title.trim(), body_markdown || '']
-    );
-    return { space: res.rows[0] };
+    // Normalise parent_space_uri: empty string → null, anything else → string.
+    const parentUri =
+      parent_space_uri === null || parent_space_uri === undefined ||
+      (typeof parent_space_uri === 'string' && parent_space_uri.trim() === '')
+        ? null
+        : parent_space_uri;
+
+    if (parentUri !== null) {
+      const validation = await validateParentRelationship(profileId, parentUri);
+      if (!validation.ok) {
+        return reply.code(422).send({ error: validation.message ?? validation.reason, reason: validation.reason });
+      }
+    }
+
+    const space = await upsertSpace({
+      familyId: profileId,
+      category: category as 'person' | 'routine' | 'household' | 'commitment' | 'document',
+      name: title.trim(),
+      bodyMarkdown: body_markdown || '',
+      actorProfileId: profileId,
+      parentSpaceUri: parentUri,
+    });
+    return { space };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to create space' });
@@ -1251,6 +1271,200 @@ server.put('/api/spaces/:id', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to update space' });
+  }
+});
+
+// Spaces Canvas v2 — sub-Spaces and manual links.
+//
+// Three endpoints, one Space identified by DB id (matches PUT /api/spaces/:id):
+//   POST   /api/spaces/:id/parent             → set or change parent (null to un-parent)
+//   POST   /api/spaces/:id/links              → append a manual wikilink to body
+//   DELETE /api/spaces/:id/links/:targetSlug  → strip a manual wikilink
+//
+// All three go through upsertSpace so the DB row + on-disk markdown +
+// git history stay in lock-step. Manual links are wikilinks in body —
+// single source of truth, picked up automatically by graph derivation.
+
+server.post('/api/spaces/:id/parent', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId as string;
+    const { id } = request.params as { id: string };
+    const body = request.body as { parentSpaceUri?: string | null };
+
+    if (body === null || typeof body !== 'object' || !('parentSpaceUri' in body)) {
+      return reply.code(400).send({ error: 'parentSpaceUri is required (pass null to un-parent)' });
+    }
+    const candidate =
+      body.parentSpaceUri === null || (typeof body.parentSpaceUri === 'string' && body.parentSpaceUri.trim() === '')
+        ? null
+        : body.parentSpaceUri;
+    if (candidate !== null && typeof candidate !== 'string') {
+      return reply.code(400).send({ error: 'parentSpaceUri must be a string or null' });
+    }
+
+    // Resolve target Space + auth (must own the row, same family check).
+    const lookup = await pool.query(
+      `SELECT id, uri, family_id, profile_id FROM synthesis_pages WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (lookup.rowCount === 0) return reply.code(404).send({ error: 'Space not found' });
+    const row = lookup.rows[0];
+    if (row.profile_id !== profileId) return reply.code(403).send({ error: 'cannot reparent a Space you do not own' });
+
+    if (candidate !== null) {
+      const validation = await validateParentRelationship(row.family_id, candidate, row.uri);
+      if (!validation.ok) {
+        return reply.code(422).send({ error: validation.message ?? validation.reason, reason: validation.reason });
+      }
+    }
+
+    const existing = await findSpaceByUri(row.uri);
+    if (!existing) return reply.code(404).send({ error: 'Space not found' });
+
+    const space = await upsertSpace({
+      familyId: existing.familyId,
+      category: existing.category,
+      slug: existing.slug,
+      name: existing.name,
+      bodyMarkdown: existing.bodyMarkdown,
+      description: existing.description,
+      domains: existing.domains,
+      people: existing.people,
+      visibility: existing.visibility,
+      confidence: existing.confidence,
+      sourceReferences: existing.sourceReferences,
+      tags: existing.tags,
+      actorProfileId: profileId,
+      parentSpaceUri: candidate,
+    });
+    return { space };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to update parent' });
+  }
+});
+
+server.post('/api/spaces/:id/links', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId as string;
+    const { id } = request.params as { id: string };
+    const body = request.body as { targetUri?: string; label?: string };
+
+    if (!body || typeof body.targetUri !== 'string' || body.targetUri.trim() === '') {
+      return reply.code(400).send({ error: 'targetUri is required' });
+    }
+    const label = (typeof body.label === 'string' && body.label.trim().length > 0)
+      ? body.label.trim()
+      : 'Related';
+
+    const lookup = await pool.query(
+      `SELECT uri, family_id, profile_id FROM synthesis_pages WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (lookup.rowCount === 0) return reply.code(404).send({ error: 'Space not found' });
+    const row = lookup.rows[0];
+    if (row.profile_id !== profileId) return reply.code(403).send({ error: 'cannot edit a Space you do not own' });
+
+    const target = await findSpaceByUri(body.targetUri);
+    if (!target) return reply.code(404).send({ error: 'target Space not found' });
+    if (target.familyId !== row.family_id) return reply.code(422).send({ error: 'cross-family link rejected' });
+    if (target.uri === row.uri) return reply.code(422).send({ error: 'cannot link a Space to itself' });
+
+    const source = await findSpaceByUri(row.uri);
+    if (!source) return reply.code(404).send({ error: 'Space not found' });
+
+    const wikilink = `[[${target.slug}]]`;
+    // Idempotent — if the same wikilink already appears (with any label),
+    // don't append a duplicate. Match the slug only, not the label, so
+    // re-running with a different label still no-ops rather than
+    // creating two links to the same target.
+    if (source.bodyMarkdown.includes(wikilink)) {
+      return { space: source, added: false };
+    }
+
+    const trailing = source.bodyMarkdown.endsWith('\n') ? '' : '\n';
+    const newBody = `${source.bodyMarkdown}${trailing}\n${label}: ${wikilink}\n`;
+
+    const space = await upsertSpace({
+      familyId: source.familyId,
+      category: source.category,
+      slug: source.slug,
+      name: source.name,
+      bodyMarkdown: newBody,
+      description: source.description,
+      domains: source.domains,
+      people: source.people,
+      visibility: source.visibility,
+      confidence: source.confidence,
+      sourceReferences: source.sourceReferences,
+      tags: source.tags,
+      actorProfileId: profileId,
+      parentSpaceUri: source.parentSpaceUri,
+    });
+    return { space, added: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to add link' });
+  }
+});
+
+server.delete('/api/spaces/:id/links/:targetSlug', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId as string;
+    const { id, targetSlug } = request.params as { id: string; targetSlug: string };
+
+    if (!targetSlug || targetSlug.trim().length === 0) {
+      return reply.code(400).send({ error: 'targetSlug is required' });
+    }
+    const slug = targetSlug.trim();
+    if (!/^[a-z0-9][a-z0-9-]*$/i.test(slug)) {
+      return reply.code(400).send({ error: 'invalid slug format' });
+    }
+
+    const lookup = await pool.query(
+      `SELECT uri, family_id, profile_id FROM synthesis_pages WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (lookup.rowCount === 0) return reply.code(404).send({ error: 'Space not found' });
+    const row = lookup.rows[0];
+    if (row.profile_id !== profileId) return reply.code(403).send({ error: 'cannot edit a Space you do not own' });
+
+    const source = await findSpaceByUri(row.uri);
+    if (!source) return reply.code(404).send({ error: 'Space not found' });
+
+    const wikilink = `[[${slug}]]`;
+    if (!source.bodyMarkdown.includes(wikilink)) {
+      // Idempotent — already absent.
+      return { space: source, removed: false };
+    }
+
+    // Strip lines of the form "<label>: [[slug]]" plus any leading/trailing
+    // blank-line whitespace produced by the strip. Lines that contain
+    // [[slug]] alongside other prose are left intact — only "linkline-shaped"
+    // matches are removed, so user-written prose mentioning the slug stays.
+    const linkLineRe = new RegExp(`^[^\\n]*\\[\\[${slug}\\]\\][^\\n]*\\n?`, 'gm');
+    const cleaned = source.bodyMarkdown.replace(linkLineRe, '').replace(/\n{3,}/g, '\n\n');
+
+    const space = await upsertSpace({
+      familyId: source.familyId,
+      category: source.category,
+      slug: source.slug,
+      name: source.name,
+      bodyMarkdown: cleaned,
+      description: source.description,
+      domains: source.domains,
+      people: source.people,
+      visibility: source.visibility,
+      confidence: source.confidence,
+      sourceReferences: source.sourceReferences,
+      tags: source.tags,
+      actorProfileId: profileId,
+      parentSpaceUri: source.parentSpaceUri,
+    });
+    return { space, removed: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to remove link' });
   }
 });
 

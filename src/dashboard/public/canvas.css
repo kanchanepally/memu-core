@@ -1,6 +1,5 @@
-/* Spaces Canvas — layout matches the Indigo Sanctuary tokens defined in
-   /css/style.css. Anything not pinned here inherits from the global
-   stylesheet (buttons, hidden, color tokens). */
+/* Spaces Canvas v2 — layout, gestures, focus mode, toast, modals.
+   Inherits Indigo Sanctuary tokens from /css/style.css. */
 
 body {
     margin: 0;
@@ -63,6 +62,56 @@ body {
     margin: 0;
     color: var(--text-primary, #1F1B2E);
 }
+.canvas-title-subtitle {
+    font-size: 12px;
+    color: var(--text-tertiary, #8A8198);
+    font-weight: 500;
+    margin-top: 1px;
+}
+
+/* Breadcrumb in focus mode */
+.canvas-breadcrumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary, #645A7A);
+    margin-right: auto;
+    background: rgba(80, 84, 181, 0.06);
+    padding: 6px 10px 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(80, 84, 181, 0.18);
+}
+.canvas-breadcrumb-link {
+    color: #5054B5;
+    text-decoration: none;
+    font-weight: 600;
+}
+.canvas-breadcrumb-link:hover { text-decoration: underline; }
+.canvas-breadcrumb-sep { color: var(--text-tertiary, #8A8198); }
+.canvas-breadcrumb-current {
+    font-weight: 600;
+    color: var(--text-primary, #1F1B2E);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.canvas-breadcrumb-exit {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #645A7A);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.canvas-breadcrumb-exit:hover { background: rgba(80, 84, 181, 0.12); color: #5054B5; }
 
 .canvas-toolbar {
     display: flex;
@@ -122,22 +171,6 @@ body {
     box-shadow: 0 0 0 3px rgba(80, 84, 181, 0.18);
 }
 
-.canvas-icon-btn {
-    appearance: none;
-    border: 1px solid rgba(80, 84, 181, 0.18);
-    background: var(--bg-elevated, #FFFFFF);
-    color: var(--text-secondary, #645A7A);
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 120ms ease, color 120ms ease;
-}
-.canvas-icon-btn:hover { background: rgba(80, 84, 181, 0.08); color: #5054B5; }
-
 /* ---------- Stage ---------- */
 .canvas-stage {
     position: relative;
@@ -154,7 +187,14 @@ body {
     height: 100%;
 }
 
-/* ---------- Loading / empty / sparse ---------- */
+/* Body class while a drag gesture is in progress (Gesture 2 or 3). */
+body.canvas-dragging,
+body.canvas-dragging * {
+    cursor: grabbing !important;
+    user-select: none;
+}
+
+/* ---------- Loading / empty / sparse / error ---------- */
 .canvas-loading,
 .canvas-empty,
 .canvas-error {
@@ -198,11 +238,12 @@ body {
     bottom: 18px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(6px);
     border: 1px solid rgba(80, 84, 181, 0.14);
     border-radius: 12px;
-    padding: 10px 16px;
+    padding: 10px 16px 10px 16px;
+    padding-right: 36px;
     font-size: 12px;
     color: var(--text-secondary, #645A7A);
     max-width: 480px;
@@ -211,6 +252,19 @@ body {
     z-index: 3;
 }
 .canvas-sparse p { margin: 0; }
+.canvas-sparse-dismiss {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary, #8A8198);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+}
+.canvas-sparse-dismiss:hover { color: #5054B5; background: rgba(80, 84, 181, 0.06); }
 
 /* ---------- Hover preview ---------- */
 .canvas-preview {
@@ -236,6 +290,16 @@ body {
 }
 .canvas-preview-cat { color: #5054B5; }
 .canvas-preview-dot { opacity: 0.5; }
+.canvas-preview-children {
+    color: #5054B5;
+    margin-left: auto;
+    background: rgba(80, 84, 181, 0.08);
+    padding: 1px 8px;
+    border-radius: 999px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 10.5px;
+}
 .canvas-preview-title {
     font-family: 'Manrope', system-ui, sans-serif;
     font-size: 15px;
@@ -252,6 +316,210 @@ body {
     -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* ---------- Per-node overlays (Gestures 1 + 3, focus icon) ---------- */
+.canvas-node-overlays {
+    position: absolute;
+    pointer-events: none;
+    z-index: 5;
+}
+.canvas-node-btn {
+    position: absolute;
+    appearance: none;
+    border: 1.5px solid #5054B5;
+    background: #FFFFFF;
+    color: #5054B5;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(31, 27, 46, 0.1);
+    pointer-events: auto;
+    padding: 0;
+    transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+.canvas-node-btn:hover {
+    background: #5054B5;
+    color: #FFFFFF;
+    transform: scale(1.1);
+}
+.canvas-node-plus { /* positioned top-right of node by JS */ }
+.canvas-node-connect {
+    /* positioned right-mid of node by JS */
+    cursor: grab;
+}
+.canvas-node-connect:active { cursor: grabbing; }
+.canvas-node-focus { /* positioned left-mid of node by JS */ }
+
+/* ---------- Drag SVG line (Gesture 3) ---------- */
+.canvas-drag-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 6;
+}
+
+/* ---------- Toast ---------- */
+.canvas-toast {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(31, 27, 46, 0.95);
+    color: #FFFFFF;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    box-shadow: 0 6px 24px rgba(31, 27, 46, 0.25);
+    z-index: 7;
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    overflow: hidden;
+    min-width: 300px;
+    max-width: 480px;
+}
+.canvas-toast-text {
+    flex: 1;
+    line-height: 1.4;
+}
+.canvas-toast-undo {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: transparent;
+    color: #FFFFFF;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.canvas-toast-undo:hover { background: rgba(255, 255, 255, 0.12); }
+.canvas-toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: #5054B5;
+    width: 100%;
+    transform-origin: left;
+    animation: canvas-toast-shrink 5s linear forwards;
+}
+@keyframes canvas-toast-shrink { to { transform: scaleX(0); } }
+
+/* ---------- Category-picker palette (Gesture 1) ---------- */
+.canvas-cat-palette {
+    position: absolute;
+    background: var(--bg-elevated, #FFFFFF);
+    border: 1px solid rgba(80, 84, 181, 0.18);
+    border-radius: 10px;
+    padding: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    box-shadow: 0 6px 20px rgba(31, 27, 46, 0.12);
+    z-index: 8;
+    max-width: 220px;
+}
+.canvas-cat-chip {
+    appearance: none;
+    border: 1px solid rgba(80, 84, 181, 0.18);
+    background: transparent;
+    color: var(--text-secondary, #645A7A);
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+    font-family: inherit;
+}
+.canvas-cat-chip:hover { background: #5054B5; color: #FFFFFF; border-color: #5054B5; }
+
+/* ---------- Modals (create + link) ---------- */
+.canvas-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(31, 27, 46, 0.4);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+.canvas-modal-card {
+    background: var(--bg-elevated, #FFFFFF);
+    border-radius: 16px;
+    padding: 22px 24px;
+    width: 460px;
+    max-width: 92vw;
+    box-shadow: 0 20px 60px rgba(31, 27, 46, 0.2);
+}
+.canvas-modal-card-narrow { width: 380px; }
+.canvas-modal-title {
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: var(--text-primary, #1F1B2E);
+}
+.canvas-modal-hint {
+    font-size: 12.5px;
+    color: var(--text-secondary, #645A7A);
+    margin: 0 0 14px;
+}
+.canvas-modal-hint strong {
+    color: #5054B5;
+    font-weight: 600;
+}
+.canvas-modal-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary, #8A8198);
+    font-weight: 600;
+    margin: 10px 0 4px;
+}
+.canvas-modal-input,
+.canvas-modal-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    appearance: none;
+    border: 1px solid rgba(80, 84, 181, 0.18);
+    background: var(--bg-elevated, #FFFFFF);
+    color: var(--text-primary, #1F1B2E);
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-family: inherit;
+}
+.canvas-modal-textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.canvas-modal-input:focus,
+.canvas-modal-textarea:focus {
+    outline: none;
+    border-color: #5054B5;
+    box-shadow: 0 0 0 3px rgba(80, 84, 181, 0.18);
+}
+.canvas-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
 }
 
 /* ---------- Legend ---------- */
@@ -285,8 +553,7 @@ body {
 .sw-commitment { background: #FAEFE6; border-color: #B5723C; }
 .sw-document   { background: #EFEFEF; border-color: #5C5C5C; }
 
-/* ---------- Mobile narrow guard (mostly handled by mobile spaces.tsx CTA;
-   this is just a safety net if someone opens canvas.html on a phone). ---------- */
+/* ---------- Mobile narrow guard (mobile spaces.tsx CTA handles routing). ---------- */
 @media (max-width: 720px) {
     .canvas-toolbar { gap: 10px; }
     .canvas-search { width: 130px; }
