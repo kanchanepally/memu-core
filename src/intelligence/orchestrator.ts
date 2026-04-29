@@ -149,10 +149,26 @@ export async function processIntelligencePipeline(
   for (const ctx of retrieval.embeddingContexts) {
     anonymousEmbeddings.push(await translateToAnonymous(ctx));
   }
+
+  const anonymousFallbackSpaces = retrieval.fallbackSpaces ? await Promise.all(
+    retrieval.fallbackSpaces.map(async s => ({
+      ...s,
+      bodyMarkdown: await translateToAnonymous(s.bodyMarkdown),
+      description: await translateToAnonymous(s.description),
+      name: await translateToAnonymous(s.name),
+    })),
+  ) : [];
+
+  const anonymousOnboardingText = retrieval.fallbackOnboardingText
+    ? await translateToAnonymous(retrieval.fallbackOnboardingText)
+    : undefined;
+
   const anonymousRetrieval = {
     ...retrieval,
     spaces: anonymousSpaces,
     embeddingContexts: anonymousEmbeddings,
+    fallbackSpaces: anonymousFallbackSpaces,
+    fallbackOnboardingText: anonymousOnboardingText,
   };
   console.log(
     `[RETRIEVAL -> ${retrieval.provenance.path}]: spaces=${retrieval.provenance.spaceUris.length} embeddings=${retrieval.provenance.embeddingHits}`,

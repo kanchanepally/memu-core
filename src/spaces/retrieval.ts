@@ -26,6 +26,7 @@ import { retrieveRelevantContext, type Visibility as RagVisibility } from '../in
 import { getCatalogue, matchBySlug, renderCatalogueForPrompt, resolveWikilinks, type CatalogueEntry } from './catalogue';
 import { findSpaceByUri } from './store';
 import type { Space } from './model';
+import { getOnboardingState } from '../onboarding/state';
 
 export type RetrievalPath = 'direct' | 'catalogue' | 'embedding' | 'none';
 
@@ -38,6 +39,8 @@ export interface Provenance {
 export interface RetrievalResult {
   spaces: Space[];
   embeddingContexts: string[];
+  fallbackSpaces?: Space[];
+  fallbackOnboardingText?: string;
   provenance: Provenance;
 }
 
@@ -82,9 +85,37 @@ export async function retrieveForQuery(input: RetrieveInput): Promise<RetrievalR
     input.viewerProfileId,
     input.embeddingVisibility ?? 'family',
   );
+
+  let fallbackSpaces: Space[] = [];
+  let fallbackOnboardingText: string | undefined;
+
+  try {
+    const onboarding = await getOnboardingState(input.viewerProfileId);
+    const onboardingText = Object.entries(onboarding.answers)
+      .filter(([_, ans]) => typeof ans === 'string' && ans.trim().length > 0)
+      .map(([step, ans]) => `${step.toUpperCase()}: ${ans}`)
+      .join('\n');
+    
+    if (onboardingText) {
+      fallbackOnboardingText = onboardingText;
+    }
+
+    const fallbackEntries = catalogue
+      .filter(e => e.category === 'person' || e.category === 'routine')
+      .slice(0, 2);
+
+    if (fallbackEntries.length > 0) {
+      fallbackSpaces = await loadFullSpaces(fallbackEntries);
+    }
+  } catch (err) {
+    console.error('[SPACES] Failed to load fallback context:', err);
+  }
+
   return {
     spaces: [],
     embeddingContexts: ragHits,
+    fallbackSpaces,
+    fallbackOnboardingText,
     provenance: {
       path: ragHits.length > 0 ? 'embedding' : 'none',
       spaceUris: [],
@@ -212,12 +243,32 @@ export function buildContextBlock(result: RetrievalResult): string {
       '==============================================',
     ].join('\n');
   }
+
+  const parts: string[] = [];
+  const hasFallback = (result.fallbackSpaces && result.fallbackSpaces.length > 0) || !!result.fallbackOnboardingText;
+  
+  if (hasFallback) {
+    const fallbackParts: string[] = [];
+    if (result.fallbackOnboardingText) {
+      fallbackParts.push(`Onboarding Summary:\n${result.fallbackOnboardingText}`);
+    }
+    if (result.fallbackSpaces && result.fallbackSpaces.length > 0) {
+      fallbackParts.push(renderSpacesForPrompt(result.fallbackSpaces));
+    }
+    parts.push(
+      '=== HOUSEHOLD SUMMARY (Fallback Context) ===',
+      fallbackParts.join('\n\n'),
+      '============================================'
+    );
+  }
+
   if (result.embeddingContexts.length > 0) {
-    return [
+    parts.push(
       '=== RELEVANT FAMILY CONTEXT (raw recall) ===',
       renderEmbeddingsForPrompt(result.embeddingContexts),
-      '==========================================',
-    ].join('\n');
+      '=========================================='
+    );
   }
-  return '';
+
+  return parts.join('\n\n');
 }
