@@ -66,6 +66,11 @@ interface BriefingPayload {
   briefing_markdown: string;
   has_substantive_updates: boolean;
   suggested_actions?: Array<{ label: string; kind: string; payload: Record<string, unknown> }>;
+  /** 1-indexed indexes into the active_cards numbered list — which cards
+   *  the briefing actually mentioned. Used to rotate which cards surface
+   *  across consecutive briefings. Optional for backward-compat with v3
+   *  skill output. */
+  mentioned_card_indexes?: number[];
 }
 
 // Deep-translate any string values inside a JSON-shaped value back to real
@@ -153,17 +158,32 @@ export async function runUnifiedBriefing(
 
     const collisionsStr = detectCollisions(inWindow);
 
-    // 3. Active stream cards (open commitments).
-    const streamRes = await pool.query(
-      `SELECT title, body, card_type FROM stream_cards
-         WHERE family_id = $1 AND status = 'active'
-         ORDER BY created_at DESC`,
+    // 3. Active stream cards (open commitments). Ordered by least-mentioned
+    // first so the same item doesn't surface in three consecutive briefings;
+    // the AWBS-basket-three-days-running bug from 2026-04-29.
+    //
+    // Cap at 12 items in the prompt — beyond that the LLM can't keep them
+    // straight and the daily expiry pass handles the long tail anyway.
+    const streamRes = await pool.query<{
+      id: string;
+      title: string;
+      body: string;
+      card_type: string;
+    }>(
+      `SELECT id, title, body, card_type
+         FROM stream_cards
+        WHERE family_id = $1 AND status = 'active'
+        ORDER BY mentioned_count ASC, last_mentioned_at ASC NULLS FIRST, created_at ASC
+        LIMIT 12`,
       [profileId],
     );
+    // Numbered list — the skill emits 1-indexed indexes in
+    // mentioned_card_indexes so we can map back to ids and bump counters
+    // without parsing markdown for matched titles.
     const streamStr = streamRes.rows.length === 0
       ? 'No pending items.'
       : streamRes.rows
-          .map(c => `- [${c.card_type.toUpperCase()}] ${c.title}: ${c.body}`)
+          .map((c, i) => `${i + 1}. [${c.card_type.toUpperCase()}] ${c.title}: ${c.body}`)
           .join('\n');
 
     // 4. Domain health header — at-a-glance sphere status.
@@ -260,6 +280,28 @@ export async function runUnifiedBriefing(
         `UPDATE inbox_messages SET processed = true WHERE id = ANY($1)`,
         [messageIds],
       );
+    }
+
+    // 7b. Bump mention counters for any stream cards the skill referenced.
+    // Maps 1-indexed indexes back to the row id; ignores out-of-range
+    // entries so a hallucinated index doesn't poison the table.
+    if (Array.isArray(parsed.mentioned_card_indexes) && streamRes.rows.length > 0) {
+      const mentionedIds: string[] = [];
+      for (const raw of parsed.mentioned_card_indexes) {
+        const idx = typeof raw === 'number' ? raw - 1 : -1;
+        if (idx >= 0 && idx < streamRes.rows.length) {
+          mentionedIds.push(streamRes.rows[idx].id);
+        }
+      }
+      if (mentionedIds.length > 0) {
+        await pool.query(
+          `UPDATE stream_cards
+              SET mentioned_count = mentioned_count + 1,
+                  last_mentioned_at = NOW()
+            WHERE id = ANY($1)`,
+          [mentionedIds],
+        );
+      }
     }
 
     // 8. Twin reverse — back to real names for the human reader.

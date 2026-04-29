@@ -1726,18 +1726,24 @@ server.get('/api/lists', async (request, reply) => {
 server.post('/api/lists', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    const { list_type, item_text, note, list_name, source } = request.body as {
+    const { list_type, item_text, note, list_name, source, due_at } = request.body as {
       list_type?: string;
       item_text?: string;
       note?: string | null;
       list_name?: string | null;
       source?: string | null;
+      due_at?: string | null;
     };
     if (!list_type || !['shopping', 'task', 'custom'].includes(list_type)) {
       return reply.code(400).send({ error: 'list_type must be shopping, task, or custom' });
     }
     if (!item_text || !item_text.trim()) {
       return reply.code(400).send({ error: 'item_text required' });
+    }
+    // Validate due_at if supplied — must be a parseable ISO string, otherwise
+    // the DB layer will throw a less-helpful error and the client sees 500.
+    if (due_at != null && due_at !== '' && Number.isNaN(new Date(due_at).getTime())) {
+      return reply.code(400).send({ error: 'due_at must be an ISO date string or null' });
     }
     const item = await addListItem({
       familyId: profileId,
@@ -1747,6 +1753,7 @@ server.post('/api/lists', async (request, reply) => {
       listName: list_name ?? null,
       source: source ?? 'manual',
       createdBy: profileId,
+      dueAt: due_at && due_at !== '' ? due_at : null,
     });
     return { success: true, item };
   } catch (err) {
@@ -1785,10 +1792,20 @@ server.patch('/api/lists/:id', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
     const { id } = request.params as { id: string };
-    const { item_text, note } = request.body as { item_text?: string; note?: string | null };
+    const { item_text, note, list_name, due_at } = request.body as {
+      item_text?: string;
+      note?: string | null;
+      list_name?: string | null;
+      due_at?: string | null;
+    };
+    if (due_at != null && due_at !== '' && Number.isNaN(new Date(due_at).getTime())) {
+      return reply.code(400).send({ error: 'due_at must be an ISO date string or null' });
+    }
     const item = await updateListItem(id, profileId, {
       itemText: item_text,
       note,
+      listName: list_name,
+      dueAt: due_at === '' ? null : due_at,
     });
     if (!item) return reply.code(404).send({ error: 'Item not found' });
     return { success: true, item };
@@ -2394,6 +2411,29 @@ const start = async () => {
       const { runDailyMaintenanceForAllFamilies } = await import('./reflection/reflection');
       const results = await runDailyMaintenanceForAllFamilies();
       server.log.info({ results }, 'Daily maintenance complete');
+
+      // Auto-expire stale active stream cards. Anything still 'active' after
+      // 14 days is almost certainly something the user has stopped caring
+      // about — without this the briefing's "open commitments" pool grows
+      // unbounded and the same items resurface forever (the AWBS-basket
+      // bug from 2026-04-29). Items that were genuinely important are
+      // still discoverable via Spaces / search; this just stops them
+      // counting as "open" for briefing rotation.
+      try {
+        const expired = await pool.query(
+          `UPDATE stream_cards
+              SET status = 'expired', resolved_at = NOW()
+            WHERE status = 'active'
+              AND created_at < NOW() - interval '14 days'
+              AND card_type != 'briefing'
+            RETURNING id`,
+        );
+        if (expired.rowCount && expired.rowCount > 0) {
+          server.log.info({ count: expired.rowCount }, 'Auto-expired stale stream cards');
+        }
+      } catch (err) {
+        server.log.error({ err }, 'Stream card auto-expire failed');
+      }
     }, { timezone: 'Europe/London' });
 
     cron.schedule('0 23 * * 0', async () => {

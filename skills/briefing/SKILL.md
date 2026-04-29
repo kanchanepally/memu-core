@@ -4,7 +4,7 @@ description: The unified briefing engine. Composes a single executive briefing f
 model: sonnet
 cost_tier: standard
 requires_twin: true
-version: 4
+version: 5
 ---
 
 # Briefing
@@ -43,7 +43,7 @@ If the header has any ⚠ or ✕ lines, gently surface in the prose what action 
 
 4. **Inbox triage** (only if `{{inbox_transcript}}` is non-empty and substantive). Group what arrived by sphere (Family / Admin / Work / Social). Surface only what's new, novel, or actionable. Skip "ok", "thanks", reaction-only messages, and noise. If the entire inbox is noise, say so in one line and move on. Do not pretend otherwise.
 
-5. **Open commitments** (`{{active_cards}}`). Mention 1–2 items that have been open longest or are sphere-relevant to the day. Do not list everything — that's what the Today tab is for.
+5. **Open commitments** (`{{active_cards}}`). Pick 1–2 items that are sphere-relevant to the day. **The list is already pre-sorted least-mentioned-first**, so prefer items at the top — they have not been brought up in recent briefings. When you mention an item from the numbered `{{active_cards}}` list, ALSO record its 1-indexed number in `mentioned_card_indexes` (see schema below) so the system can track what's been said and rotate fresh items in next time. If `{{active_cards}}` says "No pending items.", skip this section entirely.
 
 ## Drafted next-actions
 
@@ -65,7 +65,8 @@ Your response MUST be a raw JSON object (no markdown fence, no preamble) matchin
 {
   "briefing_markdown": "string — the full briefing body, opening with the domain health header verbatim",
   "has_substantive_updates": boolean — true if there is anything the reader needs to act on or be aware of beyond the calendar; false if today is essentially quiet,
-  "suggested_actions": [ { "label": "string", "kind": "reply_draft|add_to_list|add_calendar_event|update_space", "payload": { ... } } ]
+  "suggested_actions": [ { "label": "string", "kind": "reply_draft|add_to_list|add_calendar_event|update_space", "payload": { ... } } ],
+  "mentioned_card_indexes": [1, 3] — 1-indexed numbers from the OPEN COMMITMENTS list above that you actually referenced in your prose. Empty array when the section was skipped or no items were mentioned. Used by the system to rotate which items surface across consecutive briefings.
 }
 ```
 
@@ -93,7 +94,7 @@ UPCOMING EVENTS (later in the next 48h, NOT today):
 CALENDAR COLLISIONS (deterministic detector — spans full 48h window):
 {{collisions}}
 
-OPEN COMMITMENTS (stream cards still active):
+OPEN COMMITMENTS (stream cards still active, sorted least-mentioned first; numbered for `mentioned_card_indexes`):
 {{active_cards}}
 
 INBOX SINCE LAST BRIEFING (anonymised):

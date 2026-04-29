@@ -1,22 +1,25 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, Pressable, TextInput,
-  ActivityIndicator, Animated, Easing,
+  ActivityIndicator, Animated, Easing, Modal, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getLists,
   addListItemApi,
   completeListItemApi,
+  updateListItemApi,
   deleteListItemApi,
   type ListItem as ListItemDto,
   type ListItemType,
 } from '../../lib/api';
+import { parseQuickInput } from '../../lib/listInputParser';
 import { colors, spacing, radius, typography, shadows, motion } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
+import GradientButton from '../../components/GradientButton';
 
 type Tab = 'tasks' | 'shopping';
 
@@ -46,7 +49,56 @@ function titleCase(s: string): string {
   return body.charAt(0).toUpperCase() + body.slice(1);
 }
 
-function ListRow({ item, onCheck }: { item: ListItemDto; onCheck: (id: string) => void }) {
+// Format an ISO due_at as a friendly chip — "Today", "Tomorrow", "Fri", or
+// "Mon 12 May" for items further out. Past-due items get an explicit
+// negative-day count so the user knows they're behind.
+function formatDueChip(iso: string | null): { label: string; tone: 'overdue' | 'today' | 'soon' | 'future' } | null {
+  if (!iso) return null;
+  const due = new Date(iso);
+  if (Number.isNaN(due.getTime())) return null;
+
+  const now = new Date();
+  const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+  const startOfTomorrow = new Date(startOfToday); startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const inSevenDays = new Date(startOfToday); inSevenDays.setDate(inSevenDays.getDate() + 7);
+
+  if (due < startOfToday) {
+    const days = Math.round((startOfToday.getTime() - due.getTime()) / (24 * 3600 * 1000));
+    return { label: days === 1 ? 'Yesterday' : `${days}d overdue`, tone: 'overdue' };
+  }
+  if (due < startOfTomorrow) return { label: 'Today', tone: 'today' };
+  const startOfDayAfter = new Date(startOfTomorrow); startOfDayAfter.setDate(startOfDayAfter.getDate() + 1);
+  if (due < startOfDayAfter) return { label: 'Tomorrow', tone: 'soon' };
+  if (due < inSevenDays) {
+    return { label: due.toLocaleDateString([], { weekday: 'short' }), tone: 'soon' };
+  }
+  return {
+    label: due.toLocaleDateString([], { day: 'numeric', month: 'short' }),
+    tone: 'future',
+  };
+}
+
+function dueChipStyle(tone: 'overdue' | 'today' | 'soon' | 'future') {
+  switch (tone) {
+    case 'overdue':
+      return { bg: colors.errorContainer, fg: colors.error };
+    case 'today':
+      return { bg: colors.primaryContainer, fg: colors.onPrimaryContainer };
+    case 'soon':
+      return { bg: colors.tertiaryContainer, fg: colors.tertiary };
+    case 'future':
+    default:
+      return { bg: colors.surfaceContainer, fg: colors.onSurfaceVariant };
+  }
+}
+
+interface ListRowProps {
+  item: ListItemDto;
+  onCheck: (id: string) => void;
+  onLongPress: (item: ListItemDto) => void;
+}
+
+function ListRow({ item, onCheck, onLongPress }: ListRowProps) {
   const checkScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const [checked, setChecked] = useState(false);
@@ -67,9 +119,17 @@ function ListRow({ item, onCheck }: { item: ListItemDto; onCheck: (id: string) =
     }).start(() => onCheck(item.id));
   };
 
+  const due = formatDueChip(item.due_at);
+  const dueStyle = due ? dueChipStyle(due.tone) : null;
+
   return (
     <Animated.View style={{ opacity: rowOpacity }}>
-      <Pressable style={styles.item} onPress={handlePress}>
+      <Pressable
+        style={styles.item}
+        onPress={handlePress}
+        onLongPress={() => onLongPress(item)}
+        delayLongPress={350}
+      >
         <Animated.View style={[styles.checkbox, checked && styles.checkboxChecked, { transform: [{ scale: checkScale }] }]}>
           {checked ? (
             <Ionicons name="checkmark" size={16} color={colors.onPrimary} />
@@ -78,16 +138,209 @@ function ListRow({ item, onCheck }: { item: ListItemDto; onCheck: (id: string) =
         <View style={styles.itemContent}>
           <Text style={[styles.itemTitle, checked && styles.itemTitleChecked]}>{item.item_text}</Text>
           {item.note ? <Text style={styles.itemBody}>{item.note}</Text> : null}
-          {item.source ? (
-            <View style={styles.sourcePill}>
-              <View style={[styles.sourceDot, { backgroundColor: sourceColor(item.source) }]} />
-              <Text style={styles.sourceLabel}>{item.source}</Text>
+          {(due || item.source) ? (
+            <View style={styles.itemMetaRow}>
+              {due && dueStyle ? (
+                <View style={[styles.dueChip, { backgroundColor: dueStyle.bg }]}>
+                  <Ionicons name="time-outline" size={11} color={dueStyle.fg} />
+                  <Text style={[styles.dueChipLabel, { color: dueStyle.fg }]}>{due.label}</Text>
+                </View>
+              ) : null}
+              {item.source ? (
+                <View style={styles.sourcePill}>
+                  <View style={[styles.sourceDot, { backgroundColor: sourceColor(item.source) }]} />
+                  <Text style={styles.sourceLabel}>{item.source}</Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
         </View>
       </Pressable>
     </Animated.View>
   );
+}
+
+interface EditModalState {
+  open: boolean;
+  item: ListItemDto | null;
+}
+
+interface EditModalProps {
+  state: EditModalState;
+  onClose: () => void;
+  onSaved: (updated: ListItemDto) => void;
+  onDeleted: (id: string) => void;
+}
+
+function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
+  const [itemText, setItemText] = useState('');
+  const [note, setNote] = useState('');
+  const [listName, setListName] = useState('');
+  const [dueText, setDueText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset when the modal opens for a new item.
+  useEffect(() => {
+    if (!state.open || !state.item) return;
+    setItemText(state.item.item_text);
+    setNote(state.item.note ?? '');
+    setListName(state.item.list_name ?? '');
+    // Render due_at as YYYY-MM-DD for the input. NULL → empty string.
+    setDueText(state.item.due_at ? state.item.due_at.slice(0, 10) : '');
+    setError(null);
+    setSaving(false);
+  }, [state.open, state.item]);
+
+  if (!state.item) return null;
+
+  const handleSave = async () => {
+    if (!itemText.trim()) {
+      setError('Item text is required.');
+      return;
+    }
+    let dueAt: string | null = null;
+    if (dueText.trim()) {
+      const parsed = new Date(dueText.trim());
+      if (Number.isNaN(parsed.getTime())) {
+        setError('Date format not understood. Try YYYY-MM-DD.');
+        return;
+      }
+      // Anchor to end of day local — matches the quick-input parser.
+      parsed.setHours(23, 59, 0, 0);
+      dueAt = parsed.toISOString();
+    }
+    setSaving(true);
+    setError(null);
+    const { data, error: err } = await updateListItemApi(state.item!.id, {
+      itemText: itemText.trim(),
+      note: note.trim() || null,
+      listName: listName.trim() || null,
+      dueAt,
+    });
+    setSaving(false);
+    if (err || !data) {
+      setError(err || 'Could not save.');
+      return;
+    }
+    onSaved(data.item);
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    setError(null);
+    const { error: err } = await deleteListItemApi(state.item!.id);
+    setSaving(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    onDeleted(state.item!.id);
+    onClose();
+  };
+
+  return (
+    <Modal visible={state.open} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.modalScroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Edit item</Text>
+
+            <Text style={styles.modalLabel}>Item</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={itemText}
+              onChangeText={setItemText}
+              placeholder="What is it?"
+              placeholderTextColor={colors.outline}
+              autoCorrect
+            />
+
+            <Text style={styles.modalLabel}>Note</Text>
+            <TextInput
+              style={[styles.modalInput, styles.modalInputMultiline]}
+              value={note}
+              onChangeText={setNote}
+              placeholder="Optional details"
+              placeholderTextColor={colors.outline}
+              multiline
+              numberOfLines={3}
+            />
+
+            <Text style={styles.modalLabel}>Category (optional)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={listName}
+              onChangeText={setListName}
+              placeholder="e.g. garden, work, kids"
+              placeholderTextColor={colors.outline}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.modalLabel}>Due date (optional)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={dueText}
+              onChangeText={setDueText}
+              placeholder="YYYY-MM-DD or leave blank"
+              placeholderTextColor={colors.outline}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="numbers-and-punctuation"
+            />
+
+            {error ? (
+              <View style={styles.modalError}>
+                <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
+                <Text style={styles.modalErrorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <GradientButton label="Delete" variant="ghost" onPress={handleDelete} />
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <GradientButton label="Cancel" variant="ghost" onPress={onClose} />
+                <GradientButton
+                  label={saving ? 'Saving…' : 'Save'}
+                  onPress={handleSave}
+                  loading={saving}
+                />
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// Group items by list_name. Items with null list_name go into "Uncategorised"
+// — but if every item is null, we render flat (no headers) so the page
+// doesn't feel like it's making the user feel guilty for not categorising.
+function groupItems(items: ListItemDto[]): { name: string | null; items: ListItemDto[] }[] {
+  const map = new Map<string | null, ListItemDto[]>();
+  for (const item of items) {
+    const key = item.list_name && item.list_name.trim() ? item.list_name.trim() : null;
+    const arr = map.get(key) ?? [];
+    arr.push(item);
+    map.set(key, arr);
+  }
+  const named = [...map.entries()].filter(([k]) => k !== null) as [string, ListItemDto[]][];
+  named.sort(([a], [b]) => a.localeCompare(b));
+  const groups: { name: string | null; items: ListItemDto[] }[] = named.map(([name, items]) => ({ name, items }));
+  if (map.has(null)) {
+    groups.push({ name: null, items: map.get(null)! });
+  }
+  return groups;
 }
 
 export default function ListsScreen() {
@@ -99,20 +352,19 @@ export default function ListsScreen() {
   const [newItem, setNewItem] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('tasks');
   const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [editModal, setEditModal] = useState<EditModalState>({ open: false, item: null });
 
   const loadItems = useCallback(async () => {
-    console.log('[Lists] Fetching items...');
     const [tasksRes, shoppingRes] = await Promise.all([
       getLists({ listType: 'task', status: 'pending' }),
       getLists({ listType: 'shopping', status: 'pending' }),
     ]);
-    
+
     if (tasksRes.error || shoppingRes.error) {
       const err = tasksRes.error || shoppingRes.error || 'Unknown error';
-      console.error('[Lists] Fetch failed:', err);
       setError(err);
     } else {
-      console.log(`[Lists] Success: ${tasksRes.data?.items.length || 0} tasks, ${shoppingRes.data?.items.length || 0} shopping`);
       setTasks(tasksRes.data?.items || []);
       setShoppingItems(shoppingRes.data?.items || []);
       setError(null);
@@ -120,16 +372,8 @@ export default function ListsScreen() {
     setLoading(false);
   }, []);
 
-  // Refresh whenever the tab is focused
-  useFocusEffect(
-    useCallback(() => {
-      loadItems();
-    }, [loadItems])
-  );
-
-  useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+  useFocusEffect(useCallback(() => { loadItems(); }, [loadItems]));
+  useEffect(() => { loadItems(); }, [loadItems]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -149,9 +393,16 @@ export default function ListsScreen() {
     setIsProcessing(true);
     setNewItem('');
     const listType: ListItemType = activeTab === 'tasks' ? 'task' : 'shopping';
-    const parts = splitInputItems(text).map(titleCase);
+    // Each comma/and-separated part is parsed independently so each can carry
+    // its own #category and "by Friday" markers.
+    const parts = splitInputItems(text);
     for (const part of parts) {
-      await addListItemApi(listType, part);
+      const parsed = parseQuickInput(part);
+      const cleanText = titleCase(parsed.itemText);
+      await addListItemApi(listType, cleanText, {
+        listName: parsed.listName,
+        dueAt: parsed.dueAt,
+      });
     }
     await loadItems();
     setIsProcessing(false);
@@ -159,6 +410,28 @@ export default function ListsScreen() {
 
   const items = activeTab === 'tasks' ? tasks : shoppingItems;
   const otherCount = activeTab === 'tasks' ? shoppingItems.length : tasks.length;
+  const groups = useMemo(() => groupItems(items), [items]);
+  const showGroupHeaders = groups.some(g => g.name !== null);
+
+  const toggleGroup = (key: string) => {
+    setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleLongPress = (item: ListItemDto) => {
+    setEditModal({ open: true, item });
+  };
+
+  const handleSaved = (updated: ListItemDto) => {
+    if (updated.list_type === 'task') setTasks(prev => prev.map(i => i.id === updated.id ? updated : i));
+    if (updated.list_type === 'shopping') setShoppingItems(prev => prev.map(i => i.id === updated.id ? updated : i));
+    // Re-sort after edit (due_at may have changed).
+    loadItems();
+  };
+
+  const handleDeleted = (id: string) => {
+    setTasks(prev => prev.filter(i => i.id !== id));
+    setShoppingItems(prev => prev.filter(i => i.id !== id));
+  };
 
   return (
     <View style={styles.container}>
@@ -224,7 +497,7 @@ export default function ListsScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder={activeTab === 'tasks' ? 'Add a task…' : 'Add groceries…'}
+              placeholder={activeTab === 'tasks' ? 'Add a task… try "call HMRC by Friday #work"' : 'Add groceries… "milk, eggs #weekly"'}
               placeholderTextColor={colors.outline}
               value={newItem}
               onChangeText={setNewItem}
@@ -249,7 +522,7 @@ export default function ListsScreen() {
             </Pressable>
           </View>
           <Text style={styles.inputHint}>
-            Type "milk, eggs and bread" — Memu splits commas and "and" into separate items.
+            Tap an item to mark done. Long-press to edit, set a category, or change the due date.
           </Text>
         </View>
 
@@ -281,12 +554,49 @@ export default function ListsScreen() {
               </Text>
             </View>
           ) : (
-            items.map(item => (
-              <ListRow key={item.id} item={item} onCheck={handleCheck} />
-            ))
+            groups.map(group => {
+              const key = group.name ?? '__uncategorised__';
+              const isCollapsed = collapsed[key] === true;
+              return (
+                <View key={key} style={styles.groupBlock}>
+                  {showGroupHeaders ? (
+                    <Pressable style={styles.groupHeader} onPress={() => toggleGroup(key)}>
+                      <Ionicons
+                        name={isCollapsed ? 'chevron-forward' : 'chevron-down'}
+                        size={14}
+                        color={colors.onSurfaceVariant}
+                      />
+                      <Text style={styles.groupHeaderLabel}>
+                        {group.name ?? 'Uncategorised'}
+                      </Text>
+                      <View style={styles.groupHeaderCount}>
+                        <Text style={styles.groupHeaderCountText}>{group.items.length}</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
+                  {!isCollapsed
+                    ? group.items.map(item => (
+                        <ListRow
+                          key={item.id}
+                          item={item}
+                          onCheck={handleCheck}
+                          onLongPress={handleLongPress}
+                        />
+                      ))
+                    : null}
+                </View>
+              );
+            })
           )}
         </View>
       </ScreenContainer>
+
+      <EditModal
+        state={editModal}
+        onClose={() => setEditModal({ open: false, item: null })}
+        onSaved={handleSaved}
+        onDeleted={handleDeleted}
+      />
     </View>
   );
 }
@@ -394,9 +704,40 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
 
-  skeletonWrap: {
-    gap: spacing.sm,
+  groupBlock: {
+    marginBottom: spacing.md,
   },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  groupHeaderLabel: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+    flex: 1,
+  },
+  groupHeaderCount: {
+    backgroundColor: colors.surfaceContainer,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  groupHeaderCountText: {
+    fontSize: 10,
+    fontFamily: typography.families.bodyBold,
+    color: colors.onSurfaceVariant,
+  },
+
+  skeletonWrap: { gap: spacing.sm },
   skeletonRow: {
     height: 72,
     borderRadius: radius.lg,
@@ -483,8 +824,28 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     lineHeight: 18,
   },
+  itemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  dueChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  dueChipLabel: {
+    fontSize: 10,
+    fontFamily: typography.families.bodyBold,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
   sourcePill: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -492,7 +853,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.pill,
-    marginTop: spacing.xs,
   },
   sourceDot: {
     width: 6,
@@ -523,5 +883,83 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.bodyMedium,
     color: '#D32F2F',
     flex: 1,
+  },
+
+  // Edit modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(12,14,16,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalScroll: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.xl,
+    paddingBottom: spacing['2xl'],
+    ...shadows.high,
+  },
+  modalHandle: {
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.outlineVariant,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+    opacity: 0.5,
+  },
+  modalTitle: {
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+    marginBottom: spacing.lg,
+  },
+  modalLabel: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  modalInput: {
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+  modalInputMultiline: {
+    minHeight: 72,
+    textAlignVertical: 'top',
+  },
+  modalError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.errorContainer,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    marginTop: spacing.md,
+  },
+  modalErrorText: {
+    color: colors.error,
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    flex: 1,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.lg,
   },
 });

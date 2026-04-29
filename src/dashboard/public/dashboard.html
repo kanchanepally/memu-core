@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-29-today-redesign">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
 </head>
 <body>
 <!-- Auth gate -->
@@ -472,13 +472,45 @@ async function api(path, opts = {}) {
     </div>
 
     <form class="lists-add-row" onsubmit="event.preventDefault();addListItemSubmit();">
-        <input type="text" id="lists-add-input" class="input" placeholder="Add a task…" maxlength="200" autocomplete="off">
+        <input type="text" id="lists-add-input" class="input" placeholder="Add a task… try &quot;call HMRC by Friday #work&quot;" maxlength="200" autocomplete="off">
         <button type="submit" class="btn btn-primary btn-sm" id="lists-add-btn">Add</button>
     </form>
-    <div class="text-muted" style="font-size:12px;padding:0 4px 8px;">Type "milk, eggs and bread" — commas and "and" split into separate items.</div>
+    <div class="text-muted" style="font-size:12px;padding:0 4px 8px;">Click an item to edit category or due date. Use <code>#category</code> and "by Friday" / "tomorrow" / "in 3 days" to set them on creation.</div>
 
     <div id="lists-items"></div>
     <div id="lists-empty" class="empty-state hidden">Nothing here yet. Add one above, or just tell Memu in chat.</div>
+</div>
+
+<!-- Lists edit modal — opens on item click. Lets the user edit text, note,
+     category (list_name), and due date. Backed by PATCH /api/lists/:id.
+     Distinct from the stream-card edit modal at #edit-modal. -->
+<div id="lists-edit-modal" class="modal-overlay" onclick="if(event.target===this)closeListsEditModal()">
+    <div class="modal-card lists-edit-card">
+        <div class="modal-handle"></div>
+        <h3 class="modal-title">Edit item</h3>
+
+        <label class="modal-label">Item</label>
+        <input type="text" id="lists-edit-text" class="input" maxlength="200">
+
+        <label class="modal-label">Note</label>
+        <textarea id="lists-edit-note" class="input" rows="2" placeholder="Optional details"></textarea>
+
+        <label class="modal-label">Category (optional)</label>
+        <input type="text" id="lists-edit-category" class="input" placeholder="e.g. garden, work, kids" maxlength="48">
+
+        <label class="modal-label">Due date (optional)</label>
+        <input type="date" id="lists-edit-due" class="input">
+
+        <div id="lists-edit-error" class="error-banner hidden"></div>
+
+        <div class="modal-actions modal-actions-split">
+            <button class="btn btn-secondary btn-sm" onclick="deleteFromListsEditModal()" style="color:var(--color-error);border-color:transparent;">Delete</button>
+            <div style="display:flex;gap:var(--space-sm);">
+                <button class="btn btn-secondary btn-sm" onclick="closeListsEditModal()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="lists-edit-save" onclick="saveListsEditModal()">Save</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ==================== LEDGER TAB ==================== -->
@@ -1247,6 +1279,121 @@ function switchListKind(kind) {
     renderLists();
 }
 
+// Quick-input parser — mirrors mobile/lib/listInputParser.ts. Strips
+// `#category` and natural-language due phrases ("by Friday", "tomorrow",
+// "next week", "in 3 days") so the user's clean intent survives whatever
+// scheduling/categorisation sugar they appended.
+const LISTS_DAY_NAMES = {
+    sunday: 0, sun: 0, monday: 1, mon: 1, tuesday: 2, tue: 2, tues: 2,
+    wednesday: 3, wed: 3, thursday: 4, thu: 4, thur: 4, thurs: 4,
+    friday: 5, fri: 5, saturday: 6, sat: 6,
+};
+
+function listsEndOfDay(d) { const o = new Date(d); o.setHours(23, 59, 0, 0); return o; }
+
+function parseListsDuePhrase(text, now) {
+    now = now || new Date();
+    const lower = text.toLowerCase();
+    const todayMatch = lower.match(/\b(?:by\s+)?today\b/);
+    if (todayMatch) return { iso: listsEndOfDay(now).toISOString(), matched: todayMatch[0] };
+    const tomorrowMatch = lower.match(/\b(?:by\s+)?tomorrow\b/);
+    if (tomorrowMatch) {
+        const d = new Date(now); d.setDate(d.getDate() + 1);
+        return { iso: listsEndOfDay(d).toISOString(), matched: tomorrowMatch[0] };
+    }
+    const inDays = lower.match(/\bin\s+(\d{1,3})\s+days?\b/);
+    if (inDays) {
+        const d = new Date(now); d.setDate(d.getDate() + Math.min(365, parseInt(inDays[1], 10)));
+        return { iso: listsEndOfDay(d).toISOString(), matched: inDays[0] };
+    }
+    const nextWeek = lower.match(/\b(?:by\s+)?next\s+week\b/);
+    if (nextWeek) {
+        const d = new Date(now);
+        const dow = d.getDay();
+        const daysToMon = dow === 0 ? 1 : (8 - dow);
+        d.setDate(d.getDate() + daysToMon);
+        return { iso: listsEndOfDay(d).toISOString(), matched: nextWeek[0] };
+    }
+    const dayPattern = Object.keys(LISTS_DAY_NAMES).join('|');
+    const dayMatch = lower.match(new RegExp(`\\b(by|on|next)\\s+(${dayPattern})\\b`));
+    if (dayMatch) {
+        const isNext = dayMatch[1] === 'next';
+        const target = LISTS_DAY_NAMES[dayMatch[2]];
+        const d = new Date(now);
+        const cur = d.getDay();
+        let ahead = (target - cur + 7) % 7;
+        if (ahead === 0) ahead = 7;
+        if (isNext && ahead < 7) ahead += 7;
+        d.setDate(d.getDate() + ahead);
+        return { iso: listsEndOfDay(d).toISOString(), matched: dayMatch[0] };
+    }
+    return null;
+}
+
+function parseListsQuickInput(raw) {
+    let text = raw.trim();
+    let listName = null;
+    let dueAt = null;
+    const hashMatch = text.match(/(^|\s)#([a-zA-Z][a-zA-Z0-9_-]{0,32})(?=$|\s)/);
+    if (hashMatch) {
+        listName = hashMatch[2].toLowerCase();
+        text = (text.slice(0, hashMatch.index) + text.slice(hashMatch.index + hashMatch[0].length)).trim();
+    }
+    const due = parseListsDuePhrase(text);
+    if (due) {
+        dueAt = due.iso;
+        const escaped = due.matched.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        text = text
+            .replace(new RegExp(`[\\s,;.]*${escaped}[\\s,;.]*`, 'i'), ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/[,.;]\s*$/, '')
+            .trim();
+    }
+    if (text.length === 0) text = raw.trim();
+    return { itemText: text, listName, dueAt };
+}
+
+// Format a due_at ISO string as a friendly chip — "Today", "Tomorrow",
+// "Fri", or "12 May". Past-due gets a negative-day tone. Mirrors mobile.
+function formatListsDueChip(iso) {
+    if (!iso) return null;
+    const due = new Date(iso);
+    if (isNaN(due.getTime())) return null;
+    const now = new Date();
+    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday); startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+    const startOfDayAfter = new Date(startOfTomorrow); startOfDayAfter.setDate(startOfDayAfter.getDate() + 1);
+    const inSeven = new Date(startOfToday); inSeven.setDate(inSeven.getDate() + 7);
+    if (due < startOfToday) {
+        const days = Math.round((startOfToday.getTime() - due.getTime()) / (24 * 3600 * 1000));
+        return { label: days === 1 ? 'Yesterday' : `${days}d overdue`, tone: 'overdue' };
+    }
+    if (due < startOfTomorrow) return { label: 'Today', tone: 'today' };
+    if (due < startOfDayAfter) return { label: 'Tomorrow', tone: 'soon' };
+    if (due < inSeven) return { label: due.toLocaleDateString([], { weekday: 'short' }), tone: 'soon' };
+    return { label: due.toLocaleDateString([], { day: 'numeric', month: 'short' }), tone: 'future' };
+}
+
+// Group items by list_name. Items without list_name go to "Uncategorised";
+// when EVERY item is uncategorised we render flat (no headers). Sorted by
+// list_name alphabetically with the null group last.
+function groupListsItems(items) {
+    const map = new Map();
+    for (const item of items) {
+        const key = item.list_name && item.list_name.trim() ? item.list_name.trim() : null;
+        const arr = map.get(key) || [];
+        arr.push(item);
+        map.set(key, arr);
+    }
+    const named = [...map.entries()].filter(([k]) => k !== null).sort(([a], [b]) => a.localeCompare(b));
+    const groups = named.map(([name, items]) => ({ name, items }));
+    if (map.has(null)) groups.push({ name: null, items: map.get(null) });
+    return groups;
+}
+
+let listsCollapsed = {};
+
 async function loadLists() {
     try {
         const [tasksRes, shoppingRes] = await Promise.all([
@@ -1264,6 +1411,11 @@ async function loadLists() {
     }
 }
 
+function toggleListsGroup(key) {
+    listsCollapsed[key] = !listsCollapsed[key];
+    renderLists();
+}
+
 function renderLists() {
     const items = listsCache[listsKind] || [];
     const wrap = document.getElementById('lists-items');
@@ -1277,21 +1429,40 @@ function renderLists() {
         return;
     }
     empty.classList.add('hidden');
-    wrap.innerHTML = items.map(item => {
-        const note = item.note ? `<div class="lists-item-note">${esc(item.note)}</div>` : '';
-        const src = item.source ? `<span class="lists-item-source">${esc(item.source)}</span>` : '';
-        return `
-        <div class="lists-item" data-id="${item.id}">
-            <button class="lists-checkbox" onclick="completeListItem('${item.id}')" title="Mark done">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </button>
-            <div class="lists-item-body">
-                <div class="lists-item-text">${esc(item.item_text)}</div>
-                ${note}
-                ${src}
-            </div>
-            <button class="lists-delete-btn" onclick="deleteListItemPrompt('${item.id}')" title="Delete">&#x2715;</button>
-        </div>`;
+
+    const groups = groupListsItems(items);
+    const showHeaders = groups.some(g => g.name !== null);
+
+    wrap.innerHTML = groups.map(g => {
+        const groupKey = g.name || '__uncategorised__';
+        const collapsed = listsCollapsed[groupKey] === true;
+        const header = showHeaders
+            ? `<div class="lists-group-header" onclick="toggleListsGroup('${esc(groupKey)}')">
+                  <span class="lists-group-chevron">${collapsed ? '&#x25B8;' : '&#x25BE;'}</span>
+                  <span class="lists-group-label">${esc(g.name || 'Uncategorised')}</span>
+                  <span class="lists-group-count">${g.items.length}</span>
+               </div>`
+            : '';
+        const rows = collapsed ? '' : g.items.map(item => {
+            const note = item.note ? `<div class="lists-item-note">${esc(item.note)}</div>` : '';
+            const src = item.source ? `<span class="lists-item-source">${esc(item.source)}</span>` : '';
+            const due = formatListsDueChip(item.due_at);
+            const dueChip = due
+                ? `<span class="lists-due-chip lists-due-${esc(due.tone)}">${esc(due.label)}</span>`
+                : '';
+            return `
+            <div class="lists-item" data-id="${item.id}" onclick="openListsEditModal('${item.id}', event)">
+                <button class="lists-checkbox" onclick="event.stopPropagation();completeListItem('${item.id}')" title="Mark done">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <div class="lists-item-body">
+                    <div class="lists-item-text">${esc(item.item_text)}</div>
+                    ${note}
+                    ${(dueChip || src) ? `<div class="lists-item-meta">${dueChip}${src}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+        return `<div class="lists-group">${header}${rows}</div>`;
     }).join('');
 }
 
@@ -1303,11 +1474,21 @@ async function addListItemSubmit() {
     btn.disabled = true;
     input.value = '';
     try {
-        const parts = splitListInput(raw).map(listsTitleCase);
+        // Each comma/and-separated piece is parsed independently so each
+        // can carry its own #category and "by Friday" markers.
+        const parts = splitListInput(raw);
         for (const part of parts) {
+            const parsed = parseListsQuickInput(part);
+            const cleanText = listsTitleCase(parsed.itemText);
             await api('/api/lists', {
                 method: 'POST',
-                body: JSON.stringify({ list_type: listsKind, item_text: part, source: 'pwa' }),
+                body: JSON.stringify({
+                    list_type: listsKind,
+                    item_text: cleanText,
+                    list_name: parsed.listName,
+                    due_at: parsed.dueAt,
+                    source: 'pwa',
+                }),
             });
         }
         await loadLists();
@@ -1316,6 +1497,90 @@ async function addListItemSubmit() {
     } finally {
         btn.disabled = false;
         input.focus();
+    }
+}
+
+// ---- Lists edit modal ----
+
+let listsEditingId = null;
+
+function openListsEditModal(id, ev) {
+    if (ev) ev.stopPropagation();
+    const item = listsCache[listsKind].find(i => i.id === id);
+    if (!item) return;
+    listsEditingId = id;
+    document.getElementById('lists-edit-text').value = item.item_text || '';
+    document.getElementById('lists-edit-note').value = item.note || '';
+    document.getElementById('lists-edit-category').value = item.list_name || '';
+    document.getElementById('lists-edit-due').value = item.due_at ? item.due_at.slice(0, 10) : '';
+    document.getElementById('lists-edit-error').classList.add('hidden');
+    // .open is the existing modal-overlay show class; never use .hidden here
+    // because the global `.hidden` rule has !important and would suppress it.
+    document.getElementById('lists-edit-modal').classList.add('open');
+}
+
+function closeListsEditModal() {
+    document.getElementById('lists-edit-modal').classList.remove('open');
+    listsEditingId = null;
+}
+
+async function saveListsEditModal() {
+    if (!listsEditingId) return;
+    const errorEl = document.getElementById('lists-edit-error');
+    errorEl.classList.add('hidden');
+    const text = document.getElementById('lists-edit-text').value.trim();
+    const note = document.getElementById('lists-edit-note').value.trim();
+    const cat = document.getElementById('lists-edit-category').value.trim();
+    const dueRaw = document.getElementById('lists-edit-due').value.trim();
+    if (!text) {
+        errorEl.textContent = 'Item text is required.';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+    let dueAt = null;
+    if (dueRaw) {
+        const d = new Date(dueRaw);
+        if (isNaN(d.getTime())) {
+            errorEl.textContent = 'Date format not understood.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        d.setHours(23, 59, 0, 0);
+        dueAt = d.toISOString();
+    }
+    const btn = document.getElementById('lists-edit-save');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+        await api(`/api/lists/${listsEditingId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                item_text: text,
+                note: note || null,
+                list_name: cat || null,
+                due_at: dueAt,
+            }),
+        });
+        await loadLists();
+        closeListsEditModal();
+    } catch (err) {
+        errorEl.textContent = 'Save failed.';
+        errorEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+    }
+}
+
+async function deleteFromListsEditModal() {
+    if (!listsEditingId) return;
+    if (!confirm('Delete this item?')) return;
+    try {
+        await api(`/api/lists/${listsEditingId}`, { method: 'DELETE' });
+        await loadLists();
+        closeListsEditModal();
+    } catch (err) {
+        showToast('Delete failed', true);
     }
 }
 

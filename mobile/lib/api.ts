@@ -444,6 +444,8 @@ export interface ListItem {
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
+  /** Optional deadline. ISO date string when set, null otherwise. */
+  due_at: string | null;
 }
 
 export async function getLists(params?: {
@@ -462,11 +464,18 @@ export async function getLists(params?: {
 export async function addListItemApi(
   listType: ListItemType,
   itemText: string,
-  note?: string | null,
+  opts?: { note?: string | null; listName?: string | null; dueAt?: string | null },
 ): Promise<ApiResponse<{ success: boolean; item: ListItem }>> {
   return request<{ success: boolean; item: ListItem }>('/api/lists', {
     method: 'POST',
-    body: JSON.stringify({ list_type: listType, item_text: itemText, note, source: 'mobile' }),
+    body: JSON.stringify({
+      list_type: listType,
+      item_text: itemText,
+      note: opts?.note ?? null,
+      list_name: opts?.listName ?? null,
+      due_at: opts?.dueAt ?? null,
+      source: 'mobile',
+    }),
   });
 }
 
@@ -484,11 +493,21 @@ export async function reopenListItemApi(id: string) {
 
 export async function updateListItemApi(
   id: string,
-  patch: { itemText?: string; note?: string | null },
+  patch: {
+    itemText?: string;
+    note?: string | null;
+    listName?: string | null;
+    dueAt?: string | null;
+  },
 ) {
   return request<{ success: boolean; item: ListItem }>(`/api/lists/${id}`, {
     method: 'PATCH',
-    body: JSON.stringify({ item_text: patch.itemText, note: patch.note }),
+    body: JSON.stringify({
+      item_text: patch.itemText,
+      note: patch.note,
+      list_name: patch.listName,
+      due_at: patch.dueAt,
+    }),
   });
 }
 

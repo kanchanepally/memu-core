@@ -17,6 +17,8 @@ export interface ListItem {
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
+  /** Optional deadline. NULL when no due date is set. Migration 023. */
+  due_at: string | null;
 }
 
 export interface AddItemInput {
@@ -29,13 +31,14 @@ export interface AddItemInput {
   sourceMessageId?: string | null;
   sourceStreamCardId?: string | null;
   createdBy?: string | null;
+  dueAt?: string | null;
 }
 
 export async function addItem(input: AddItemInput): Promise<ListItem> {
   const { rows } = await pool.query<ListItem>(
     `INSERT INTO list_items
-       (family_id, list_type, list_name, item_text, note, source, source_message_id, source_stream_card_id, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (family_id, list_type, list_name, item_text, note, source, source_message_id, source_stream_card_id, created_by, due_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       input.familyId,
@@ -47,6 +50,7 @@ export async function addItem(input: AddItemInput): Promise<ListItem> {
       input.sourceMessageId ?? null,
       input.sourceStreamCardId ?? null,
       input.createdBy ?? null,
+      input.dueAt ?? null,
     ],
   );
   return rows[0];
@@ -72,10 +76,13 @@ export async function listItems(filter: ListFilter): Promise<ListItem[]> {
   }
   const limit = filter.limit ?? 200;
   params.push(limit);
+  // Order: pending before done; within pending, due_at ascending (NULLS LAST
+  // so dated items surface above un-dated). Within each group of equal
+  // due_at, newest first — the user's most recent thinking on top.
   const { rows } = await pool.query<ListItem>(
     `SELECT * FROM list_items
      WHERE ${clauses.join(' AND ')}
-     ORDER BY status ASC, created_at ASC
+     ORDER BY status ASC, due_at ASC NULLS LAST, created_at DESC
      LIMIT $${params.length}`,
     params,
   );
@@ -115,7 +122,12 @@ export async function deleteItem(id: string, familyId: string): Promise<boolean>
 export async function updateItem(
   id: string,
   familyId: string,
-  patch: { itemText?: string; note?: string | null },
+  patch: {
+    itemText?: string;
+    note?: string | null;
+    listName?: string | null;
+    dueAt?: string | null;
+  },
 ): Promise<ListItem | null> {
   const sets: string[] = [];
   const params: unknown[] = [id, familyId];
@@ -126,6 +138,14 @@ export async function updateItem(
   if (patch.note !== undefined) {
     params.push(patch.note);
     sets.push(`note = $${params.length}`);
+  }
+  if (patch.listName !== undefined) {
+    params.push(patch.listName);
+    sets.push(`list_name = $${params.length}`);
+  }
+  if (patch.dueAt !== undefined) {
+    params.push(patch.dueAt);
+    sets.push(`due_at = $${params.length}`);
   }
   if (sets.length === 0) {
     const { rows } = await pool.query<ListItem>(

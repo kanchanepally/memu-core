@@ -2563,6 +2563,131 @@ textarea.input {
   color: var(--color-error, #c6364a);
 }
 
+/* Make the list item itself clickable for edit; the checkbox stops propagation. */
+.lists-item { cursor: pointer; }
+.lists-item:hover { box-shadow: var(--shadow-sm); }
+
+/* Item metadata row (due chip + source pill, side by side) */
+.lists-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: 6px;
+}
+
+/* Due-date chip — sanctuary-muted tones rather than alarm-red even when overdue */
+.lists-due-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+.lists-due-overdue {
+  background: var(--errorContainer, #FFE8EC);
+  color: var(--color-error);
+}
+.lists-due-today {
+  background: var(--indigo-primary-container, #9094FA);
+  color: var(--text-inverse, #FBF7FF);
+}
+.lists-due-soon {
+  background: var(--indigo-tertiary-container);
+  color: var(--indigo-tertiary);
+}
+.lists-due-future {
+  background: var(--surface-container);
+  color: var(--text-secondary);
+}
+
+/* Group header — collapsible section labels above each group */
+.lists-group {
+  margin-bottom: var(--space-md);
+}
+.lists-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 4px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 4px;
+}
+.lists-group-chevron {
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 14px;
+  text-align: center;
+}
+.lists-group-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--indigo-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.lists-group-count {
+  background: var(--surface-container);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* Lists edit modal — sheet-style, slide-up on mobile, centred on desktop.
+   Uses the existing .modal-overlay/.modal-card base; only the lists-edit
+   specifics live here. */
+.lists-edit-card {
+  max-width: 480px;
+}
+.lists-edit-card .modal-handle {
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--outline-variant);
+  margin: 0 auto var(--space-md);
+  opacity: 0.4;
+}
+.lists-edit-card .modal-title {
+  font-family: var(--font-headline, 'Manrope', sans-serif);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-md) 0;
+}
+.lists-edit-card .modal-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: var(--space-md) 0 4px;
+}
+.lists-edit-card .modal-label:first-of-type { margin-top: 0; }
+.lists-edit-card .input {
+  margin: 0;
+  width: 100%;
+}
+.lists-edit-card .modal-actions {
+  margin-top: var(--space-lg);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+.lists-edit-card .modal-actions-split {
+  justify-content: space-between;
+  align-items: center;
+}
+
 /* ==========================================================================
    Household invite (Settings → Add household member, 2026-04-26)
    ========================================================================== */
