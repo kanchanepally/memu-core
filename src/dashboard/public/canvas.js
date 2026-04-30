@@ -413,11 +413,12 @@
             }
         });
 
-        // Gesture 2 (re-parent) — long-press / tapdrag from node body.
-        // Cytoscape's built-in node-grab is overridden so the node visually
-        // lifts but doesn't move on the canvas; on tapend we either commit
-        // a re-parent (drop on another node) or animate back.
-        cy.on('grabon', 'node', (evt) => {
+        // Gesture 2 (re-parent) — Cytoscape `grab` fires on mousedown of a
+        // draggable node, `drag` during movement, `free` on release. A
+        // plain click also fires grab+free (no movement between them); we
+        // detect that in commitReparentDrag via a movement threshold and
+        // bail so the subsequent `tap` event can drive click-to-Space.
+        cy.on('grab', 'node', (evt) => {
             const node = evt.target;
             const n = node.data('n');
             if (!n) return;
@@ -583,29 +584,49 @@
     });
 
     // ---- Gesture 2 — drag-to-reparent ----
+    // No-drag threshold (in model units, not pixels): if the node moves
+    // less than this between grab and free, treat as a click and let
+    // the subsequent `tap` event drive click-to-Space.
+    const DRAG_THRESHOLD_PX = 5;
+
     function startReparentDrag(node, n) {
         // Gesture 3 (connect) takes priority — if user grabbed the connect
         // handle, the connect drag is already running and we shouldn't
         // start a reparent.
         if (state.connectDrag) return;
+        const pos = node.position();
         state.reparentDrag = {
             sourceId: node.id(),
             sourceUri: n.uri,
             originalParent: n.parentSpaceUri || null,
             hoverTargetId: null,
+            startX: pos.x,
+            startY: pos.y,
         };
         node.addClass('canvas-lift');
         node.connectedEdges('[type = "parent_child"]').addClass('canvas-faded');
-        document.body.classList.add('canvas-dragging');
-        hideNodeOverlays();
-        hidePreview();
+        // Defer the body-level dragging cursor + overlay hide to the FIRST
+        // actual drag event — keeps clicks (no movement) clean.
     }
     function updateDropTarget(node) {
-        const cy = state.cy;
+        const drag = state.reparentDrag;
+        if (!drag) return;
         const pos = node.position();
+        const moved = Math.abs(pos.x - drag.startX) + Math.abs(pos.y - drag.startY);
+        if (moved < DRAG_THRESHOLD_PX) return; // still in click-territory, no drag chrome yet
+
+        // First time we cross the drag threshold — apply drag chrome.
+        if (!drag.dragChromeApplied) {
+            drag.dragChromeApplied = true;
+            document.body.classList.add('canvas-dragging');
+            hideNodeOverlays();
+            hidePreview();
+        }
+
+        const cy = state.cy;
         const myId = node.id();
         let bestTargetId = null;
-        // Find a node we're hovering over (rendered position, manhattan-ish proximity)
+        // Find a node we're hovering over (rendered position, point-in-bbox)
         const renderedBbox = node.renderedBoundingBox();
         const cx = (renderedBbox.x1 + renderedBbox.x2) / 2;
         const cy_centre = (renderedBbox.y1 + renderedBbox.y2) / 2;
@@ -616,10 +637,10 @@
                 bestTargetId = other.id();
             }
         });
-        if (bestTargetId !== state.reparentDrag.hoverTargetId) {
+        if (bestTargetId !== drag.hoverTargetId) {
             // Clear prior visual
             cy.nodes().removeClass('canvas-drop-target canvas-drop-reject');
-            state.reparentDrag.hoverTargetId = bestTargetId;
+            drag.hoverTargetId = bestTargetId;
             if (bestTargetId) {
                 const target = cy.getElementById(bestTargetId);
                 const targetN = target.data('n');
@@ -636,23 +657,38 @@
         const cy = state.cy;
         const drag = state.reparentDrag;
         if (!drag) return;
+        state.reparentDrag = null;
+
         node.removeClass('canvas-lift');
         cy.nodes().removeClass('canvas-drop-target canvas-drop-reject');
         cy.edges('[type = "parent_child"]').removeClass('canvas-faded');
         document.body.classList.remove('canvas-dragging');
+
+        // No-drag case: user clicked without moving → no drag chrome was
+        // applied → there is nothing to commit. Let the subsequent `tap`
+        // event drive click-to-Space. (We restore the start position
+        // defensively — in practice it's already there.)
+        if (!drag.dragChromeApplied) {
+            node.position({ x: drag.startX, y: drag.startY });
+            return;
+        }
 
         const sourceUri = drag.sourceUri;
         const sourceTitle = (state.nodesByUri.get(sourceUri) || {}).title || 'Space';
         const originalParent = drag.originalParent;
         const targetId = drag.hoverTargetId;
 
-        state.reparentDrag = null;
+        // Helper — slide the node back to its grab position.
+        const snapBack = () => node.animate(
+            { position: { x: drag.startX, y: drag.startY } },
+            { duration: 220, easing: 'ease-out' },
+        );
 
         if (!targetId) {
-            // Dropped on empty canvas → un-parent (if currently parented)
+            // Dropped in empty space.
             if (originalParent === null) {
-                // No-op, snap back
-                node.animate({ position: node.data('startPos') || node.position() }, { duration: 200 });
+                // Already top-level → snap back, nothing to change.
+                snapBack();
                 return;
             }
             doReparent(sourceUri, sourceTitle, null, originalParent);
@@ -661,25 +697,24 @@
 
         const target = cy.getElementById(targetId);
         const targetN = target.data('n');
-        if (!targetN) return;
+        if (!targetN) { snapBack(); return; }
 
         if (targetN.parentSpaceUri) {
-            // Dropped on a sub-Space → reject with shake
+            // Dropped on a sub-Space → reject with shake + toast, snap back.
             shakeNode(node);
             showToast('Two-level limit. Drop on a top-level Space, or on the canvas to un-nest.');
-            // Snap back layout
-            cy.layout(layoutOptions()).run();
+            setTimeout(snapBack, 240);
             return;
         }
 
         if (targetN.uri === originalParent) {
-            // Dropped on existing parent → no-op
-            cy.layout(layoutOptions()).run();
+            // Dropped on existing parent → no-op snap back.
+            snapBack();
             return;
         }
 
         if (targetN.uri === sourceUri) {
-            // Self
+            snapBack();
             return;
         }
 

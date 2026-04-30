@@ -2093,6 +2093,47 @@ textarea.input {
   color: #FFFFFF;
 }
 
+/* Connect-Spaces modal — picker list of candidate targets. */
+.connect-target-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid rgba(80, 84, 181, 0.14);
+  border-radius: 8px;
+  background: var(--bg-elevated, #FFFFFF);
+}
+.connect-target-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(80, 84, 181, 0.08);
+  font-size: 13px;
+}
+.connect-target-row:last-child { border-bottom: none; }
+.connect-target-row:hover { background: rgba(80, 84, 181, 0.06); }
+.connect-target-row.selected {
+  background: rgba(80, 84, 181, 0.12);
+  color: #5054B5;
+  font-weight: 600;
+}
+.connect-target-cat {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary, #8A8198);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 110px;
+}
+.connect-target-row.selected .connect-target-cat { color: #5054B5; }
+.connect-target-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .spaces-chips {
   display: flex;
   flex-wrap: wrap;
