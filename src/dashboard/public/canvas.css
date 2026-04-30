@@ -559,12 +559,125 @@ body.canvas-dragging * {
 .sw-commitment { background: #FAEFE6; border-color: #B5723C; }
 .sw-document   { background: #EFEFEF; border-color: #5C5C5C; }
 
+/* ---------- Inline Mindjet-style Space creation ---------- */
+/* Anchored in JS to a stage-relative pixel position (renderedPosition).
+   Stays put while typing; grabs focus on show; cleared on Esc / blur / save. */
+.canvas-inline-create {
+    position: absolute;
+    z-index: 9;
+    background: var(--bg-elevated, #FFFFFF);
+    border: 1px solid rgba(80, 84, 181, 0.22);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 10px 28px rgba(31, 27, 46, 0.18);
+    min-width: 280px;
+    max-width: 320px;
+    transform: translate(-50%, -50%);
+}
+.canvas-inline-input {
+    width: 100%;
+    box-sizing: border-box;
+    appearance: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text-primary, #1F1B2E);
+    padding: 4px 2px;
+    border-bottom: 1.5px solid rgba(80, 84, 181, 0.18);
+    transition: border-color 120ms ease;
+}
+.canvas-inline-input::placeholder {
+    color: var(--text-tertiary, #8A8198);
+    font-weight: 500;
+}
+.canvas-inline-input:focus { border-color: #5054B5; }
+.canvas-inline-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+.canvas-inline-cat {
+    appearance: none;
+    border: 1px solid rgba(80, 84, 181, 0.18);
+    background: transparent;
+    color: var(--text-secondary, #645A7A);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px 3px 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: inherit;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.canvas-inline-cat:hover {
+    background: rgba(80, 84, 181, 0.06);
+    color: #5054B5;
+}
+.canvas-inline-cat[data-active="true"] {
+    background: #5054B5;
+    color: #FFFFFF;
+    border-color: #5054B5;
+}
+.canvas-inline-cat[data-active="true"] .canvas-inline-cat-swatch {
+    border-color: #FFFFFF;
+}
+.canvas-inline-cat-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    border: 1.5px solid;
+    flex-shrink: 0;
+}
+.canvas-inline-hint {
+    font-size: 10.5px;
+    color: var(--text-tertiary, #8A8198);
+    margin-top: 8px;
+    line-height: 1.35;
+}
+
+/* ---------- FAB ---------- */
+.canvas-fab {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    appearance: none;
+    border: none;
+    background: linear-gradient(135deg, #5054B5 0%, #7E5BA8 100%);
+    color: #FFFFFF;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 18px rgba(80, 84, 181, 0.32);
+    z-index: 5;
+    transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.canvas-fab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(80, 84, 181, 0.4);
+}
+.canvas-fab:active { transform: translateY(0); }
+
+/* When inline-create is open, dim the FAB so it's not competing visually. */
+.canvas-fab[data-inline-open="true"] { opacity: 0.4; pointer-events: none; }
+
 /* ---------- Mobile narrow guard (mobile spaces.tsx CTA handles routing). ---------- */
 @media (max-width: 720px) {
     .canvas-toolbar { gap: 10px; }
     .canvas-search { width: 130px; }
     .canvas-title-text { font-size: 16px; }
     .canvas-legend { display: none; }
+    .canvas-fab { bottom: 16px; right: 16px; width: 48px; height: 48px; }
 }
 
 /* ---------- Hidden helper if not present in main stylesheet ---------- */

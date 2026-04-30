@@ -303,6 +303,10 @@ async function api(path, opts = {}) {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                     Connect
                 </button>
+                <button class="btn btn-secondary btn-sm hidden" id="space-detail-unnest-btn" onclick="unnestCurrentSpace()" title="Move this Space back to the top level">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><polyline points="9 18 15 12 9 6"/><line x1="3" y1="12" x2="15" y2="12"/></svg>
+                    Un-nest
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
                 <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
             </div>
@@ -2138,6 +2142,15 @@ function openSpaceDetail(id) {
     document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
     document.getElementById('space-detail-updated').textContent = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at) || 'Updated recently';
     document.getElementById('space-detail-body').innerHTML = renderMarkdown(s.body_markdown || '_No content yet — tap Edit to add some._');
+    // Show the Un-nest action only when this Space lives under a parent.
+    // Drop-on-canvas in the Spaces Canvas no longer un-parents (would
+    // collide with free-position drag), so detail-view is now the only
+    // affordance for un-nesting.
+    const unnestBtn = document.getElementById('space-detail-unnest-btn');
+    if (unnestBtn) {
+        const hasParent = !!(s.parent_space_uri || s.parentSpaceUri);
+        unnestBtn.classList.toggle('hidden', !hasParent);
+    }
     // Swap canvas: hide list, show detail
     document.getElementById('spaces-list-view').classList.add('hidden');
     document.getElementById('spaces-detail-view').classList.remove('hidden');
@@ -2419,6 +2432,34 @@ async function deleteCurrentSpace() {
         showToast('Deleted');
     } catch (err) {
         showToast('Delete failed', true);
+    }
+}
+
+// Move this Space back to the top level. Mirrors the canvas drag-to-
+// re-parent flow but only un-parents — there's no "drop on canvas to
+// un-nest" gesture any more (free-position drag took its place).
+async function unnestCurrentSpace() {
+    const id = spacesState.currentId;
+    if (!id) return;
+    const s = spacesState.spaces.find(x => x.id === id);
+    if (!s) return;
+    try {
+        const res = await api('/api/spaces/' + id + '/parent', {
+            method: 'POST',
+            body: JSON.stringify({ parentSpaceUri: null }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast('Un-nest failed: ' + (err.error || res.status), true);
+            return;
+        }
+        await loadSpaces();
+        // Refresh the detail view in place so the button hides.
+        const fresh = spacesState.spaces.find(x => x.id === id);
+        if (fresh) openSpaceDetail(id);
+        showToast(`"${s.title || 'Space'}" is now top-level`);
+    } catch (err) {
+        showToast('Un-nest failed', true);
     }
 }
 
