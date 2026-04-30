@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
-    <link rel="stylesheet" href="/canvas.css?v=2026-04-30-canvas-3">
+    <link rel="stylesheet" href="/canvas.css?v=2026-04-30-canvas-mindjet">
     <!-- Cytoscape + fcose layout. Vanilla, no React wrapper. -->
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.min.js"></script>
@@ -140,6 +140,36 @@ async function api(path, opts = {}) {
             <button class="canvas-toast-undo hidden" id="canvas-toast-undo">Undo</button>
             <div class="canvas-toast-progress" id="canvas-toast-progress"></div>
         </div>
+
+        <!-- Inline Mindjet-style Space creation. Double-click empty canvas (or click the FAB) -->
+        <!-- to drop a new Space at that point. Title first, body comes later by opening the Space. -->
+        <div class="canvas-inline-create hidden" id="canvas-inline-create">
+            <input type="text" class="canvas-inline-input" id="canvas-inline-input"
+                   placeholder="Name this Space, press Enter…" autocomplete="off" spellcheck="false">
+            <div class="canvas-inline-cats" role="group" aria-label="Category">
+                <button class="canvas-inline-cat" data-category="commitment" data-active="true" title="Commitment">
+                    <span class="canvas-inline-cat-swatch sw-commitment"></span>Commitment
+                </button>
+                <button class="canvas-inline-cat" data-category="person" title="Person">
+                    <span class="canvas-inline-cat-swatch sw-person"></span>Person
+                </button>
+                <button class="canvas-inline-cat" data-category="routine" title="Routine">
+                    <span class="canvas-inline-cat-swatch sw-routine"></span>Routine
+                </button>
+                <button class="canvas-inline-cat" data-category="household" title="Household">
+                    <span class="canvas-inline-cat-swatch sw-household"></span>Household
+                </button>
+                <button class="canvas-inline-cat" data-category="document" title="Document">
+                    <span class="canvas-inline-cat-swatch sw-document"></span>Document
+                </button>
+            </div>
+            <div class="canvas-inline-hint">Enter to create · Esc to cancel · click a category to switch</div>
+        </div>
+
+        <!-- FAB: drop a new Space at the centre of the canvas. Mirrors the inline-create flow. -->
+        <button class="canvas-fab" id="canvas-fab" title="New Space (or double-click anywhere on the canvas)" aria-label="New Space">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
     </div>
 </div>
 
@@ -182,6 +212,6 @@ async function api(path, opts = {}) {
     </div>
 </div>
 
-<script src="/canvas.js?v=2026-04-30-canvas-3"></script>
+<script src="/canvas.js?v=2026-04-30-canvas-mindjet"></script>
 </body>
 </html>

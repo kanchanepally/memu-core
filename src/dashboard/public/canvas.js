@@ -1,6 +1,20 @@
-// Spaces Canvas v2 — fcose layout, parent_child edges, focus mode,
-// three direct-manipulation gestures (plus-handle to create sub-Space,
-// drag-to-reparent, drag-edge-to-connect), toast + undo.
+// Spaces Canvas — Memex-shaped thinking surface.
+//
+// Direct manipulation (Mindjet/MindManager pattern):
+//   - Click a Space      → open it
+//   - Drag to whitespace → move it (position persists, per-device)
+//   - Drag onto a Space  → nest under it (two-level constraint)
+//   - Double-click empty → drop a new Space at that point
+//   - Hover + plus       → quick sub-Space
+//   - Hover + arrow      → drag-edge-to-another-Space → manual link
+//   - FAB                → drop a new Space at the centre
+//   - Esc                → cancel any in-flight modal / inline create
+//
+// Positions persist via localStorage keyed by Space URI. Re-parent and
+// link operations persist server-side and emit Toast + Undo.
+//
+// Un-nesting moved to the Space detail view — drop-on-canvas no longer
+// changes parents, so it can't accidentally un-nest while moving.
 //
 // Vanilla JS, matches dashboard.html conventions (no React, no bundler).
 
@@ -110,10 +124,37 @@
     const linkModalLabel = $('link-modal-label');
     const linkModalCancel = $('link-modal-cancel');
     const linkModalSave = $('link-modal-save');
+    const inlineCreate = $('canvas-inline-create');
+    const inlineInput = $('canvas-inline-input');
+    const inlineCats = inlineCreate ? inlineCreate.querySelectorAll('.canvas-inline-cat') : [];
+    const fab = $('canvas-fab');
 
     // ---- Helpers ----
     function show(el) { el && el.classList.remove('hidden'); }
     function hide(el) { el && el.classList.add('hidden'); }
+
+    // ---- Position persistence (per-device) ----
+    // Saved positions use Cytoscape model coordinates so they survive zoom
+    // + pan. Keyed by Space URI — globally unique, scoped to localStorage's
+    // origin, so no need to namespace by family.
+    const POS_KEY_PREFIX = 'memu_canvas_pos:';
+    function posKey(uri) { return POS_KEY_PREFIX + uri; }
+    function loadPosition(uri) {
+        try {
+            const raw = localStorage.getItem(posKey(uri));
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') return parsed;
+        } catch (e) { /* ignore */ }
+        return null;
+    }
+    function savePosition(uri, x, y) {
+        try { localStorage.setItem(posKey(uri), JSON.stringify({ x, y })); } catch (e) { /* ignore */ }
+    }
+    // Used after delete (not yet wired) and re-load if URI changes.
+    function forgetPosition(uri) {
+        try { localStorage.removeItem(posKey(uri)); } catch (e) { /* ignore */ }
+    }
 
     function formatUpdated(iso) {
         if (!iso) return '';
@@ -181,7 +222,7 @@
     }
 
     // ---- Cytoscape lifecycle ----
-    function buildCytoscape(elements) {
+    function buildCytoscape(elements, fixedPositions) {
         if (state.cy) {
             state.cy.destroy();
             state.cy = null;
@@ -305,21 +346,25 @@
                     style: { 'line-opacity': 0.95 },
                 },
             ],
-            layout: layoutOptions(),
+            layout: layoutOptions(fixedPositions),
         });
 
         wireInteractions();
     }
 
-    function layoutOptions() {
+    function layoutOptions(fixedPositions) {
         const layoutName = (typeof window.cytoscapeFcose !== 'undefined' || (window.cytoscape && window.cytoscape('core', 'fcose')))
             ? 'fcose'
             : 'cose';
+        const hasFixed = Array.isArray(fixedPositions) && fixedPositions.length > 0;
         // Spec §3.2 — tile:false + packComponents:true so disconnected
-        // nodes get organic positioning instead of a regular grid.
-        return {
+        // nodes get organic positioning instead of a regular grid. With
+        // saved positions present, we hand fcose a fixedNodeConstraint so
+        // those nodes stay where the user placed them and the rest are
+        // laid out around them.
+        const opts = {
             name: layoutName,
-            randomize: true,
+            randomize: !hasFixed,
             nodeRepulsion: 8000,
             idealEdgeLength: 100,
             edgeElasticity: 0.45,
@@ -331,12 +376,14 @@
             tilingPaddingVertical: 30,
             tilingPaddingHorizontal: 30,
             packComponents: true,
-            fit: true,
+            fit: !hasFixed, // don't reframe when restoring; user's view is the truth
             padding: 50,
-            animate: true,
+            animate: !hasFixed,
             animationDuration: 600,
             animationEasing: 'ease-out',
         };
+        if (hasFixed) opts.fixedNodeConstraint = fixedPositions;
+        return opts;
     }
 
     function focusLayoutOptions() {
@@ -411,6 +458,18 @@
                 hidePreview();
                 hideNodeOverlays();
             }
+        });
+
+        // Double-click empty canvas → drop a new Space at this point.
+        // Mindjet pattern — the canvas is the thinking surface, you sketch
+        // on it directly. Cytoscape's `dbltap` event delivers both
+        // rendered (screen) and model (graph) positions; we need both.
+        cy.on('dbltap', (evt) => {
+            if (evt.target !== cy) return;
+            const rendered = evt.renderedPosition || evt.position;
+            const model = evt.position;
+            if (!rendered || !model) return;
+            showInlineCreate(rendered.x, rendered.y, model.x, model.y);
         });
 
         // Gesture 2 (re-parent) — Cytoscape `grab` fires on mousedown of a
@@ -583,6 +642,137 @@
         }
     });
 
+    // ---- Inline Mindjet-style create ----
+    // Double-click empty canvas (or click the FAB) → drop a Space here.
+    // Title first, category from the chip row (default Commitment), body
+    // comes later by opening the Space.
+    const inlineState = {
+        modelX: null,
+        modelY: null,
+        category: 'commitment',
+        saving: false,
+    };
+
+    function showInlineCreate(stageX, stageY, modelX, modelY) {
+        if (!inlineCreate || !inlineInput) return;
+        inlineState.modelX = modelX;
+        inlineState.modelY = modelY;
+        // Reset chip state to default Commitment (last-used would be nice
+        // later, but the default is the right starting point for a
+        // first-use Memex feel).
+        inlineState.category = 'commitment';
+        inlineCats.forEach(chip => {
+            chip.dataset.active = chip.getAttribute('data-category') === 'commitment' ? 'true' : 'false';
+        });
+        // Position on stage. CSS uses translate(-50%,-50%) so the input
+        // centres on the click point.
+        const stageRect = stage.getBoundingClientRect();
+        const padding = 20;
+        const halfW = 160;
+        const halfH = 60;
+        const x = Math.max(halfW + padding, Math.min(stageRect.width - halfW - padding, stageX));
+        const y = Math.max(halfH + padding, Math.min(stageRect.height - halfH - padding, stageY));
+        inlineCreate.style.left = `${x}px`;
+        inlineCreate.style.top = `${y}px`;
+        show(inlineCreate);
+        if (fab) fab.dataset.inlineOpen = 'true';
+        inlineInput.value = '';
+        setTimeout(() => inlineInput.focus(), 30);
+    }
+
+    function hideInlineCreate() {
+        if (!inlineCreate) return;
+        hide(inlineCreate);
+        if (fab) fab.dataset.inlineOpen = 'false';
+        inlineInput && (inlineInput.value = '');
+    }
+
+    inlineCats.forEach(chip => {
+        chip.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            inlineCats.forEach(c => c.dataset.active = 'false');
+            chip.dataset.active = 'true';
+            inlineState.category = chip.getAttribute('data-category');
+            inlineInput && inlineInput.focus();
+        });
+    });
+
+    // Click outside the inline-create closes it. We bind on stage so
+    // toolbar / topbar clicks don't fire it.
+    if (stage) {
+        stage.addEventListener('mousedown', (evt) => {
+            if (inlineCreate && !inlineCreate.classList.contains('hidden')) {
+                if (!inlineCreate.contains(evt.target) && evt.target !== fab && !(fab && fab.contains(evt.target))) {
+                    hideInlineCreate();
+                }
+            }
+        });
+    }
+
+    if (inlineInput) {
+        inlineInput.addEventListener('keydown', async (evt) => {
+            if (evt.key === 'Escape') {
+                evt.preventDefault();
+                hideInlineCreate();
+                return;
+            }
+            if (evt.key === 'Enter' && !evt.shiftKey) {
+                evt.preventDefault();
+                await commitInlineCreate();
+            }
+        });
+    }
+
+    async function commitInlineCreate() {
+        if (inlineState.saving) return;
+        const title = inlineInput.value.trim();
+        if (!title) { inlineInput.focus(); return; }
+        const category = inlineState.category;
+        const modelX = inlineState.modelX;
+        const modelY = inlineState.modelY;
+        inlineState.saving = true;
+        try {
+            const res = await api('/api/spaces', {
+                method: 'POST',
+                body: JSON.stringify({ title, category, body_markdown: '', parent_space_uri: null }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                showToast(`Could not create: ${err.error || res.status}`);
+                return;
+            }
+            const payload = await res.json().catch(() => ({}));
+            const newUri = payload?.space?.uri;
+            if (newUri && typeof modelX === 'number' && typeof modelY === 'number') {
+                savePosition(newUri, modelX, modelY);
+            }
+            hideInlineCreate();
+            await loadGraph();
+            showToast(`Added "${title}".`);
+        } finally {
+            inlineState.saving = false;
+        }
+    }
+
+    // FAB → open inline-create at canvas centre (model coords).
+    if (fab) {
+        fab.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            const cy = state.cy;
+            const stageRect = stage.getBoundingClientRect();
+            const stageCx = stageRect.width / 2;
+            const stageCy = stageRect.height / 2;
+            let modelX = stageCx, modelY = stageCy;
+            if (cy) {
+                const pan = cy.pan();
+                const zoom = cy.zoom() || 1;
+                modelX = (stageCx - pan.x) / zoom;
+                modelY = (stageCy - pan.y) / zoom;
+            }
+            showInlineCreate(stageCx, stageCy, modelX, modelY);
+        });
+    }
+
     // ---- Gesture 2 — drag-to-reparent ----
     // No-drag threshold (in model units, not pixels): if the node moves
     // less than this between grab and free, treat as a click and let
@@ -603,10 +793,11 @@
             startX: pos.x,
             startY: pos.y,
         };
-        node.addClass('canvas-lift');
-        node.connectedEdges('[type = "parent_child"]').addClass('canvas-faded');
-        // Defer the body-level dragging cursor + overlay hide to the FIRST
-        // actual drag event — keeps clicks (no movement) clean.
+        // No visual changes here — every chrome class (lift, faded edges,
+        // body cursor, overlay hide) is deferred to first-real-drag inside
+        // updateDropTarget. A click without movement leaves the node
+        // visually untouched so the subsequent `tap` event can drive
+        // click-to-Space cleanly.
     }
     function updateDropTarget(node) {
         const drag = state.reparentDrag;
@@ -621,6 +812,8 @@
             document.body.classList.add('canvas-dragging');
             hideNodeOverlays();
             hidePreview();
+            node.addClass('canvas-lift');
+            node.connectedEdges('[type = "parent_child"]').addClass('canvas-faded');
         }
 
         const cy = state.cy;
@@ -665,13 +858,10 @@
         document.body.classList.remove('canvas-dragging');
 
         // No-drag case: user clicked without moving → no drag chrome was
-        // applied → there is nothing to commit. Let the subsequent `tap`
-        // event drive click-to-Space. (We restore the start position
-        // defensively — in practice it's already there.)
-        if (!drag.dragChromeApplied) {
-            node.position({ x: drag.startX, y: drag.startY });
-            return;
-        }
+        // ever applied → there is nothing to commit. Let the subsequent
+        // `tap` event drive click-to-Space. The node hasn't moved so we
+        // don't need to restore its position.
+        if (!drag.dragChromeApplied) return;
 
         const sourceUri = drag.sourceUri;
         const sourceTitle = (state.nodesByUri.get(sourceUri) || {}).title || 'Space';
@@ -684,14 +874,12 @@
             { duration: 220, easing: 'ease-out' },
         );
 
+        // Mindjet-style: dropping on whitespace = move only. The position
+        // persists per-device and the parent relationship is unchanged.
+        // Un-nesting moved to the Space detail view.
         if (!targetId) {
-            // Dropped in empty space.
-            if (originalParent === null) {
-                // Already top-level → snap back, nothing to change.
-                snapBack();
-                return;
-            }
-            doReparent(sourceUri, sourceTitle, null, originalParent);
+            const pos = node.position();
+            savePosition(sourceUri, pos.x, pos.y);
             return;
         }
 
@@ -702,7 +890,7 @@
         if (targetN.parentSpaceUri) {
             // Dropped on a sub-Space → reject with shake + toast, snap back.
             shakeNode(node);
-            showToast('Two-level limit. Drop on a top-level Space, or on the canvas to un-nest.');
+            showToast('Two-level limit. Drop on a top-level Space, or use Un-nest in the Space.');
             setTimeout(snapBack, 240);
             return;
         }
@@ -919,6 +1107,7 @@
     breadcrumbExit.addEventListener('click', exitFocusMode);
     document.addEventListener('keydown', (evt) => {
         if (evt.key === 'Escape') {
+            if (inlineCreate && !inlineCreate.classList.contains('hidden')) { hideInlineCreate(); return; }
             if (!createModal.classList.contains('hidden')) { hide(createModal); return; }
             if (!linkModal.classList.contains('hidden')) { hide(linkModal); return; }
             if (!catPalette.classList.contains('hidden')) { hide(catPalette); return; }
@@ -1003,11 +1192,22 @@
                 show(sparse);
             }
 
+            // Restore per-device positions from localStorage. Nodes with a
+            // saved position get it as their initial position AND are added
+            // to fixedNodeConstraint so fcose treats them as anchors and
+            // lays out the rest around them.
+            const fixedPositions = [];
             const elements = [
-                ...state.nodes.map(n => ({ data: nodeData(n) })),
+                ...state.nodes.map(n => {
+                    const saved = loadPosition(n.uri);
+                    if (saved) fixedPositions.push({ nodeId: n.id, position: { x: saved.x, y: saved.y } });
+                    return saved
+                        ? { data: nodeData(n), position: { x: saved.x, y: saved.y } }
+                        : { data: nodeData(n) };
+                }),
                 ...state.edges.map(e => ({ data: edgeData(e) })),
             ];
-            buildCytoscape(elements);
+            buildCytoscape(elements, fixedPositions);
             applySearch();
         } catch (err) {
             console.error('canvas load failed', err);
