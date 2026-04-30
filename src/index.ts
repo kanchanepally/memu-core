@@ -1253,15 +1253,28 @@ server.put('/api/spaces/:id', async (request, reply) => {
       }
     }
 
+    // When flipping to `private`, ensure the row's `people` array contains the
+    // owner. resolveVisibility('private', [], roster) returns [] — i.e. nobody —
+    // because the model expresses "private" via people[0] rather than the row's
+    // owner. Without this, a private Space with empty people becomes invisible
+    // to its own owner (canSee returns false), so it disappears from the canvas
+    // entirely.
+    const ensurePeopleSelf = visibilityStored === 'private';
+
     const res = await pool.query(
       `UPDATE synthesis_pages
          SET title = COALESCE($1, title),
              body_markdown = COALESCE($2, body_markdown),
              visibility = COALESCE($3, visibility),
+             people = CASE
+               WHEN $6::boolean AND (people IS NULL OR cardinality(people) = 0)
+                 THEN ARRAY[$5::text]
+               ELSE people
+             END,
              last_updated_at = NOW()
        WHERE id = $4 AND profile_id = $5
        RETURNING *`,
-      [title || null, updateBody ? body_markdown : null, visibilityStored, id, profileId]
+      [title || null, updateBody ? body_markdown : null, visibilityStored, id, profileId, ensurePeopleSelf]
     );
 
     if (res.rowCount === 0) {
