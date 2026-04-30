@@ -319,8 +319,14 @@ body.canvas-dragging * {
 }
 
 /* ---------- Per-node overlays (Gestures 1 + 3, focus icon) ---------- */
+/* CRITICAL: container fills the stage so the buttons' absolute top/left
+   coordinates (computed from Cytoscape renderedBoundingBox) match the
+   stage coordinate system. Earlier version had no inset and the buttons
+   ended up in random positions — sometimes intercepting clicks before
+   Cytoscape's tap handler fired. */
 .canvas-node-overlays {
     position: absolute;
+    inset: 0;
     pointer-events: none;
     z-index: 5;
 }

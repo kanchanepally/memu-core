@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
+    <link rel="stylesheet" href="/css/style.css?v=2026-04-30-canvas-3">
 </head>
 <body>
 <!-- Auth gate -->
@@ -299,6 +299,10 @@ async function api(path, opts = {}) {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                     Share
                 </button>
+                <button class="btn btn-secondary btn-sm" onclick="openConnectSpace()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    Connect
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
                 <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
             </div>
@@ -405,6 +409,30 @@ async function api(path, opts = {}) {
         <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
             <button class="btn btn-secondary btn-sm" onclick="closeSpaceCreate()">Cancel</button>
             <button class="btn btn-primary btn-sm" id="space-create-save" onclick="saveSpaceCreate()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Connect this Space to another — appends "<label>: [[targetSlug]]"
+     to the body via POST /api/spaces/:id/links. Single source of truth
+     is the markdown body, picked up by the canvas graph derivation. -->
+<div class="modal-overlay" id="space-connect-modal">
+    <div class="modal-card" style="max-width:520px;">
+        <h3 class="mb-sm">Connect Spaces</h3>
+        <div class="text-muted mb-md" style="font-size:13px;">
+            Add a wikilink from <strong id="connect-source-title">…</strong> to another Space.
+            Links live in the Space body and show on the canvas as connections.
+        </div>
+        <label class="input-label">Search</label>
+        <input type="search" id="connect-search" class="input mb-sm" placeholder="Type to filter Spaces…" autocomplete="off">
+        <div id="connect-target-list" class="connect-target-list">
+            <div class="text-muted" style="font-size:13px;padding:var(--space-md);text-align:center;">Loading…</div>
+        </div>
+        <label class="input-label" style="margin-top:var(--space-md);">Label</label>
+        <input type="text" id="connect-label" class="input" placeholder="Related" value="Related">
+        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
+            <button class="btn btn-secondary btn-sm" onclick="closeConnectSpace()">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="connect-save-btn" onclick="saveConnectSpace()" disabled>Connect</button>
         </div>
     </div>
 </div>
@@ -2279,6 +2307,106 @@ async function saveSpaceEdit() {
         btn.textContent = 'Save';
     }
 }
+
+// ========== CONNECT (manual wikilink between Spaces) ==========
+//
+// Mirrors the canvas's drag-edge-to-connect gesture for users who landed
+// on a Space detail view directly. Backend: POST /api/spaces/:id/links —
+// appends "<label>: [[targetSlug]]" to the source body so the link is
+// part of the markdown source of truth (graph derivation will pick it up).
+
+let connectState = { selectedTargetId: null };
+
+async function openConnectSpace() {
+    const id = spacesState.currentId;
+    if (!id) return;
+    const source = spacesState.spaces.find(s => s.id === id);
+    if (!source) return;
+    document.getElementById('connect-source-title').textContent = source.title || 'this Space';
+    document.getElementById('connect-search').value = '';
+    document.getElementById('connect-label').value = 'Related';
+    connectState.selectedTargetId = null;
+    document.getElementById('connect-save-btn').disabled = true;
+    renderConnectTargetList(spacesState.spaces, id, '');
+    document.getElementById('space-connect-modal').classList.add('open');
+    setTimeout(() => document.getElementById('connect-search').focus(), 80);
+}
+
+function closeConnectSpace() {
+    document.getElementById('space-connect-modal').classList.remove('open');
+    connectState.selectedTargetId = null;
+}
+
+function renderConnectTargetList(allSpaces, sourceId, term) {
+    const list = document.getElementById('connect-target-list');
+    const t = (term || '').toLowerCase();
+    const candidates = allSpaces
+        .filter(s => s.id !== sourceId)
+        .filter(s => {
+            if (!t) return true;
+            return (s.title || '').toLowerCase().includes(t)
+                || (s.slug || '').toLowerCase().includes(t)
+                || (s.description || '').toLowerCase().includes(t);
+        })
+        .slice(0, 30);
+    if (candidates.length === 0) {
+        list.innerHTML = `<div class="text-muted" style="font-size:13px;padding:var(--space-md);text-align:center;">No matches.</div>`;
+        return;
+    }
+    list.innerHTML = candidates.map(s => `
+        <div class="connect-target-row${connectState.selectedTargetId === s.id ? ' selected' : ''}" data-id="${s.id}" data-slug="${s.slug || ''}" onclick="selectConnectTarget('${s.id}')">
+            <span class="connect-target-cat">${categoryIcon(s.category)} ${categoryLabel(s.category)}</span>
+            <span class="connect-target-title">${esc(s.title || 'Untitled')}</span>
+        </div>
+    `).join('');
+}
+
+function selectConnectTarget(id) {
+    connectState.selectedTargetId = id;
+    document.getElementById('connect-save-btn').disabled = false;
+    // Re-render to surface the selection
+    const term = document.getElementById('connect-search').value;
+    const sourceId = spacesState.currentId;
+    renderConnectTargetList(spacesState.spaces, sourceId, term);
+}
+
+async function saveConnectSpace() {
+    const id = spacesState.currentId;
+    const targetId = connectState.selectedTargetId;
+    if (!id || !targetId) return;
+    const target = spacesState.spaces.find(s => s.id === targetId);
+    if (!target) return;
+    const label = document.getElementById('connect-label').value.trim() || 'Related';
+    const btn = document.getElementById('connect-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+    try {
+        const res = await api(`/api/spaces/${id}/links`, {
+            method: 'POST',
+            body: JSON.stringify({ targetUri: target.uri, label }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(`Could not connect: ${err.error || res.status}`, true);
+            return;
+        }
+        closeConnectSpace();
+        showToast(`Connected to "${target.title || 'Space'}"`);
+        await loadSpaces();
+        // Re-open detail view with the freshly-fetched body
+        if (spacesState.spaces.some(s => s.id === id)) openSpaceDetail(id);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+    }
+}
+
+document.addEventListener('input', (evt) => {
+    if (evt.target && evt.target.id === 'connect-search') {
+        const sourceId = spacesState.currentId;
+        renderConnectTargetList(spacesState.spaces, sourceId, evt.target.value);
+    }
+});
 
 async function deleteCurrentSpace() {
     const id = spacesState.currentId;
