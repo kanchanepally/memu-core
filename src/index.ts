@@ -1184,8 +1184,15 @@ import { processGroupMessageExtraction } from './intelligence/extraction';
 server.get('/api/dashboard/spaces', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
+    // Scope by family_id — matches /api/spaces/graph (canvas view) and the
+    // rest of the spaces store. Pre-2026-05-06 this filtered by profile_id,
+    // which silently returned an incomplete subset in multi-profile setups:
+    // Spaces created by different household members had different
+    // profile_id values but the same family_id. Symptom Hareesh saw —
+    // canvas view showed every family Space, but the listing said
+    // "Couldn't load Spaces". family_id is the canonical tenant scope.
     const res = await pool.query(
-      `SELECT * FROM synthesis_pages WHERE profile_id = $1 ORDER BY last_updated_at DESC`,
+      `SELECT * FROM synthesis_pages WHERE family_id = $1 ORDER BY last_updated_at DESC`,
       [profileId]
     );
     return { spaces: res.rows };
