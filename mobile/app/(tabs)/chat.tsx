@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, Pressable, FlatList, Modal,
+  View, Text, StyleSheet, TextInput, Pressable, FlatList,
   KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -113,17 +113,6 @@ function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null;
   });
 }
 
-function formatThreadDate(iso: string): string {
-  const d = new Date(iso);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
-
 export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams() as { conversationId?: string; new?: string };
@@ -158,6 +147,9 @@ export default function ChatScreen() {
     const key = params.new === '1' ? 'NEW' : (params.conversationId ?? 'LATEST');
     if (consumedParamRef.current === key) return;
     consumedParamRef.current = key;
+    // Bug F — composer state is per-conversation. Clear any draft from
+    // the prior thread so the next one opens blank.
+    setInput('');
     if (key === 'NEW') {
       setMessages([WELCOME]);
       setActiveConversationId(null);
@@ -494,7 +486,7 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title={activeConversationId ? 'Conversation' : 'New chat'} />
+      <ScreenHeader title="Chat" />
 
       <View style={styles.layerStrip}>
         <View style={styles.layerSegment}>
@@ -932,102 +924,4 @@ const styles = StyleSheet.create({
     color: colors.onTertiaryContainer,
   },
 
-  // ---- Conversations panel (left slide-in) ----
-  historyBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20,17,40,0.45)',
-  },
-  historyPanel: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: '82%',
-    maxWidth: 320,
-    backgroundColor: colors.surface,
-    paddingTop: Platform.OS === 'android' ? 32 : 56,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
-    ...shadows.medium,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  historyTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
-  },
-  newChatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radius.md,
-    marginVertical: spacing.sm,
-  },
-  newChatText: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
-  },
-  historyDivider: {
-    height: 1,
-    backgroundColor: colors.surfaceVariant,
-    marginVertical: spacing.sm,
-    marginHorizontal: spacing.sm,
-  },
-  historyRow: {
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    marginBottom: 2,
-  },
-  historyRowActive: {
-    backgroundColor: colors.surfaceContainerLow,
-  },
-  historyRowTitle: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
-  },
-  historyRowMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  historyRowDate: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
-  },
-  historyRowCount: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.label,
-    color: colors.outline,
-  },
-  historyEmpty: {
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-  },
-  historyEmptyText: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurfaceVariant,
-  },
-  historyEmptyHint: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.outline,
-    marginTop: 4,
-  },
 });
