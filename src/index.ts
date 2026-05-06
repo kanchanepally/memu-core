@@ -74,13 +74,54 @@ server.register(fastifyStatic, {
   prefix: '/', // Serve at root
 });
 
-// Health check endpoint (no auth required)
-server.get('/health', async (request, reply) => {
+// Liveness probe (no auth required). Returns 200 as long as the process is
+// running; a load balancer / Docker healthcheck uses this to decide whether
+// to restart the container. Deliberately does NOT touch the DB — a slow or
+// dead Postgres should NOT cause the API process to be killed and restarted.
+server.get('/healthz', async () => {
   return {
     status: 'ok',
     service: 'memu-core',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
+});
+
+// Back-compat alias for the original /health path.
+server.get('/health', async () => ({
+  status: 'ok',
+  service: 'memu-core',
+  timestamp: new Date().toISOString(),
+}));
+
+// Readiness probe (no auth required). Returns 200 only when the API can
+// serve real traffic — DB reachable, skills loaded. A load balancer uses
+// THIS to decide whether to route requests; a 503 means "I'm up but not
+// ready, don't send traffic yet". Used during Hetzner deploys for
+// rolling-update gating and during boot to delay the listen-ready signal
+// until migrations + skill validation have settled.
+server.get('/readyz', async (_request, reply) => {
+  const checks: Record<string, { ok: boolean; detail?: string }> = {};
+  let overallOk = true;
+
+  try {
+    await pool.query('SELECT 1');
+    checks.db = { ok: true };
+  } catch (err) {
+    overallOk = false;
+    checks.db = { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+
+  try {
+    const skillCount = listSkills().length;
+    checks.skills = { ok: skillCount > 0, detail: `${skillCount} loaded` };
+    if (skillCount === 0) overallOk = false;
+  } catch (err) {
+    overallOk = false;
+    checks.skills = { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+
+  if (!overallOk) return reply.code(503).send({ status: 'not_ready', checks });
+  return { status: 'ready', checks };
 });
 
 // Story 1.6 — WebID profile documents and Solid-compatible identity.
@@ -130,9 +171,13 @@ server.post('/api/register', async (request, reply) => {
 
 server.addHook('preHandler', async (request, reply) => {
   const url = request.url;
-  // Skip auth for health, registration, Google sign-in, OAuth callback, and static assets
+  // Skip auth for liveness/readiness, registration, Google sign-in, OAuth
+  // callback, and static assets. /healthz + /readyz must remain unauthed
+  // so load balancers / Docker healthchecks can hit them without an API key.
   if (
     url === '/health' ||
+    url === '/healthz' ||
+    url === '/readyz' ||
     url === '/api/register' ||
     url === '/api/auth/google/signin' ||
     url === '/api/admin/trigger-briefing' ||
@@ -142,6 +187,18 @@ server.addHook('preHandler', async (request, reply) => {
     return;
   }
   return requireAuth(request, reply);
+});
+
+// After auth, bind the resolved profileId into the request logger so every
+// log line under that request carries it. Critical for beta debug — when a
+// user reports a problem and we have only the timestamp, we want to be able
+// to grep for `profileId=<their-id>` and reconstruct the request trail
+// without joining manually across log lines.
+server.addHook('preHandler', async (request) => {
+  const profileId = (request as any).profileId;
+  if (profileId) {
+    (request as any).log = request.log.child({ profileId });
+  }
 });
 
 // Google Sign-In — accepts a Google ID token from the mobile/web client,
@@ -1665,13 +1722,22 @@ server.post('/api/extract', async (request, reply) => {
   }
 });
 
-// PWA: Resolve Stream Card
+// PWA: Resolve Stream Card.
+// Tenant-scoped 2026-05-06: pre-fix, profile A could resolve any card by id
+// regardless of which family owned it (the original handler had no
+// family_id filter on the UPDATE). All four stream-card mutators below
+// (resolve, dismiss, edit, calendar/add SELECT path) carried the same hole.
 server.post('/api/stream/resolve', async (request, reply) => {
   const { cardId } = request.body as any;
   if (!cardId) return reply.code(400).send({ error: 'cardId required' });
-  
+  const profileId = (request as any).profileId;
+
   try {
-    await pool.query("UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1", [cardId]);
+    const { rowCount } = await pool.query(
+      "UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2",
+      [cardId, profileId],
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: 'Card not found' });
     return { success: true };
   } catch (err) {
     server.log.error(err);
@@ -1683,9 +1749,14 @@ server.post('/api/stream/resolve', async (request, reply) => {
 server.post('/api/stream/dismiss', async (request, reply) => {
   const { cardId } = request.body as any;
   if (!cardId) return reply.code(400).send({ error: 'cardId required' });
+  const profileId = (request as any).profileId;
 
   try {
-    await pool.query("UPDATE stream_cards SET status = 'dismissed', resolved_at = NOW() WHERE id = $1", [cardId]);
+    const { rowCount } = await pool.query(
+      "UPDATE stream_cards SET status = 'dismissed', resolved_at = NOW() WHERE id = $1 AND family_id = $2",
+      [cardId, profileId],
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: 'Card not found' });
     return { success: true };
   } catch (err) {
     server.log.error(err);
@@ -1697,6 +1768,7 @@ server.post('/api/stream/dismiss', async (request, reply) => {
 server.post('/api/stream/edit', async (request, reply) => {
   const { cardId, title, body } = request.body as any;
   if (!cardId) return reply.code(400).send({ error: 'cardId required' });
+  const profileId = (request as any).profileId;
 
   try {
     const updates: string[] = [];
@@ -1715,13 +1787,24 @@ server.post('/api/stream/edit', async (request, reply) => {
     if (updates.length === 0) return reply.code(400).send({ error: 'Nothing to update' });
 
     values.push(cardId);
-    await pool.query(
-      `UPDATE stream_cards SET ${updates.join(', ')} WHERE id = $${idx}`,
-      values
-    );
+    const cardIdParam = idx;
+    idx += 1;
+    values.push(profileId);
+    const familyParam = idx;
 
-    // Return the updated card
-    const res = await pool.query("SELECT * FROM stream_cards WHERE id = $1", [cardId]);
+    const upd = await pool.query(
+      `UPDATE stream_cards SET ${updates.join(', ')} WHERE id = $${cardIdParam} AND family_id = $${familyParam}`,
+      values,
+    );
+    if (upd.rowCount === 0) return reply.code(404).send({ error: 'Card not found' });
+
+    // Return the updated card — also tenant-filtered to defend against the
+    // (impossible-after-the-UPDATE-check-but-cheap-to-keep) scenario where
+    // someone races a delete + recreate-with-same-id between statements.
+    const res = await pool.query(
+      "SELECT * FROM stream_cards WHERE id = $1 AND family_id = $2",
+      [cardId, profileId],
+    );
     return { success: true, card: res.rows[0] };
   } catch (err) {
     server.log.error(err);
@@ -1755,8 +1838,8 @@ server.post('/api/stream/to-shopping', async (request, reply) => {
     });
 
     await pool.query(
-      `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1`,
-      [cardId]
+      `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2`,
+      [cardId, profileId],
     );
 
     return { success: true, item };
@@ -1790,10 +1873,10 @@ async function loadBriefingAction(cardId: string, actionIndex: number, profileId
   return { kind: 'ok', card, action };
 }
 
-async function resolveCard(cardId: string) {
+async function resolveCard(cardId: string, familyId: string) {
   await pool.query(
-    `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1`,
-    [cardId],
+    `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2`,
+    [cardId, familyId],
   );
 }
 
@@ -1832,7 +1915,7 @@ server.post('/api/stream/action/add-to-list', async (request, reply) => {
       });
       inserted.push(row.id);
     }
-    await resolveCard(cardId);
+    await resolveCard(cardId, profileId);
     return { success: true, added: inserted.length };
   } catch (err) {
     server.log.error(err);
@@ -1869,7 +1952,7 @@ server.post('/api/stream/action/add-calendar-event', async (request, reply) => {
     if (!result.ok) {
       return reply.code(400).send({ error: result.message, reason: result.reason });
     }
-    await resolveCard(cardId);
+    await resolveCard(cardId, profileId);
     return { success: true, eventId: result.eventId, htmlLink: result.htmlLink };
   } catch (err) {
     server.log.error(err);
@@ -1918,7 +2001,7 @@ server.post('/api/stream/action/update-space', async (request, reply) => {
       tags: existing.tags,
       actorProfileId: profileId,
     });
-    await resolveCard(cardId);
+    await resolveCard(cardId, profileId);
     return { success: true, uri: space.uri };
   } catch (err) {
     server.log.error(err);
@@ -1941,7 +2024,7 @@ server.post('/api/stream/action/reply-draft', async (request, reply) => {
   if (loaded.action.kind !== 'reply_draft') {
     return reply.code(400).send({ error: `action kind is ${loaded.action.kind}, not reply_draft` });
   }
-  await resolveCard(cardId);
+  await resolveCard(cardId, profileId);
   console.log(`[BRIEFING ACTION] reply_draft acked for card=${cardId} index=${actionIndex}`);
   return { success: true };
 });
@@ -2079,23 +2162,32 @@ server.delete('/api/lists/:id', async (request, reply) => {
 });
 
 // PWA: Add Event to Calendar (Slice 4 Agentic Action)
+// Tenant-scoped 2026-05-06: pre-fix, the SELECT on stream_cards filtered
+// only by id, so profile A could read profile B's card body (real names)
+// and trigger a Google Calendar write on it.
 server.post('/api/calendar/add', async (request, reply) => {
   const { cardId } = request.body as any;
   if (!cardId) return reply.code(400).send({ error: 'cardId required' });
-  
+
   try {
-    const cardRes = await pool.query("SELECT * FROM stream_cards WHERE id = $1", [cardId]);
-    if (cardRes.rows.length === 0) return reply.code(404).send({ error: 'Card not found' });
-    
-    const card = cardRes.rows[0];
     const profileId = (request as any).profileId;
+    const cardRes = await pool.query(
+      "SELECT * FROM stream_cards WHERE id = $1 AND family_id = $2",
+      [cardId, profileId],
+    );
+    if (cardRes.rows.length === 0) return reply.code(404).send({ error: 'Card not found' });
+
+    const card = cardRes.rows[0];
 
     // Attempt to write event to connected Google Calendar
     const success = await createGoogleCalendarEvent(profileId, card.title, card.body);
-    
+
     if (success) {
-       // Mark card as handled
-       await pool.query("UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1", [cardId]);
+       // Mark card as handled — also tenant-scoped on the resolve.
+       await pool.query(
+         "UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2",
+         [cardId, profileId],
+       );
        return { success: true };
     } else {
        return reply.code(500).send({ error: 'Google Calendar sync failed. Check OAuth credentials.' });
@@ -2106,43 +2198,194 @@ server.post('/api/calendar/add', async (request, reply) => {
   }
 });
 
-// Chat history — uses authenticated profile
+// Chat conversations — list past threads for the side panel (Claude/Gemini
+// pattern). Each row is a conversation with a derived title, last activity,
+// and message count. The mobile + PWA chat surfaces show this in a left
+// drawer; tap a row to load that thread, "New chat" to start fresh.
+server.get('/api/chat/conversations', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const query = request.query as any;
+    const limit = Math.min(parseInt(query.limit || '50', 10), 200);
+
+    const res = await pool.query(
+      `SELECT
+         c.id,
+         c.started_at,
+         (SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id = c.id) AS last_message_at,
+         (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.content_original IS NOT NULL) AS message_count,
+         (SELECT m.content_original FROM messages m
+            WHERE m.conversation_id = c.id AND m.content_original IS NOT NULL
+            ORDER BY m.created_at ASC LIMIT 1) AS first_user_message
+       FROM conversations c
+       WHERE c.profile_id = $1
+       ORDER BY COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id = c.id), c.started_at) DESC
+       LIMIT $2`,
+      [profileId, limit]
+    );
+
+    const conversations = res.rows
+      .filter((row: any) => Number(row.message_count) > 0)
+      .map((row: any) => {
+        const firstMsg = row.first_user_message || '';
+        const trimmed = firstMsg.trim().replace(/\s+/g, ' ');
+        const title = trimmed.length > 60 ? trimmed.slice(0, 57) + '…' : trimmed || null;
+        return {
+          id: row.id,
+          startedAt: row.started_at,
+          lastMessageAt: row.last_message_at,
+          messageCount: Number(row.message_count),
+          title,
+          preview: trimmed || null,
+        };
+      });
+
+    return { conversations };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load conversations' });
+  }
+});
+
+// Chat history for a single conversation thread. Pass `conversationId` to
+// load that thread; omit it and the endpoint returns the most-recent thread
+// (used by the PWA's existing on-tab-open load and by older mobile builds).
+// Each Memu turn is augmented with `spaces[]` — substring matches against
+// the family's existing Spaces, surfaced inline as Claude-style artefacts.
 server.get('/api/chat/history', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
     const query = request.query as any;
+    const limit = Math.min(parseInt(query.limit || '100', 10), 500);
+    const requestedConvId: string | undefined = query.conversationId;
 
-    // Get the most recent conversation
-    const convRes = await pool.query(
-      'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
-      [profileId]
-    );
-    if (convRes.rows.length === 0) return { messages: [] };
+    let convId: string | null = null;
+    if (requestedConvId) {
+      const ownership = await pool.query(
+        'SELECT id FROM conversations WHERE id = $1 AND profile_id = $2',
+        [requestedConvId, profileId]
+      );
+      if (ownership.rows.length === 0) {
+        return reply.code(404).send({ error: 'Conversation not found' });
+      }
+      convId = requestedConvId;
+    } else {
+      const latest = await pool.query(
+        'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
+        [profileId]
+      );
+      if (latest.rows.length === 0) return { messages: [], conversationId: null };
+      convId = latest.rows[0].id;
+    }
 
-    const limit = Math.min(parseInt(query.limit || '50', 10), 100);
-
-    // Return real (de-anonymised) content for display in the app
+    // Two row shapes are returned now:
+    //   1. User+assistant turns (content_original AND content_response_translated)
+    //   2. Server-generated assistant-only messages (briefing) — content_original
+    //      IS NULL, content_response_translated IS NOT NULL, metadata.type='briefing'.
+    // We accept either as long as content_response_translated exists; client-side
+    // shape depends on whether userMessage is non-empty.
     const msgRes = await pool.query(
-      `SELECT id, content_original, content_response_translated, channel, created_at
+      `SELECT id, conversation_id, content_original, content_response_translated,
+              channel, created_at, actions_executed, metadata
        FROM messages
        WHERE conversation_id = $1
-         AND content_original IS NOT NULL
          AND content_response_translated IS NOT NULL
        ORDER BY created_at DESC
        LIMIT $2`,
-      [convRes.rows[0].id, limit]
+      [convId, limit]
     );
 
-    // Reverse to chronological order for the app
-    const messages = msgRes.rows.reverse().map((row: any) => ({
-      id: row.id,
-      userMessage: row.content_original,
-      memuResponse: row.content_response_translated,
-      channel: row.channel,
-      timestamp: row.created_at,
-    }));
+    const ordered = msgRes.rows.reverse();
 
-    return { messages };
+    // Resolve Space artefacts per message. Two paths:
+    //   1. PRECISE — actions_executed contains tool-call provenance
+    //      (createSpace / updateSpace / findSpaces). Each returns Space
+    //      URIs/IDs in its output; resolve those to {id, name, slug,
+    //      category} via synthesis_pages. This is what new messages
+    //      (post-2026-05-06) carry.
+    //   2. FALLBACK — for older messages where actions_executed is NULL,
+    //      substring-match Memu's response against existing Space titles.
+    //      Word-boundary regex; min 3 chars to avoid noise. Lossy but
+    //      avoids leaving the artefact column blank for historical chats.
+    const spacesRes = await pool.query(
+      `SELECT id, uri, title AS name, slug, category
+       FROM synthesis_pages
+       WHERE family_id = $1`,
+      [profileId]
+    );
+    const allSpaces: Array<{ id: string; uri: string; name: string; slug: string; category: string }> = spacesRes.rows;
+    const byUri = new Map(allSpaces.map(sp => [sp.uri, sp]));
+    const byId = new Map(allSpaces.map(sp => [sp.id, sp]));
+    const matchableByName = allSpaces
+      .filter(sp => sp.name && sp.name.trim().length >= 3)
+      .map(sp => ({
+        ...sp,
+        pattern: new RegExp(`\\b${sp.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+      }));
+
+    const extractSpaceRefsFromActions = (actions: any[]): Array<{ id: string; name: string; slug: string; category: string }> => {
+      if (!Array.isArray(actions)) return [];
+      const out: Array<{ id: string; name: string; slug: string; category: string }> = [];
+      const seen = new Set<string>();
+      for (const action of actions) {
+        if (!action || action.ok === false) continue;
+        const name = action.name as string;
+        const output = action.output || {};
+
+        if (name === 'createSpace' || name === 'updateSpace') {
+          const uri = output.uri as string | undefined;
+          const id = output.id as string | undefined;
+          const sp = (uri && byUri.get(uri)) || (id && byId.get(id));
+          if (sp && !seen.has(sp.id)) {
+            out.push({ id: sp.id, name: sp.name, slug: sp.slug, category: sp.category });
+            seen.add(sp.id);
+          }
+        } else if (name === 'findSpaces') {
+          const list = (output.spaces as Array<{ uri?: string; id?: string }>) || [];
+          for (const entry of list) {
+            const sp = (entry.uri && byUri.get(entry.uri)) || (entry.id && byId.get(entry.id));
+            if (sp && !seen.has(sp.id)) {
+              out.push({ id: sp.id, name: sp.name, slug: sp.slug, category: sp.category });
+              seen.add(sp.id);
+            }
+          }
+        }
+      }
+      return out;
+    };
+
+    const messages = ordered.map((row: any) => {
+      const text = row.content_response_translated || '';
+      let spaces: Array<{ id: string; name: string; slug: string; category: string }> = [];
+
+      const actions = row.actions_executed;
+      if (Array.isArray(actions) && actions.length > 0) {
+        spaces = extractSpaceRefsFromActions(actions);
+      } else {
+        // Fallback for legacy messages — substring match.
+        const seen = new Set<string>();
+        for (const sp of matchableByName) {
+          if (sp.pattern.test(text) && !seen.has(sp.id)) {
+            spaces.push({ id: sp.id, name: sp.name, slug: sp.slug, category: sp.category });
+            seen.add(sp.id);
+          }
+        }
+      }
+
+      const metadata = row.metadata || null;
+      return {
+        id: row.id,
+        conversationId: row.conversation_id,
+        userMessage: row.content_original,            // NULL for briefing-only messages
+        memuResponse: row.content_response_translated,
+        channel: row.channel,
+        timestamp: row.created_at,
+        spaces: spaces.slice(0, 5),
+        type: metadata?.type ?? null,                 // 'briefing' for elevated render
+      };
+    });
+
+    return { messages, conversationId: convId };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to load chat history' });
@@ -2623,30 +2866,33 @@ const start = async () => {
     server.log.info(`PWA running at http://localhost:3100`);
 
     // Schedule morning briefings at 07:00 Europe/London every day.
-    // Mobile push is the only delivery channel. The previous "WhatsApp legacy
-    // fallback" branch called generateAndPushMorningBriefing — which generated
-    // text but never pushed anywhere — so it burned a Sonnet call per profile
-    // with no user-visible delivery. Removed 2026-04-29.
+    //
+    // Iterate ALL adults/admins, not just those with push_tokens. The
+    // pre-2026-05-06 query INNER-JOIN'd push_tokens, which meant a profile
+    // with a silently-failed push registration never had its briefing
+    // generated at all — opening the app at 8am showed nothing because
+    // nothing had been written to stream_cards. Now: briefing is always
+    // generated + persisted; pushMorningBriefingToMobile gates only the
+    // notification send on token presence.
     cron.schedule('0 7 * * *', async () => {
       server.log.info('Running daily morning briefings...');
 
-      const pushRes = await pool.query(`
-        SELECT DISTINCT p.id, p.display_name
-        FROM profiles p
-        INNER JOIN push_tokens pt ON pt.profile_id = p.id
-        WHERE p.role IN ('adult', 'admin')
+      const recipients = await pool.query(`
+        SELECT id, display_name
+        FROM profiles
+        WHERE role IN ('adult', 'admin')
       `);
-      for (const row of pushRes.rows) {
+      for (const row of recipients.rows) {
         try {
-          server.log.info(`Pushing mobile briefing to ${row.display_name} (${row.id})`);
+          server.log.info(`Generating morning briefing for ${row.display_name} (${row.id})`);
           await pushMorningBriefingToMobile(row.id);
         } catch (err) {
-          server.log.error({ err, profileId: row.id }, 'Mobile briefing push failed');
+          server.log.error({ err, profileId: row.id }, 'Morning briefing failed');
         }
       }
 
-      if (pushRes.rows.length === 0) {
-        server.log.warn('No push-registered recipients — morning briefing skipped. (Open the mobile app on a device with notifications enabled to register a push token.)');
+      if (recipients.rows.length === 0) {
+        server.log.warn('No adult/admin profiles found — morning briefing skipped.');
       }
     }, { timezone: 'Europe/London' });
 
