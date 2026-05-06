@@ -3,7 +3,7 @@ import { Animated, StyleSheet, Text, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../lib/tokens';
 
-type ToastKind = 'info' | 'error';
+type ToastKind = 'info' | 'error' | 'success';
 interface ToastState {
   id: number;
   message: string;
@@ -61,9 +61,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           ]}
         >
           <Ionicons
-            name={toast.kind === 'error' ? 'alert-circle-outline' : 'information-circle-outline'}
+            name={
+              toast.kind === 'error'
+                ? 'alert-circle-outline'
+                : toast.kind === 'success'
+                  ? 'checkmark-circle-outline'
+                  : 'information-circle-outline'
+            }
             size={16}
-            color={toast.kind === 'error' ? colors.onErrorContainer : colors.onSurface}
+            color={
+              toast.kind === 'error'
+                ? colors.onErrorContainer
+                : toast.kind === 'success'
+                  ? colors.success
+                  : colors.onSurface
+            }
           />
           <Text
             style={[

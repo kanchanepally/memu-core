@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, Pressable, FlatList,
+  View, Text, StyleSheet, TextInput, Pressable, FlatList, Modal,
   KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -17,7 +17,12 @@ import * as DocumentPicker from 'expo-document-picker';
 // require fetching as Blob then base64-encoding manually — same behaviour,
 // more code. Stick with legacy until there's a reason to migrate.
 import * as FileSystem from 'expo-file-system/legacy';
-import { sendMessage, sendVision, sendDocument, getChatHistory, type Visibility } from '../../lib/api';
+import { useRouter } from 'expo-router';
+import {
+  sendMessage, sendVision, sendDocument, getChatHistory,
+  listConversations, type ConversationSummary, type ChatMessageSpaceRef,
+  type Visibility,
+} from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import { useToast } from '../../components/Toast';
@@ -28,53 +33,154 @@ interface Message {
   fromMemu: boolean;
   timestamp: Date;
   channel?: string;
+  spaces?: ChatMessageSpaceRef[];
+  /**
+   * Server-tagged type. 'briefing' marks the morning briefing assistant
+   * message, rendered with elevated AI-Insight-Card styling inline. Plain
+   * turns leave this null.
+   */
+  type?: 'briefing' | null;
+}
+
+interface DaySeparator {
+  kind: 'separator';
+  id: string;
+  label: string;
+}
+type ChatItem = (Message & { kind: 'msg' }) | DaySeparator;
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+function daySeparatorLabel(d: Date): string {
+  const today = new Date();
+  if (dayKey(d) === dayKey(today)) return 'Today';
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (dayKey(d) === dayKey(yesterday)) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function withDaySeparators(messages: Message[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  let lastDay: string | null = null;
+  for (const m of messages) {
+    const key = dayKey(m.timestamp);
+    if (key !== lastDay) {
+      out.push({ kind: 'separator', id: `sep-${key}`, label: daySeparatorLabel(m.timestamp) });
+      lastDay = key;
+    }
+    out.push({ kind: 'msg', ...m });
+  }
+  return out;
 }
 
 const WELCOME: Message = {
   id: 'welcome',
-  text: "I'm here. Ask me anything — a reminder, a question, or just think out loud.",
+  text:
+    "Hey — I'm Memu, your private AI. Tell me what's on your mind and I'll start learning. " +
+    "Everything you share stays on your device. When I talk to the AI, your names and personal " +
+    "details are replaced with anonymous labels first. You can check exactly what was sent any " +
+    "time in the Privacy Ledger.",
   fromMemu: true,
   timestamp: new Date(),
 };
 
+function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null; memuResponse: string; timestamp: string; channel: string; spaces?: ChatMessageSpaceRef[]; type?: 'briefing' | null }>): Message[] {
+  // Two row shapes: full turns (user + memu) and assistant-only (briefing).
+  // Briefings carry no user message — render just the memu bubble.
+  return rows.flatMap(msg => {
+    const memuBubble: Message = {
+      id: `hist-memu-${msg.id}`,
+      text: msg.memuResponse,
+      fromMemu: true,
+      timestamp: new Date(msg.timestamp),
+      channel: msg.channel,
+      spaces: msg.spaces,
+      type: msg.type ?? null,
+    };
+    if (!msg.userMessage) return [memuBubble];
+    return [
+      {
+        id: `hist-user-${msg.id}`,
+        text: msg.userMessage,
+        fromMemu: false,
+        timestamp: new Date(msg.timestamp),
+        channel: msg.channel,
+      },
+      memuBubble,
+    ];
+  });
+}
+
+function formatThreadDate(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 export default function ChatScreen() {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [layer, setLayer] = useState<Visibility>('family');
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const toast = useToast();
 
+  const loadConversation = useCallback(async (conversationId?: string) => {
+    setLoadingHistory(true);
+    const { data } = await getChatHistory(100, conversationId);
+    if (data?.messages && data.messages.length > 0) {
+      setMessages(expandHistoryRows(data.messages));
+      setActiveConversationId(data.conversationId ?? conversationId ?? null);
+    } else {
+      setMessages([WELCOME]);
+      setActiveConversationId(conversationId ?? null);
+    }
+    setLoadingHistory(false);
+  }, []);
+
+  const loadConversations = useCallback(async () => {
+    const { data } = await listConversations();
+    if (data?.conversations) setConversations(data.conversations);
+  }, []);
+
+  // Chat-as-home (2026-05-06): auto-load the most recent conversation on
+  // open so the user lands on something live — typically today's briefing
+  // for the morning push, or the most recent thread otherwise. The "blank
+  // chat with threads on the left" flow remains available via the New chat
+  // button. First-use users (no conversations yet) see the welcome bubble.
   useEffect(() => {
-    (async () => {
-      const { data } = await getChatHistory();
-      if (data?.messages && data.messages.length > 0) {
-        const restored: Message[] = [];
-        for (const msg of data.messages) {
-          restored.push({
-            id: `hist-user-${msg.id}`,
-            text: msg.userMessage,
-            fromMemu: false,
-            timestamp: new Date(msg.timestamp),
-            channel: msg.channel,
-          });
-          restored.push({
-            id: `hist-memu-${msg.id}`,
-            text: msg.memuResponse,
-            fromMemu: true,
-            timestamp: new Date(msg.timestamp),
-            channel: msg.channel,
-          });
-        }
-        setMessages(restored);
-      }
-      setLoadingHistory(false);
-    })();
+    loadConversation();
+    loadConversations();
+  }, [loadConversation, loadConversations]);
+
+  const handlePickConversation = useCallback(async (id: string) => {
+    setHistoryOpen(false);
+    if (id === activeConversationId) return;
+    await loadConversation(id);
+  }, [activeConversationId, loadConversation]);
+
+  const handleNewConversation = useCallback(() => {
+    setHistoryOpen(false);
+    setMessages([WELCOME]);
+    setActiveConversationId(null);
+    // Backend rolls a new conversation automatically when there's a 30-min gap
+    // OR no active conversation — sending the next message creates one.
   }, []);
 
   const sendImage = useCallback(async (base64: string, mimeType: string, caption: string) => {
-    const userMsg: Message = {
+    const userMsg = {
       id: `user-img-${Date.now()}`,
       text: caption ? `📷 ${caption}` : '📷 Photo',
       fromMemu: false,
@@ -88,7 +194,7 @@ export default function ChatScreen() {
 
     if (error) toast.show(`Couldn't send photo — ${error}`, 'error');
 
-    const memuMsg: Message = {
+    const memuMsg = {
       id: `memu-img-${Date.now()}`,
       text: error ? `Couldn't send photo: ${error}` : (data?.response || 'No response.'),
       fromMemu: true,
@@ -184,7 +290,7 @@ export default function ChatScreen() {
       // Show what the user said (or a fallback marker) immediately, then
       // route to /api/document. Same UX shape as sendImage.
       setInput('');
-      const userMsg: Message = {
+      const userMsg = {
         id: `user-doc-${Date.now()}`,
         text: caption ? `📄 ${fileName} — ${caption}` : `📄 ${fileName}`,
         fromMemu: false,
@@ -209,7 +315,7 @@ export default function ChatScreen() {
           `Got it. Saved as a Space — **${data.spaceTitle}** ` +
           `(${data.docType.replace(/_/g, ' ')}, ${data.charCount.toLocaleString()} chars${truncatedNote})${cardNote}.`;
       }
-      const memuMsg: Message = {
+      const memuMsg = {
         id: `memu-doc-${Date.now()}`,
         text: memuText,
         fromMemu: true,
@@ -251,7 +357,7 @@ export default function ChatScreen() {
     const text = input.trim();
     if (!text || sending) return;
 
-    const userMsg: Message = {
+    const userMsg = {
       id: `user-${Date.now()}`,
       text,
       fromMemu: false,
@@ -268,7 +374,7 @@ export default function ChatScreen() {
       toast.show(`Couldn't reach Memu — ${error}`, 'error');
     }
 
-    const memuMsg: Message = {
+    const memuMsg = {
       id: `memu-${Date.now()}`,
       text: error ? `Couldn't reach Memu: ${error}` : (data?.response || 'No response.'),
       fromMemu: true,
@@ -291,9 +397,43 @@ export default function ChatScreen() {
   const formatTime = (d: Date) =>
     d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const renderMessage = useCallback(({ item }: { item: Message }) => {
+  const renderMessage = useCallback(({ item }: { item: ChatItem }) => {
+    if (item.kind === 'separator') {
+      return (
+        <View style={styles.separatorRow}>
+          <View style={styles.separatorRule} />
+          <Text style={styles.separatorLabel}>{item.label}</Text>
+          <View style={styles.separatorRule} />
+        </View>
+      );
+    }
     const isWhatsApp = item.channel === 'whatsapp';
-    
+    const isBriefing = item.fromMemu && item.type === 'briefing';
+
+    // Briefing messages get a wider container + the AI-Insight-Card glow
+    // treatment inline. They take the full content width (not the 78%
+    // bubble cap) and surface the "Today's brief" eyebrow above the text
+    // so they read as a hero artefact within the conversation.
+    if (isBriefing) {
+      return (
+        <View style={styles.briefingRow}>
+          <View style={styles.briefingCard}>
+            <View style={styles.briefingGlow} pointerEvents="none" />
+            <View style={styles.briefingHeader}>
+              <View style={styles.avatar}>
+                <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+              </View>
+              <Text style={styles.briefingEyebrow}>Today's brief</Text>
+            </View>
+            <Text selectable={true} style={styles.briefingBody}>
+              {item.text}
+            </Text>
+            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.row, item.fromMemu ? styles.rowMemu : styles.rowUser]}>
         {item.fromMemu ? (
@@ -320,14 +460,30 @@ export default function ChatScreen() {
           )}
 
           <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
-            <Text 
+            <Text
               selectable={true}
               style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}
             >
               {item.text}
             </Text>
           </View>
-          
+
+          {item.fromMemu && item.spaces && item.spaces.length > 0 ? (
+            <View style={styles.artefactStack}>
+              {item.spaces.map(sp => (
+                <Pressable
+                  key={sp.id}
+                  style={({ pressed }) => [styles.artefactChip, pressed && { opacity: 0.6 }]}
+                  onPress={() => router.push(`/(tabs)/spaces?focus=${sp.slug}` as any)}
+                >
+                  <Ionicons name="document-text-outline" size={14} color={colors.tertiary} />
+                  <Text style={styles.artefactText} numberOfLines={1}>{sp.name}</Text>
+                  <Ionicons name="chevron-forward" size={12} color={colors.outline} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
           <View style={styles.metaRow}>
             <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
             {isWhatsApp && item.fromMemu && (
@@ -348,9 +504,15 @@ export default function ChatScreen() {
     );
   }, [toast]);
 
+  const activeConversation = conversations.find(c => c.id === activeConversationId);
+
   return (
     <View style={styles.container}>
-      <ScreenHeader title="Chat" statusLabel="Private" statusPulse={false} />
+      <ScreenHeader
+        title={activeConversation?.title || 'New chat'}
+        rightIcon="time-outline"
+        onRightPress={() => setHistoryOpen(true)}
+      />
 
       <View style={styles.layerStrip}>
         <View style={styles.layerSegment}>
@@ -397,14 +559,14 @@ export default function ChatScreen() {
       >
         <FlatList
           ref={flatListRef}
-          data={messages}
+          data={withDaySeparators(messages)}
           renderItem={renderMessage}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           ListHeaderComponent={loadingHistory ? (
             <View style={styles.typingRow}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.typingText}>Loading your conversation…</Text>
+              <Text style={styles.typingText}>Loading conversation…</Text>
             </View>
           ) : null}
           ListFooterComponent={sending ? (
@@ -459,6 +621,72 @@ export default function ChatScreen() {
           </BlurView>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Conversations panel — slides in from the left, lists past
+          conversations with previews + dates. "New chat" at the top
+          resets the screen to the blank welcome state. */}
+      <Modal
+        visible={historyOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setHistoryOpen(false)}
+      >
+        <Pressable style={styles.historyBackdrop} onPress={() => setHistoryOpen(false)} />
+        <View style={styles.historyPanel}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>Conversations</Text>
+            <Pressable onPress={() => setHistoryOpen(false)} hitSlop={12}>
+              <Ionicons name="close" size={22} color={colors.onSurfaceVariant} />
+            </Pressable>
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.newChatRow, pressed && { opacity: 0.6 }]}
+            onPress={handleNewConversation}
+          >
+            <Ionicons name="create-outline" size={18} color={colors.primary} />
+            <Text style={styles.newChatText}>New chat</Text>
+          </Pressable>
+
+          <View style={styles.historyDivider} />
+
+          <FlatList
+            data={conversations}
+            keyExtractor={c => c.id}
+            ListEmptyComponent={
+              <View style={styles.historyEmpty}>
+                <Text style={styles.historyEmptyText}>No conversations yet.</Text>
+                <Text style={styles.historyEmptyHint}>Send your first message to start one.</Text>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const isActive = item.id === activeConversationId;
+              return (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.historyRow,
+                    isActive && styles.historyRowActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  onPress={() => handlePickConversation(item.id)}
+                >
+                  <Text style={styles.historyRowTitle} numberOfLines={1}>
+                    {item.title || 'New conversation'}
+                  </Text>
+                  <View style={styles.historyRowMeta}>
+                    <Text style={styles.historyRowDate}>
+                      {formatThreadDate(item.lastMessageAt || item.startedAt)}
+                    </Text>
+                    {item.messageCount > 0 ? (
+                      <Text style={styles.historyRowCount}>{item.messageCount}</Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -534,6 +762,75 @@ const styles = StyleSheet.create({
   textUser: {
     color: colors.onPrimary,
   },
+
+  // ---- Day separator within a thread — "Today" / "Yesterday" / "Mon 4 May" ----
+  separatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  separatorRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.outlineVariant,
+    opacity: 0.35,
+  },
+  separatorLabel: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+
+  // ---- Briefing-typed Memu message — elevated AI-Insight-Card render ----
+  briefingRow: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    width: '100%',
+    marginBottom: spacing.md,
+  },
+  briefingCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    overflow: 'hidden',
+    position: 'relative',
+    ...shadows.high,
+  },
+  briefingGlow: {
+    position: 'absolute',
+    top: -80,
+    right: -80,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: colors.tertiaryContainer,
+    opacity: 0.45,
+  },
+  briefingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  briefingEyebrow: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+  },
+  briefingBody: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+    lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+
   timestamp: {
     fontSize: 10,
     color: colors.outline,
@@ -568,7 +865,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 6,
     backgroundColor: colors.surfaceContainer,
-    borderRadius: radius.xs,
+    borderRadius: radius.sm,
   },
   copyText: {
     fontSize: 10,
@@ -694,5 +991,127 @@ const styles = StyleSheet.create({
     color: colors.outline,
     letterSpacing: typography.tracking.wide,
     paddingLeft: 2,
+  },
+
+  // ---- Inline Space artefacts (chips below Memu's bubble) ----
+  artefactStack: {
+    marginTop: 6,
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  artefactChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: colors.tertiaryContainer,
+    borderRadius: radius.md,
+    maxWidth: 280,
+  },
+  artefactText: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onTertiaryContainer,
+  },
+
+  // ---- Conversations panel (left slide-in) ----
+  historyBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(20,17,40,0.45)',
+  },
+  historyPanel: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: '82%',
+    maxWidth: 320,
+    backgroundColor: colors.surface,
+    paddingTop: Platform.OS === 'android' ? 32 : 56,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+    ...shadows.medium,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  historyTitle: {
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+  },
+  newChatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.md,
+    marginVertical: spacing.sm,
+  },
+  newChatText: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+  },
+  historyDivider: {
+    height: 1,
+    backgroundColor: colors.surfaceVariant,
+    marginVertical: spacing.sm,
+    marginHorizontal: spacing.sm,
+  },
+  historyRow: {
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    marginBottom: 2,
+  },
+  historyRowActive: {
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  historyRowTitle: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+  historyRowMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  historyRowDate: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+  },
+  historyRowCount: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.label,
+    color: colors.outline,
+  },
+  historyEmpty: {
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+  },
+  historyEmptyText: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurfaceVariant,
+  },
+  historyEmptyHint: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.outline,
+    marginTop: 4,
   },
 });

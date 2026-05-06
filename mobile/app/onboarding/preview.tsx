@@ -71,9 +71,9 @@ export default function PreviewStep() {
   }, [router]);
 
   const handleSkipRest = useCallback(() => {
-    // Skip channels too — go straight to Today. The user can hook up
-    // calendar later via Settings → Connection.
-    router.replace('/(tabs)');
+    // Skip channels too — go straight to Chat (the chat-as-home default).
+    // The user can hook up calendar later via Settings → Connection.
+    router.replace('/(tabs)/chat');
   }, [router]);
 
   if (loading || !state) {

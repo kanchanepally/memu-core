@@ -52,7 +52,7 @@ export default function ChannelsStep() {
     setCompleting(true);
     await completeOnboarding();
     setCompleting(false);
-    router.replace('/(tabs)');
+    router.replace('/(tabs)/chat');
   }, [router]);
 
   return (
