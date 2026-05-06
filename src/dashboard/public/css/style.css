@@ -1772,6 +1772,27 @@ textarea.input {
   color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.01em;
+  flex: 1;
+}
+
+.topbar-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.topbar-search:hover {
+  background: var(--color-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 /* Desktop: sidebar is in flex row. Hidden → width collapses to 0. */

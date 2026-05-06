@@ -437,19 +437,29 @@
             cy.elements().removeClass('canvas-faded canvas-highlight');
         });
 
-        cy.on('tap', 'node', (evt) => {
-            // DIAGNOSTIC — click-to-open regression repro 2026-04-30. Remove
-            // once the bug is identified.
-            console.log('[canvas tap node]', {
-                id: evt.target.id(),
-                title: evt.target.data('n')?.title,
-                reparentDrag: state.reparentDrag,
-                connectDrag: state.connectDrag,
-                willNavigate: !state.reparentDrag && !state.connectDrag,
-            });
-            if (state.reparentDrag || state.connectDrag) return;
-            const id = evt.target.id();
-            navigateToSpace(id);
+        // Click-to-Space — replaces the unreliable Cytoscape `tap` event
+        // (it was being suppressed by the `grab` handler which sets
+        // state.reparentDrag on mousedown, leaving the tap handler to
+        // race against `free` clearing the state). Belt-and-braces:
+        // record tapstart coords + time, and on tapend evaluate whether
+        // the gesture was a click (no significant movement, short duration,
+        // not a connect-handle drag). Bypasses the tap event entirely.
+        let tapStartCoords = null;
+        cy.on('tapstart', 'node', (evt) => {
+            tapStartCoords = { x: evt.position.x, y: evt.position.y, t: Date.now() };
+        });
+        cy.on('tapend', 'node', (evt) => {
+            const start = tapStartCoords;
+            tapStartCoords = null;
+            if (!start) return;
+            if (state.connectDrag) return; // gesture was a connect drag
+            const dx = evt.position.x - start.x;
+            const dy = evt.position.y - start.y;
+            const moved = Math.sqrt(dx * dx + dy * dy);
+            const dt = Date.now() - start.t;
+            if (moved > 8) return;          // it was a drag, not a click
+            if (dt > 800) return;           // long-press, not a tap
+            navigateToSpace(evt.target.id());
         });
 
         cy.on('dbltap', 'node', (evt) => {
