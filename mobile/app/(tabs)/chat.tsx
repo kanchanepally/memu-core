@@ -17,10 +17,10 @@ import * as DocumentPicker from 'expo-document-picker';
 // require fetching as Blob then base64-encoding manually — same behaviour,
 // more code. Stick with legacy until there's a reason to migrate.
 import * as FileSystem from 'expo-file-system/legacy';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   sendMessage, sendVision, sendDocument, getChatHistory,
-  listConversations, type ConversationSummary, type ChatMessageSpaceRef,
+  type ChatMessageSpaceRef,
   type Visibility,
 } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
@@ -126,14 +126,14 @@ function formatThreadDate(iso: string): string {
 
 export default function ChatScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams() as { conversationId?: string; new?: string };
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [layer, setLayer] = useState<Visibility>('family');
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const consumedParamRef = useRef<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const toast = useToast();
 
@@ -150,34 +150,22 @@ export default function ChatScreen() {
     setLoadingHistory(false);
   }, []);
 
-  const loadConversations = useCallback(async () => {
-    const { data } = await listConversations();
-    if (data?.conversations) setConversations(data.conversations);
-  }, []);
-
   // Chat-as-home (2026-05-06): auto-load the most recent conversation on
-  // open so the user lands on something live — typically today's briefing
-  // for the morning push, or the most recent thread otherwise. The "blank
-  // chat with threads on the left" flow remains available via the New chat
-  // button. First-use users (no conversations yet) see the welcome bubble.
+  // first mount. Subsequent navigations from the side drawer carry either
+  // ?conversationId=<id> (open that thread) or ?new=1 (blank welcome).
+  // consumedParamRef de-dups so re-render of the same param doesn't loop.
   useEffect(() => {
-    loadConversation();
-    loadConversations();
-  }, [loadConversation, loadConversations]);
-
-  const handlePickConversation = useCallback(async (id: string) => {
-    setHistoryOpen(false);
-    if (id === activeConversationId) return;
-    await loadConversation(id);
-  }, [activeConversationId, loadConversation]);
-
-  const handleNewConversation = useCallback(() => {
-    setHistoryOpen(false);
-    setMessages([WELCOME]);
-    setActiveConversationId(null);
-    // Backend rolls a new conversation automatically when there's a 30-min gap
-    // OR no active conversation — sending the next message creates one.
-  }, []);
+    const key = params.new === '1' ? 'NEW' : (params.conversationId ?? 'LATEST');
+    if (consumedParamRef.current === key) return;
+    consumedParamRef.current = key;
+    if (key === 'NEW') {
+      setMessages([WELCOME]);
+      setActiveConversationId(null);
+      setLoadingHistory(false);
+      return;
+    }
+    loadConversation(key === 'LATEST' ? undefined : key);
+  }, [params.conversationId, params.new, loadConversation]);
 
   const sendImage = useCallback(async (base64: string, mimeType: string, caption: string) => {
     const userMsg = {
@@ -504,15 +492,9 @@ export default function ChatScreen() {
     );
   }, [toast]);
 
-  const activeConversation = conversations.find(c => c.id === activeConversationId);
-
   return (
     <View style={styles.container}>
-      <ScreenHeader
-        title={activeConversation?.title || 'New chat'}
-        rightIcon="time-outline"
-        onRightPress={() => setHistoryOpen(true)}
-      />
+      <ScreenHeader title={activeConversationId ? 'Conversation' : 'New chat'} />
 
       <View style={styles.layerStrip}>
         <View style={styles.layerSegment}>
@@ -621,72 +603,6 @@ export default function ChatScreen() {
           </BlurView>
         </View>
       </KeyboardAvoidingView>
-
-      {/* Conversations panel — slides in from the left, lists past
-          conversations with previews + dates. "New chat" at the top
-          resets the screen to the blank welcome state. */}
-      <Modal
-        visible={historyOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setHistoryOpen(false)}
-      >
-        <Pressable style={styles.historyBackdrop} onPress={() => setHistoryOpen(false)} />
-        <View style={styles.historyPanel}>
-          <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>Conversations</Text>
-            <Pressable onPress={() => setHistoryOpen(false)} hitSlop={12}>
-              <Ionicons name="close" size={22} color={colors.onSurfaceVariant} />
-            </Pressable>
-          </View>
-
-          <Pressable
-            style={({ pressed }) => [styles.newChatRow, pressed && { opacity: 0.6 }]}
-            onPress={handleNewConversation}
-          >
-            <Ionicons name="create-outline" size={18} color={colors.primary} />
-            <Text style={styles.newChatText}>New chat</Text>
-          </Pressable>
-
-          <View style={styles.historyDivider} />
-
-          <FlatList
-            data={conversations}
-            keyExtractor={c => c.id}
-            ListEmptyComponent={
-              <View style={styles.historyEmpty}>
-                <Text style={styles.historyEmptyText}>No conversations yet.</Text>
-                <Text style={styles.historyEmptyHint}>Send your first message to start one.</Text>
-              </View>
-            }
-            renderItem={({ item }) => {
-              const isActive = item.id === activeConversationId;
-              return (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.historyRow,
-                    isActive && styles.historyRowActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                  onPress={() => handlePickConversation(item.id)}
-                >
-                  <Text style={styles.historyRowTitle} numberOfLines={1}>
-                    {item.title || 'New conversation'}
-                  </Text>
-                  <View style={styles.historyRowMeta}>
-                    <Text style={styles.historyRowDate}>
-                      {formatThreadDate(item.lastMessageAt || item.startedAt)}
-                    </Text>
-                    {item.messageCount > 0 ? (
-                      <Text style={styles.historyRowCount}>{item.messageCount}</Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-              );
-            }}
-          />
-        </View>
-      </Modal>
     </View>
   );
 }

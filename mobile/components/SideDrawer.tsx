@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Animated,
   Dimensions,
   Pressable,
+  ScrollView,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -15,8 +16,9 @@ import { useRouter, usePathname } from 'expo-router';
 import { useDrawer } from '../lib/drawer';
 import { colors, spacing, radius, typography } from '../lib/tokens';
 import { LogoMark } from './Logo';
+import { listConversations, type ConversationSummary } from '../lib/api';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(300, SCREEN_WIDTH * 0.82);
 const TOP_PAD = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 56;
 
@@ -39,13 +41,24 @@ const SECONDARY: Destination[] = [
   { label: 'Settings', icon: 'settings-outline', iconActive: 'settings', path: '/(tabs)/settings' },
 ];
 
+function isChatActive(pathname: string): boolean {
+  return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/chat' || pathname === '/chat';
+}
+
 function isActive(pathname: string, dest: Destination) {
-  // Chat is the default landing — pathname === '/' or '/(tabs)' both
-  // resolve there now (the (tabs)/index redirects to /chat).
-  if (dest.path === '/(tabs)/chat') {
-    if (pathname === '/' || pathname === '/(tabs)') return true;
-  }
+  if (dest.path === '/(tabs)/chat') return isChatActive(pathname);
   return pathname === dest.path || pathname === dest.path.replace('/(tabs)', '');
+}
+
+function formatConvDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 export default function SideDrawer() {
@@ -55,6 +68,19 @@ export default function SideDrawer() {
 
   const translate = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlay = useRef(new Animated.Value(0)).current;
+
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+
+  // Refresh conversations whenever the drawer opens AND we're in the Chat
+  // section. No point keeping a polled list when the drawer is closed.
+  const reloadConversations = useCallback(async () => {
+    const { data } = await listConversations();
+    if (data?.conversations) setConversations(data.conversations);
+  }, []);
+
+  useEffect(() => {
+    if (open && isChatActive(pathname)) reloadConversations();
+  }, [open, pathname, reloadConversations]);
 
   useEffect(() => {
     if (open) {
@@ -75,6 +101,18 @@ export default function SideDrawer() {
     setTimeout(() => router.push(path as any), 120);
   };
 
+  const openConversation = useCallback((conversationId: string) => {
+    hide();
+    setTimeout(() => router.push(`/(tabs)/chat?conversationId=${conversationId}` as any), 120);
+  }, [hide, router]);
+
+  const startNewConversation = useCallback(() => {
+    hide();
+    setTimeout(() => router.push('/(tabs)/chat?new=1' as any), 120);
+  }, [hide, router]);
+
+  const chatActive = isChatActive(pathname);
+
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={hide}>
       <View style={styles.root}>
@@ -88,59 +126,96 @@ export default function SideDrawer() {
             <Text style={styles.wordmark}>Memu</Text>
           </View>
 
-          <View style={styles.section}>
-            {PRIMARY.map(dest => {
-              const active = isActive(pathname, dest);
-              return (
-                <Pressable
-                  key={dest.path}
-                  onPress={() => navigate(dest.path)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    active && styles.rowActive,
-                    pressed && styles.rowPressed,
-                  ]}
-                >
-                  <Ionicons
-                    name={active ? dest.iconActive : dest.icon}
-                    size={20}
-                    color={active ? colors.primary : colors.onSurfaceVariant}
-                  />
-                  <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
-                    {dest.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+            <View style={styles.section}>
+              {PRIMARY.map(dest => {
+                const active = isActive(pathname, dest);
+                const isChatRow = dest.path === '/(tabs)/chat';
+                return (
+                  <React.Fragment key={dest.path}>
+                    <Pressable
+                      onPress={() => navigate(dest.path)}
+                      style={({ pressed }) => [
+                        styles.row,
+                        active && styles.rowActive,
+                        pressed && styles.rowPressed,
+                      ]}
+                    >
+                      <Ionicons
+                        name={active ? dest.iconActive : dest.icon}
+                        size={20}
+                        color={active ? colors.primary : colors.onSurfaceVariant}
+                      />
+                      <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
+                        {dest.label}
+                      </Text>
+                    </Pressable>
 
-          <View style={styles.divider} />
+                    {/* Conversations nested under Chat — only visible when
+                        Chat is the active section. New chat button at top,
+                        scrollable conversations list below. */}
+                    {isChatRow && chatActive ? (
+                      <View style={styles.chatChildren}>
+                        <Pressable
+                          onPress={startNewConversation}
+                          style={({ pressed }) => [styles.newChatRow, pressed && styles.rowPressed]}
+                        >
+                          <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                          <Text style={styles.newChatLabel}>New chat</Text>
+                        </Pressable>
+                        {conversations.length === 0 ? (
+                          <Text style={styles.emptyConversations}>No conversations yet.</Text>
+                        ) : (
+                          conversations.slice(0, 30).map(c => (
+                            <Pressable
+                              key={c.id}
+                              onPress={() => openConversation(c.id)}
+                              style={({ pressed }) => [styles.conversationRow, pressed && styles.rowPressed]}
+                            >
+                              <Text style={styles.conversationTitle} numberOfLines={1}>
+                                {c.title || 'New conversation'}
+                              </Text>
+                              <Text style={styles.conversationDate}>
+                                {formatConvDate(c.lastMessageAt || c.startedAt)}
+                              </Text>
+                            </Pressable>
+                          ))
+                        )}
+                      </View>
+                    ) : null}
+                  </React.Fragment>
+                );
+              })}
+            </View>
 
-          <View style={styles.section}>
-            {SECONDARY.map(dest => {
-              const active = isActive(pathname, dest);
-              return (
-                <Pressable
-                  key={dest.path}
-                  onPress={() => navigate(dest.path)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    active && styles.rowActive,
-                    pressed && styles.rowPressed,
-                  ]}
-                >
-                  <Ionicons
-                    name={active ? dest.iconActive : dest.icon}
-                    size={20}
-                    color={active ? colors.primary : colors.onSurfaceVariant}
-                  />
-                  <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
-                    {dest.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            <View style={styles.divider} />
+
+            <View style={styles.section}>
+              {SECONDARY.map(dest => {
+                const active = isActive(pathname, dest);
+                return (
+                  <Pressable
+                    key={dest.path}
+                    onPress={() => navigate(dest.path)}
+                    style={({ pressed }) => [
+                      styles.row,
+                      active && styles.rowActive,
+                      pressed && styles.rowPressed,
+                    ]}
+                  >
+                    <Ionicons
+                      name={active ? dest.iconActive : dest.icon}
+                      size={20}
+                      color={active ? colors.primary : colors.onSurfaceVariant}
+                    />
+                    <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
+                      {dest.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -182,6 +257,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.headline,
     letterSpacing: typography.tracking.tight,
   },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: spacing.lg },
   section: { gap: 2 },
   divider: {
     height: 1,
@@ -211,5 +288,52 @@ const styles = StyleSheet.create({
   rowLabelActive: {
     color: colors.primary,
     fontFamily: typography.families.bodyBold,
+  },
+
+  // ---- Conversations nested under Chat ----
+  chatChildren: {
+    marginLeft: spacing.lg,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.surfaceVariant,
+    marginBottom: spacing.sm,
+    gap: 2,
+  },
+  newChatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  newChatLabel: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+  },
+  conversationRow: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  conversationTitle: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+  conversationDate: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.outline,
+    marginTop: 2,
+  },
+  emptyConversations: {
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    fontStyle: 'italic',
   },
 });
