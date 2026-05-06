@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-06-chat-as-home-2">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-06-sidebar-conversations">
 </head>
 <body>
 <!-- Auth gate -->
@@ -76,6 +76,18 @@ async function api(path, opts = {}) {
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span>Chat</span>
         </button>
+        <!-- Conversations list — nested under Chat nav item. Only rendered
+             when Chat is the active section. switchTab() toggles its
+             visibility. Populated by renderConversationsList(). -->
+        <div class="sidebar-chat-children sidebar-chat-children-open" id="sidebar-chat-children">
+            <button class="sidebar-new-chat-btn" onclick="startNewConversation()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+                <span>New chat</span>
+            </button>
+            <div id="sidebar-conversations" class="sidebar-conversations-list">
+                <div class="sidebar-conversations-empty">No conversations yet.</div>
+            </div>
+        </div>
         <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
             <span>Today</span>
@@ -229,65 +241,40 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== CHAT TAB ==================== -->
-<!-- Two-column shell: conversations on the left (Claude/Gemini pattern),
-     chat container on the right. Default state is a blank chat — past
-     threads are surfaced via the conversations list, not auto-loaded.
-     On narrow viewports the conversations column slides in from the left
-     when toggled (button in the chat-canvas-bar). -->
+<!-- Single canvas. Conversations list lives in the sidebar (nested under
+     the Chat nav item), so the chat tab itself is just the chat container
+     full-width inside app-main. Hamburger toggles the sidebar; canvas
+     expands to fill. Two columns max — never three. -->
 <div id="view-chat" class="container-wide chat-canvas">
-    <div class="chat-shell">
-        <aside class="chat-history-column" id="chat-history-column">
-            <div class="chat-history-head">
-                <span class="chat-history-title">Conversations</span>
-                <button type="button" class="chat-history-close" onclick="toggleChatHistory(false)" aria-label="Close conversations">×</button>
+    <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-blank-state" id="chat-blank-state">
+                Hey &mdash; I'm Memu, your private AI. Tell me what's on your mind and I'll start learning.
+                Everything you share stays on your device. When I talk to the AI, your names and personal
+                details are replaced with anonymous labels first. You can check exactly what was sent any
+                time in the Privacy Ledger.
             </div>
-            <button type="button" class="chat-new-btn" onclick="startNewConversation()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M12 5v14M5 12h14"/></svg>
-                <span>New chat</span>
+        </div>
+        <!-- Staged attachment pill — shown above the input bar when an image
+             has been picked but not yet sent. User types a caption / question
+             into the existing chat-input, then sendMessage() routes to vision. -->
+        <div class="staged-attachment" id="chat-staged" hidden>
+            <img id="chat-staged-thumb" alt="Attachment preview">
+            <div class="staged-meta">
+                <div class="staged-name" id="chat-staged-name"></div>
+                <div class="staged-hint">Type what you'd like Memu to do with it, then send.</div>
+            </div>
+            <button type="button" class="staged-remove" id="chat-staged-remove" onclick="clearStagedAttachment()" aria-label="Remove attachment">×</button>
+        </div>
+        <div class="chat-input-bar">
+            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo, PDF, or document">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
-            <div class="chat-history-list" id="chat-history-list">
-                <div class="chat-history-empty">No conversations yet.<br><span class="chat-history-empty-hint">Send your first message to start one.</span></div>
-            </div>
-        </aside>
-
-        <div class="chat-main">
-            <div class="chat-canvas-bar">
-                <button type="button" class="chat-history-toggle" onclick="toggleChatHistory()" aria-label="Toggle conversations">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-                </button>
-                <span class="chat-canvas-title" id="chat-canvas-title">New chat</span>
-            </div>
-            <div class="chat-container">
-                <div class="chat-messages" id="chat-messages">
-                    <div class="chat-blank-state" id="chat-blank-state">
-                        Hey &mdash; I'm Memu, your private AI. Tell me what's on your mind and I'll start learning.
-                        Everything you share stays on your device. When I talk to the AI, your names and personal
-                        details are replaced with anonymous labels first. You can check exactly what was sent any
-                        time in the Privacy Ledger.
-                    </div>
-                </div>
-                <!-- Staged attachment pill — shown above the input bar when an image
-                     has been picked but not yet sent. User types a caption / question
-                     into the existing chat-input, then sendMessage() routes to vision. -->
-                <div class="staged-attachment" id="chat-staged" hidden>
-                    <img id="chat-staged-thumb" alt="Attachment preview">
-                    <div class="staged-meta">
-                        <div class="staged-name" id="chat-staged-name"></div>
-                        <div class="staged-hint">Type what you'd like Memu to do with it, then send.</div>
-                    </div>
-                    <button type="button" class="staged-remove" id="chat-staged-remove" onclick="clearStagedAttachment()" aria-label="Remove attachment">×</button>
-                </div>
-                <div class="chat-input-bar">
-                    <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo, PDF, or document">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                    </button>
-                    <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
-                    <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
-                    <button class="send-btn" id="chat-send" onclick="sendMessage()" disabled>
-                        &#x27A4;
-                    </button>
-                </div>
-            </div>
+            <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
+            <button class="send-btn" id="chat-send" onclick="sendMessage()" disabled>
+                &#x27A4;
+            </button>
         </div>
     </div>
 </div>
@@ -857,6 +844,12 @@ function switchTab(tab) {
         document.getElementById('spaces-list-view')?.classList.remove('hidden');
         document.getElementById('spaces-detail-view')?.classList.add('hidden');
     }
+    // Sidebar conversations panel — visible only when Chat is the active
+    // section. The conversations list lives nested under the Chat nav item;
+    // collapses when any other section is active so the sidebar stays
+    // compact for Today / Spaces / Lists / etc.
+    const chatChildren = document.getElementById('sidebar-chat-children');
+    if (chatChildren) chatChildren.classList.toggle('sidebar-chat-children-open', tab === 'chat');
     // Update topbar title
     document.getElementById('topbar-title').textContent = TAB_TITLES[tab] || 'Memu';
     // Quick composer only on Today
@@ -1352,10 +1345,13 @@ function openSpaceFromChat(slug) {
 let activeConversationId = null;
 let conversationsCache = [];
 
-function setChatTitle(title) {
-    const el = document.getElementById('chat-canvas-title');
-    if (el) el.textContent = title || 'New chat';
-}
+// The chat canvas no longer has its own title bar (the topbar above the
+// sidebar carries the section title now). setChatTitle is kept as a no-op
+// shim because several callers still reference it; safe to delete in a
+// follow-up after the loaders are simplified.
+function setChatTitle(_title) { /* no-op — title now lives in topbar */ }
+
+function toggleChatHistory(_force) { /* no-op — conversations live in sidebar */ }
 
 function renderBlankState() {
     chatMessages.innerHTML = '<div class="chat-blank-state" id="chat-blank-state">' +
@@ -1401,22 +1397,19 @@ function formatConvDate(iso) {
 }
 
 function renderConversationsList() {
-    const listEl = document.getElementById('chat-history-list');
+    const listEl = document.getElementById('sidebar-conversations');
     if (!listEl) return;
     if (conversationsCache.length === 0) {
-        listEl.innerHTML = '<div class="chat-history-empty">No conversations yet.<br><span class="chat-history-empty-hint">Send your first message to start one.</span></div>';
+        listEl.innerHTML = '<div class="sidebar-conversations-empty">No conversations yet.</div>';
         return;
     }
     listEl.innerHTML = conversationsCache.map(c => {
-        const active = c.id === activeConversationId ? ' chat-history-row-active' : '';
+        const active = c.id === activeConversationId ? ' sidebar-conversation-row-active' : '';
         const date = formatConvDate(c.lastMessageAt || c.startedAt);
         const title = c.title ? esc(c.title) : 'New conversation';
-        return `<a class="chat-history-row${active}" href="#" onclick="pickConversation('${c.id}');return false;">
-            <span class="chat-history-row-title">${title}</span>
-            <span class="chat-history-row-meta">
-                <span class="chat-history-row-date">${date}</span>
-                ${c.messageCount > 0 ? `<span class="chat-history-row-count">${c.messageCount}</span>` : ''}
-            </span>
+        return `<a class="sidebar-conversation-row${active}" href="#" onclick="pickConversation('${c.id}');return false;">
+            <span class="sidebar-conversation-title">${title}</span>
+            <span class="sidebar-conversation-date">${date}</span>
         </a>`;
     }).join('');
 }
@@ -1457,13 +1450,6 @@ async function pickConversation(conversationId) {
     if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
         toggleChatHistory(false);
     }
-}
-
-function toggleChatHistory(force) {
-    const col = document.getElementById('chat-history-column');
-    if (!col) return;
-    const open = typeof force === 'boolean' ? force : !col.classList.contains('chat-history-open');
-    col.classList.toggle('chat-history-open', open);
 }
 
 // Chat-as-home (2026-05-06): on first focus we auto-load the most recent
