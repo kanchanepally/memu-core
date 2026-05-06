@@ -121,7 +121,6 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [layer, setLayer] = useState<Visibility>('family');
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const consumedParamRef = useRef<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const toast = useToast();
@@ -131,10 +130,8 @@ export default function ChatScreen() {
     const { data } = await getChatHistory(100, conversationId);
     if (data?.messages && data.messages.length > 0) {
       setMessages(expandHistoryRows(data.messages));
-      setActiveConversationId(data.conversationId ?? conversationId ?? null);
     } else {
       setMessages([WELCOME]);
-      setActiveConversationId(conversationId ?? null);
     }
     setLoadingHistory(false);
   }, []);
@@ -152,7 +149,6 @@ export default function ChatScreen() {
     setInput('');
     if (key === 'NEW') {
       setMessages([WELCOME]);
-      setActiveConversationId(null);
       setLoadingHistory(false);
       return;
     }
