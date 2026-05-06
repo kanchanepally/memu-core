@@ -232,11 +232,11 @@ textarea.input {
   width: 100%;
 }
 
-/* Chat canvas — wider than the old narrow column because the conversations
-   sidebar lives inside it (Claude/Gemini layout). The chat-main column
-   itself still constrains the bubble width via .bubble-wrap. */
+/* Chat canvas — narrow column for line-length comfort. Conversations now
+   live in the sidebar (nested under the Chat nav item), so the canvas is
+   single-column again. */
 .chat-canvas {
-  max-width: 1080px;
+  max-width: 760px;
   margin: 0 auto;
   width: 100%;
 }
@@ -807,157 +807,80 @@ textarea.input {
    Chat
    ========================================================================== */
 
-/* Two-column shell: conversations panel on the left, chat container on the
-   right. Persistent on desktop; collapses to a slide-in on narrow viewports. */
-.chat-shell {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-md);
-  height: calc(100vh - 60px);
-}
-
-.chat-history-column {
-  width: 260px;
-  min-width: 260px;
-  background: var(--color-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md) var(--space-sm);
-  display: flex;
+/* Conversations list nested under the Chat sidebar nav item. Replaces the
+   prior three-column shell (sidebar + chat-history-column + canvas) with
+   a strict two-column layout: sidebar (carrying the conversations when
+   chat is the active section) + canvas. Hidden when any other section
+   is active. */
+.sidebar-chat-children {
+  display: none;
   flex-direction: column;
-  gap: var(--space-xs);
-  overflow: hidden;
+  margin: var(--space-xs) 0 var(--space-sm) 22px;
+  padding-left: var(--space-sm);
+  border-left: 1px solid var(--border);
+  gap: 2px;
 }
-.chat-history-head {
+.sidebar-chat-children-open {
+  display: flex;
+}
+.sidebar-new-chat-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-sm) var(--space-sm);
-}
-.chat-history-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.2px;
-}
-.chat-history-close {
-  display: none; /* only used on narrow viewport */
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
   background: transparent;
   border: 0;
-  font-size: 20px;
-  line-height: 1;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.chat-new-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-sm);
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   color: var(--color-accent);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  text-align: left;
   cursor: pointer;
-  margin: 0 var(--space-xs);
 }
-.chat-new-btn:hover {
+.sidebar-new-chat-btn:hover {
   background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
 }
-.chat-history-list {
-  flex: 1;
+.sidebar-conversations-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
   overflow-y: auto;
-  margin-top: var(--space-sm);
-  padding: 0 var(--space-xs);
+  padding-right: 4px;
 }
-.chat-history-row {
-  display: block;
-  padding: 8px 10px;
-  margin-bottom: 2px;
-  border-radius: var(--radius-md);
+.sidebar-conversation-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--text-primary);
+  margin-bottom: 1px;
 }
-.chat-history-row:hover {
+.sidebar-conversation-row:hover {
   background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
 }
-.chat-history-row-active {
-  background: var(--color-surface-hover, rgba(80, 84, 181, 0.08));
+.sidebar-conversation-row-active {
+  background: var(--color-surface-hover, rgba(80, 84, 181, 0.10));
 }
-.chat-history-row-title {
-  display: block;
-  font-size: 13.5px;
-  line-height: 1.3;
+.sidebar-conversation-title {
+  font-size: 13px;
+  line-height: 1.25;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.chat-history-row-meta {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 2px;
-}
-.chat-history-row-date {
+.sidebar-conversation-date {
   font-size: 11px;
   color: var(--text-muted);
 }
-.chat-history-row-count {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.chat-history-empty {
-  padding: var(--space-lg) var(--space-sm);
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: center;
-  line-height: 1.5;
-}
-.chat-history-empty-hint {
+.sidebar-conversations-empty {
+  padding: 8px 10px;
   font-size: 12px;
   color: var(--text-muted);
-  opacity: 0.8;
-}
-
-/* The right column (chat itself). On desktop it occupies the remaining
-   width inside chat-shell; bubble-wrap caps individual message width. */
-.chat-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.chat-canvas-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-md);
-  border-bottom: 1px solid var(--border);
-  background: transparent;
-}
-.chat-history-toggle {
-  display: none; /* shown only on narrow viewports */
-  background: transparent;
-  border: 0;
-  padding: 6px;
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-.chat-history-toggle:hover {
-  background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
-}
-.chat-canvas-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-style: italic;
 }
 
 .chat-blank-state {

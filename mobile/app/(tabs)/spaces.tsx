@@ -424,82 +424,84 @@ export default function SpacesScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Detail modal */}
-      <Modal visible={!!selectedPage} animationType="slide" transparent onRequestClose={closeModal}>
+      {/* Detail view — full-page overlay (was a sliding modal pre-2026-05-06).
+          Brief explicitly called for: full-page canvas, breadcrumb '← All
+          Spaces' at top, markdown body, Edit + Share at bottom. Same
+          edit/save/share state and handlers; only the chrome changed. */}
+      {selectedPage ? (
         <KeyboardAvoidingView
-          style={styles.modalOverlay}
+          style={styles.detailFullPage}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={styles.modalCard}>
-            <View style={styles.modalHandle} />
+          <Pressable onPress={closeModal} style={styles.detailBreadcrumb} hitSlop={8}>
+            <Ionicons name="chevron-back" size={20} color={colors.primary} />
+            <Text style={styles.detailBreadcrumbLabel}>All Spaces</Text>
+          </Pressable>
 
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleRow}>
-                <View style={styles.modalIconChip}>
-                  <Ionicons
-                    name={categoryIcon(selectedPage?.category || '')}
-                    size={20}
-                    color={colors.tertiary}
-                  />
-                </View>
-                {isEditing ? (
-                  <TextInput
-                    style={styles.editTitleInput}
-                    value={editTitle}
-                    onChangeText={setEditTitle}
-                    placeholder="Space title"
-                    placeholderTextColor={colors.outline}
-                  />
-                ) : (
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalCategory}>{selectedPage?.category}</Text>
-                    <Text style={styles.modalTitle}>{selectedPage?.title}</Text>
-                  </View>
-                )}
-                <Pressable onPress={closeModal} hitSlop={12}>
-                  <Ionicons name="close" size={22} color={colors.outline} />
-                </Pressable>
-              </View>
+          <View style={styles.detailHeader}>
+            <View style={styles.detailIconChip}>
+              <Ionicons
+                name={categoryIcon(selectedPage.category)}
+                size={20}
+                color={colors.tertiary}
+              />
             </View>
-
             {isEditing ? (
               <TextInput
-                style={styles.editBodyInput}
-                value={editBody}
-                onChangeText={setEditBody}
-                multiline
-                textAlignVertical="top"
-                placeholder="Markdown content…"
+                style={styles.editTitleInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Space title"
                 placeholderTextColor={colors.outline}
               />
             ) : (
-              <ScrollView style={styles.modalScroll} contentContainerStyle={{ paddingBottom: spacing.xl }}>
-                <Markdown style={markdownStyles}>
-                  {selectedPage?.body_markdown || ''}
-                </Markdown>
-              </ScrollView>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.detailCategory}>{selectedPage.category}</Text>
+                <Text style={styles.detailTitle}>{selectedPage.title}</Text>
+              </View>
             )}
+          </View>
 
-            <View style={styles.modalActions}>
-              {isEditing ? (
-                <>
-                  <GradientButton label="Cancel" variant="ghost" onPress={() => setIsEditing(false)} />
-                  <GradientButton
-                    label={saving ? 'Saving…' : 'Save'}
-                    onPress={handleSave}
-                    loading={saving}
-                  />
-                </>
-              ) : (
-                <>
-                  <GradientButton label="Share" variant="ghost" icon="share-outline" onPress={handleShare} />
-                  <GradientButton label="Edit" icon="create-outline" onPress={openEditor} />
-                </>
-              )}
-            </View>
+          {isEditing ? (
+            <TextInput
+              style={styles.editBodyInput}
+              value={editBody}
+              onChangeText={setEditBody}
+              multiline
+              textAlignVertical="top"
+              placeholder="Markdown content…"
+              placeholderTextColor={colors.outline}
+            />
+          ) : (
+            <ScrollView
+              style={styles.detailScroll}
+              contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
+            >
+              <Markdown style={markdownStyles}>
+                {selectedPage.body_markdown || ''}
+              </Markdown>
+            </ScrollView>
+          )}
+
+          <View style={styles.detailActions}>
+            {isEditing ? (
+              <>
+                <GradientButton label="Cancel" variant="ghost" onPress={() => setIsEditing(false)} />
+                <GradientButton
+                  label={saving ? 'Saving…' : 'Save'}
+                  onPress={handleSave}
+                  loading={saving}
+                />
+              </>
+            ) : (
+              <>
+                <GradientButton label="Share" variant="ghost" icon="share-outline" onPress={handleShare} />
+                <GradientButton label="Edit" icon="create-outline" onPress={openEditor} />
+              </>
+            )}
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      ) : null}
     </View>
   );
 }
@@ -696,7 +698,73 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
-  // Modal
+  // ---- Full-page Space detail (was a sliding modal pre-2026-05-06) ----
+  detailFullPage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.surface,
+    paddingTop: Platform.OS === 'android' ? 24 : 56,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  detailBreadcrumb: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  detailBreadcrumbLabel: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  detailIconChip: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.tertiaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailCategory: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+  },
+  detailTitle: {
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+    marginTop: 2,
+  },
+  detailScroll: {
+    flex: 1,
+  },
+  detailActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceVariant,
+  },
+
+  // Legacy modal styles (still referenced by the create-Space modal below).
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(12,14,16,0.5)',
