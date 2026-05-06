@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View, Text, StyleSheet, Pressable, Modal, ScrollView,
   KeyboardAvoidingView, Platform, TextInput, Share,
@@ -92,6 +93,23 @@ export default function SpacesScreen() {
   useEffect(() => {
     loadSpaces();
   }, [loadSpaces]);
+
+  // Deep-link: chat artefact chips navigate via /(tabs)/spaces?focus=<slug>
+  // and expect the matching Space to open in detail view. Watch for the
+  // param + the spaces list both being ready, then open. consumedFocusRef
+  // ensures we open it once per param value (focusing the same slug
+  // shouldn't re-open if the user has since closed the detail view).
+  const focusParam = (useLocalSearchParams() as { focus?: string }).focus;
+  const consumedFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusParam || spaces.length === 0) return;
+    if (consumedFocusRef.current === focusParam) return;
+    const match = spaces.find(s => s.slug === focusParam);
+    if (match) {
+      setSelectedPage(match);
+      consumedFocusRef.current = focusParam;
+    }
+  }, [focusParam, spaces]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

@@ -94,7 +94,7 @@ CREATE TABLE messages (
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
   profile_id TEXT NOT NULL REFERENCES profiles(id),
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-  content_original TEXT NOT NULL,
+  content_original TEXT,  -- nullable for server-generated assistant turns (briefings)
   content_translated TEXT,  -- anonymous twin translation
   content_enriched TEXT,  -- full prompt with context injection
   content_response_raw TEXT,  -- Claude's anonymous response
@@ -103,6 +103,7 @@ CREATE TABLE messages (
   context_sources JSONB,  -- which context was injected
   actions_requested JSONB,
   actions_executed JSONB,
+  metadata JSONB,  -- arbitrary tags; metadata->>'type' = 'briefing' marks assistant-only briefing turns
   flagged BOOLEAN DEFAULT FALSE,
   flag_reason TEXT,
   channel TEXT NOT NULL DEFAULT 'whatsapp',

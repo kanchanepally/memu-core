@@ -7,6 +7,7 @@ import { listDomainStates, renderDomainHealthHeader } from '../domains/health';
 
 import { processSynthesisUpdate } from './synthesis';
 import { interactiveQueryTools } from './tools';
+import { fetchWeatherLine, fetchNewsBrief } from './ambient';
 
 const MAX_BRIEFING_PARAGRAPHS = 4;
 const COLLISION_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -203,6 +204,20 @@ export async function runUnifiedBriefing(
           .map((c, i) => `${i + 1}. [${c.card_type.toUpperCase()}] ${c.title}: ${c.body}`)
           .join('\n');
 
+    // 3b. Ambient context — weather + top headlines for the day. Both are
+    // fetched from keyless public APIs (Open-Meteo, BBC RSS) and cached
+    // per local-day in `ambient.ts`. Either failing returns a graceful
+    // "unavailable" string the skill knows to skip; never blocks the
+    // briefing on flaky outbound HTTP. Both pass through the Twin
+    // anonymiser below — they contain no real personal names but the
+    // pipeline invariant is "every template var is anonymised", so we
+    // run them through anyway and rely on novel-entity detection to no-op
+    // on already-anonymous content.
+    const [weatherLine, newsBrief] = await Promise.all([
+      fetchWeatherLine(),
+      fetchNewsBrief(),
+    ]);
+
     // 4. Domain health header — at-a-glance sphere status.
     const domainStates = await listDomainStates(profileId);
     const domainHeaderRaw = domainStates.length === 0
@@ -212,13 +227,15 @@ export async function runUnifiedBriefing(
     // 5. Twin invariant: every field that reaches the LLM is anonymised.
     // The Twin guard would refuse the call in throw mode anyway; doing it
     // here keeps the privacy ledger free of "auto-anonymised" noise.
-    const [anonInbox, anonTodayEvents, anonUpcomingEvents, anonCollisions, anonCards, anonHeader] = await Promise.all([
+    const [anonInbox, anonTodayEvents, anonUpcomingEvents, anonCollisions, anonCards, anonHeader, anonWeather, anonNews] = await Promise.all([
       translateToAnonymous(inboxTranscript),
       translateToAnonymous(todayEventsStr),
       translateToAnonymous(upcomingEventsStr),
       translateToAnonymous(collisionsStr),
       translateToAnonymous(streamStr),
       translateToAnonymous(domainHeaderRaw),
+      translateToAnonymous(weatherLine),
+      translateToAnonymous(newsBrief),
     ]);
 
     // Empty-state gate. Memu's worst current pattern is generating confident
@@ -263,6 +280,8 @@ export async function runUnifiedBriefing(
         active_cards: anonCards,
         inbox_transcript: anonInbox,
         collisions: anonCollisions,
+        weather_line: anonWeather,
+        news_brief: anonNews,
         channel,
         max_paragraphs: String(MAX_BRIEFING_PARAGRAPHS),
       },
@@ -338,9 +357,11 @@ export async function runUnifiedBriefing(
 
     if (!isSubstantive) {
       console.log('[BRIEFING] No substantive updates; not persisting a stream card.');
-      if (channel === 'app') {
-        synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
-      }
+      // Cache for both channels so a 07:00 push-gen + 07:05 app-open hit the
+      // same Sonnet call. Pre-2026-05-06 only the 'app' channel cached, which
+      // meant tapping the morning notification fired a fresh Sonnet within
+      // minutes of the cron's generation — same content, different invoice.
+      synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
       return realBriefing;
     }
 
@@ -367,9 +388,8 @@ export async function runUnifiedBriefing(
     );
 
     console.log(`[BRIEFING] Persisted briefing card with ${realActions.length} suggested action(s).`);
-    if (channel === 'app') {
-      synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
-    }
+    // See comment above — cache regardless of channel so push and app share.
+    synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
     return realBriefing;
   } catch (err: any) {
     console.error('[BRIEFING ERROR]:', err);
@@ -403,22 +423,45 @@ export const generateAndPushMorningBriefing = generateBriefingText;
 
 // Mobile push delivery: same briefing, channel='push' so the skill knows it
 // is going to a notification body (light markdown allowed).
+//
+// Decoupled from token availability 2026-05-06. Pre-fix: this returned null
+// before generating anything when push_tokens was empty, so a user whose
+// registration silently failed got NO briefing — not even one waiting on
+// the Today screen when they opened the app. Post-fix: briefing generation
+// + persistence (as a stream_cards row via runUnifiedBriefing) ALWAYS runs;
+// the push send is the only step gated on tokens.
 export async function pushMorningBriefingToMobile(profileId: string): Promise<string | null> {
   console.log(`[BRIEFING PUSH] Starting for profile ${profileId}`);
   try {
-    const tokens = await getTokensForProfile(profileId);
-    console.log(`[BRIEFING PUSH] ${tokens.length} push token(s) registered for ${profileId}`);
-    if (tokens.length === 0) {
-      console.log(`[BRIEFING PUSH] No push tokens for ${profileId} — skipping. (User has not opened the app, or notification permission was denied.)`);
-      return null;
-    }
-
     const briefing = await runUnifiedBriefing(profileId, 'push');
     if (!briefing) {
-      console.log(`[BRIEFING PUSH] runUnifiedBriefing returned null for ${profileId} — nothing to send.`);
+      console.log(`[BRIEFING PUSH] runUnifiedBriefing returned null for ${profileId} — empty-state gate fired or nothing substantive to brief on.`);
       return null;
     }
-    console.log(`[BRIEFING PUSH] Briefing generated for ${profileId} — length=${briefing.length} chars`);
+    console.log(`[BRIEFING PUSH] Briefing generated for ${profileId} — length=${briefing.length} chars.`);
+
+    // Post the briefing as the first chat message of a fresh conversation
+    // so it lands on the user's chat timeline alongside everything else.
+    // The chat-as-home model treats the morning briefing as just another
+    // assistant turn — tagged metadata.type='briefing' so the renderers
+    // apply elevated AIInsightCard styling inline. A new conversation
+    // each morning means tapping the push notification lands the user on
+    // a clean thread; replies create a follow-up turn naturally.
+    try {
+      await postBriefingAsChatMessage(profileId, briefing);
+    } catch (err) {
+      // Non-fatal — push still goes out, stream_cards row still persists
+      // (handled inside runUnifiedBriefing). The chat-message post is the
+      // newest of the three persistence paths; if it fails the user still
+      // gets the briefing through Today / push.
+      console.error(`[BRIEFING CHAT-MESSAGE] Failed to post for ${profileId}:`, err);
+    }
+
+    const tokens = await getTokensForProfile(profileId);
+    if (tokens.length === 0) {
+      console.log(`[BRIEFING PUSH] No push tokens for ${profileId} — briefing still saved for in-app display, push skipped. (User hasn't opened the app, or notification permission was denied.)`);
+      return briefing;
+    }
 
     const firstSentence = briefing.split(/(?<=[.!?])\s/)[0] || briefing;
     const body = firstSentence.length > 180
@@ -437,4 +480,63 @@ export async function pushMorningBriefingToMobile(profileId: string): Promise<st
     console.error(`[BRIEFING PUSH ERROR] profile=${profileId}:`, err);
     return null;
   }
+}
+
+/**
+ * Insert the morning briefing as a server-generated assistant chat
+ * message into a fresh conversation for today. Idempotent within a UTC
+ * day — a second call within the same day finds the existing briefing
+ * conversation and skips re-inserting.
+ *
+ * The chat-history endpoint surfaces this as the first message of the
+ * day's thread; mobile + PWA renderers apply elevated styling when they
+ * see metadata.type === 'briefing'.
+ */
+async function postBriefingAsChatMessage(profileId: string, briefingMarkdown: string): Promise<void> {
+  // Idempotency: if a briefing message already exists for this profile
+  // today, do not insert a second one. A failed push retry that calls
+  // pushMorningBriefingToMobile twice in the same morning should not
+  // produce duplicate chat entries.
+  const existing = await pool.query(
+    `SELECT m.id FROM messages m
+     WHERE m.profile_id = $1
+       AND m.metadata->>'type' = 'briefing'
+       AND m.created_at >= date_trunc('day', NOW())
+     LIMIT 1`,
+    [profileId],
+  );
+  if (existing.rows.length > 0) {
+    console.log(`[BRIEFING CHAT-MESSAGE] Already posted today for ${profileId}; skipping.`);
+    return;
+  }
+
+  // Fresh conversation each morning. Tapping the push lands the user on
+  // a clean thread with the briefing visible; follow-up replies build the
+  // day's conversation forward from there.
+  const conv = await pool.query<{ id: string }>(
+    `INSERT INTO conversations (profile_id) VALUES ($1) RETURNING id`,
+    [profileId],
+  );
+  const convId = conv.rows[0].id;
+
+  await pool.query(
+    `INSERT INTO messages
+       (id, conversation_id, profile_id, role,
+        content_response_translated, channel, metadata)
+     VALUES ($1, $2, $3, 'assistant', $4, 'briefing', $5)`,
+    [
+      `briefing-msg-${Date.now()}`,
+      convId,
+      profileId,
+      briefingMarkdown,
+      JSON.stringify({ type: 'briefing' }),
+    ],
+  );
+
+  await pool.query(
+    `UPDATE conversations SET message_count = 1 WHERE id = $1`,
+    [convId],
+  );
+
+  console.log(`[BRIEFING CHAT-MESSAGE] Posted briefing into conversation ${convId} for ${profileId}.`);
 }

@@ -16,24 +16,27 @@ const ctx: ToolContext = {
 };
 
 describe('interactiveQueryTools registry', () => {
-  it('exposes the five expected client-side tools', () => {
+  it('exposes the nine expected client-side tools', () => {
     // webSearch migrated to Anthropic server-side tool 2026-04-26 — see
     // `interactiveQueryServerTools` below. Local registry now holds only
-    // tools Memu executes in-process.
+    // tools Memu executes in-process. resolveStreamCard + markListItemDone
+    // added 2026-05-06 to close the completion loop (Phase 1.3 spec).
     expect(Object.keys(interactiveQueryTools).sort()).toEqual([
       'addCalendarEvent',
       'addToList',
       'createSpace',
       'findSpaces',
+      'markListItemDone',
       'readLists',
       'readUpcomingEvents',
+      'resolveStreamCard',
       'updateSpace',
     ]);
   });
 
   it('toolSchemas() returns one schema per client-side tool with required Claude fields', () => {
     const schemas = toolSchemas(interactiveQueryTools);
-    expect(schemas).toHaveLength(7);
+    expect(schemas).toHaveLength(9);
     for (const s of schemas) {
       expect(typeof s.name).toBe('string');
       expect(typeof s.description).toBe('string');

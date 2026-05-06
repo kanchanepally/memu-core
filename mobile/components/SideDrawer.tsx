@@ -28,8 +28,8 @@ type Destination = {
 };
 
 const PRIMARY: Destination[] = [
-  { label: 'Today', icon: 'sunny-outline', iconActive: 'sunny', path: '/(tabs)' },
   { label: 'Chat', icon: 'chatbubble-outline', iconActive: 'chatbubble', path: '/(tabs)/chat' },
+  { label: 'Today', icon: 'sunny-outline', iconActive: 'sunny', path: '/(tabs)/today' },
   { label: 'Spaces', icon: 'albums-outline', iconActive: 'albums', path: '/(tabs)/spaces' },
   { label: 'Calendar', icon: 'calendar-outline', iconActive: 'calendar', path: '/(tabs)/calendar' },
   { label: 'Lists', icon: 'list-outline', iconActive: 'list', path: '/(tabs)/lists' },
@@ -40,7 +40,11 @@ const SECONDARY: Destination[] = [
 ];
 
 function isActive(pathname: string, dest: Destination) {
-  if (dest.path === '/(tabs)') return pathname === '/' || pathname === '/(tabs)';
+  // Chat is the default landing — pathname === '/' or '/(tabs)' both
+  // resolve there now (the (tabs)/index redirects to /chat).
+  if (dest.path === '/(tabs)/chat') {
+    if (pathname === '/' || pathname === '/(tabs)') return true;
+  }
   return pathname === dest.path || pathname === dest.path.replace('/(tabs)', '');
 }
 

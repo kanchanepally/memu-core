@@ -53,7 +53,7 @@ export default function RootLayout() {
         }
       });
     } else if (isAuthenticated && inOnboarding) {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/chat');
     }
   }, [isReady, isAuthenticated, segments, fontsLoaded]);
 
@@ -63,14 +63,40 @@ export default function RootLayout() {
     registerForPushNotifications().catch(() => {});
   }, [isAuthenticated]);
 
-  // Deep-link when a notification is tapped.
+  // Deep-link when a notification is tapped. Two paths:
+  //   1. App is already running → addNotificationResponseReceivedListener fires.
+  //   2. App was closed → user taps notification → OS launches app → we need
+  //      to inspect getLastNotificationResponseAsync() once on mount and route
+  //      from there. Without this, the cold-start case lands on whatever
+  //      route the auth gate picks, ignoring the notification's screen hint
+  //      entirely. This is the path that matters for the 07:00 morning
+  //      briefing — the phone is asleep, the user taps, the app cold-starts.
   useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const route = (data: { screen?: string } | undefined) => {
+      // Push notifications still carry `screen: 'today'` for back-compat
+      // — the briefing now appears AS a chat message, so the right
+      // landing target for the morning push is /chat (where the briefing
+      // is the first thing the user sees in the latest thread).
+      if (data?.screen === 'today' || data?.screen === 'chat') {
+        router.push('/(tabs)/chat');
+      }
+    };
+
+    Notifications.getLastNotificationResponseAsync().then(resp => {
+      if (resp) {
+        const data = resp.notification.request.content.data as { screen?: string } | undefined;
+        route(data);
+      }
+    });
+
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as { screen?: string } | undefined;
-      if (data?.screen === 'today') router.push('/(tabs)');
+      route(data);
     });
     return () => sub.remove();
-  }, [router]);
+  }, [router, isAuthenticated]);
 
   if (!isReady || !fontsLoaded) {
     return (

@@ -4,17 +4,19 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../lib/tokens';
-import { LogoMark } from './Logo';
 import { useDrawer } from '../lib/drawer';
 
 /**
  * Indigo Sanctuary top header.
- * Left: avatar (LogoMark) — tap to open the side drawer.
- * Centre: optional wordmark.
- * Right: optional overflow / close button.
+ * Left: hamburger menu icon — tap to open the side drawer (PWA parity).
+ *       Pre-2026-05-06 the trigger was the LogoMark, which read as a brand
+ *       mark not as a button. Hamburger is unambiguous.
+ * Centre: optional wordmark, or page title next to the hamburger.
+ * Right: optional overflow / close / chat-history button.
  *
  * `statusLabel` and `statusPulse` are accepted for back-compat but no longer
  * rendered — they were obscuring the wordmark and added little signal.
+ * `showLogo` is also kept for back-compat; it now controls hamburger visibility.
  */
 interface Props {
   title?: string;
@@ -47,9 +49,9 @@ export default function ScreenHeader({
               onPress={openDrawer}
               accessibilityLabel="Open menu"
               hitSlop={12}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              style={({ pressed }) => [styles.hamburger, pressed && { opacity: 0.5 }]}
             >
-              <LogoMark size={32} />
+              <Ionicons name="menu" size={24} color={colors.onSurface} />
             </Pressable>
           ) : null}
           {title ? <Text style={styles.title}>{title}</Text> : null}
@@ -101,6 +103,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  hamburger: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: typography.sizes.lg,

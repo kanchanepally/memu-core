@@ -438,6 +438,15 @@
         });
 
         cy.on('tap', 'node', (evt) => {
+            // DIAGNOSTIC — click-to-open regression repro 2026-04-30. Remove
+            // once the bug is identified.
+            console.log('[canvas tap node]', {
+                id: evt.target.id(),
+                title: evt.target.data('n')?.title,
+                reparentDrag: state.reparentDrag,
+                connectDrag: state.connectDrag,
+                willNavigate: !state.reparentDrag && !state.connectDrag,
+            });
             if (state.reparentDrag || state.connectDrag) return;
             const id = evt.target.id();
             navigateToSpace(id);
@@ -1154,6 +1163,9 @@
 
     // ---- Click-to-Space transition ----
     function navigateToSpace(id) {
+        // DIAGNOSTIC — click-to-open regression repro 2026-04-30. Remove
+        // once the bug is identified.
+        console.log('[canvas navigateToSpace]', { id, href: `/dashboard.html?space=${encodeURIComponent(id)}#spaces` });
         window.location.href = `/dashboard.html?space=${encodeURIComponent(id)}#spaces`;
     }
 

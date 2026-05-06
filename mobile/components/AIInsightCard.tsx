@@ -10,13 +10,16 @@ interface Props {
   ctaLabel?: string;
   onCta?: () => void;
   icon?: React.ComponentProps<typeof Ionicons>['name'];
-  label?: string;            // small tag e.g. "Memu Insight"
+  label?: string;            // small uppercase tag e.g. "Today's brief"
+  greeting?: string;         // optional second line e.g. "Good evening, Hareesh"
+  dateLabel?: string;        // optional third line e.g. "Wednesday 6 May 2026"
 }
 
 /**
  * The AI Insight card — the "alive" element in the system.
  * Tertiary colour iconography, soft radial glow in the top-right.
- * Never shipped without an action (Apply / Dismiss / Learn more).
+ * Optional greeting + dateLabel match the PWA's "Today's brief" header
+ * stack so the mobile and PWA Today views read the same.
  */
 export default function AIInsightCard({
   title,
@@ -25,6 +28,8 @@ export default function AIInsightCard({
   onCta,
   icon = 'sparkles',
   label = 'Memu Insight',
+  greeting,
+  dateLabel,
 }: Props) {
   return (
     <View style={styles.card}>
@@ -34,7 +39,11 @@ export default function AIInsightCard({
         <View style={styles.iconChip}>
           <Ionicons name={icon} size={18} color={colors.tertiary} />
         </View>
-        <Text style={styles.label}>{label}</Text>
+        <View style={styles.headerStack}>
+          <Text style={styles.label}>{label}</Text>
+          {greeting ? <Text style={styles.greeting}>{greeting}</Text> : null}
+          {dateLabel ? <Text style={styles.dateLabel}>{dateLabel}</Text> : null}
+        </View>
       </View>
 
       <Text style={styles.title}>{title}</Text>
@@ -70,7 +79,7 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md,
     marginBottom: spacing.lg,
   },
@@ -82,12 +91,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerStack: {
+    flex: 1,
+    gap: 2,
+  },
   label: {
     fontSize: 11,
     fontFamily: typography.families.label,
     color: colors.tertiary,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.widest,
+  },
+  greeting: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+  },
+  dateLabel: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
   },
   title: {
     fontSize: typography.sizes.lg,

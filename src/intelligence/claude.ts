@@ -153,8 +153,22 @@ export async function callClaude(input: ClaudeCallInput): Promise<ClaudeCallResu
 
   const latency = Date.now() - start;
   const content = msg.content as ClaudeContentBlock[];
-  const firstText = content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
-  const text = firstText?.text ?? '';
+
+  // Concatenate ALL text blocks, not just the first. When Claude uses a
+  // server-side tool (e.g. web_search) the response interleaves blocks like:
+  //   [text "I'll search for that.", server_tool_use, web_search_tool_result,
+  //    text "Based on the results, ..."]
+  // The user-facing answer is the SECOND text block; the first is the
+  // pre-search acknowledgement. Pre-2026-05-06 we returned only the first
+  // text block, which surfaced "I'll search for that" to the user and
+  // dropped the actual answer — exactly the "searches but fetches nothing"
+  // symptom Hareesh reported. Fix is to join every text block in order
+  // with a blank line between non-empty pieces.
+  const text = content
+    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .map(b => b.text)
+    .filter(t => t && t.trim().length > 0)
+    .join('\n\n');
 
   return {
     text,

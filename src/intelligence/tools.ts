@@ -24,7 +24,8 @@
 
 import type { ClaudeServerSideTool, ClaudeToolSchema } from './claude';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
-import { addItem, listItems, type ListType, type ListFilter, type ListStatus } from '../lists/store';
+import { addItem, listItems, completeItem, type ListType, type ListFilter, type ListStatus } from '../lists/store';
+import { pool } from '../db/connection';
 import { upsertSpace, findSpaceByUri, findSpaceBySlug, validateParentRelationship, countChildrenForParents } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from '../spaces/model';
 import { getCatalogue } from '../spaces/catalogue';
@@ -804,6 +805,185 @@ async function executeReadUpcomingEvents(rawInput: unknown, ctx: ToolContext): P
 }
 
 // ---------------------------------------------------------------------------
+// resolveStreamCard
+// ---------------------------------------------------------------------------
+//
+// When the user reports something is done — "I fixed the climbing frame",
+// "that's sorted", "I bought the barrel nuts" — Claude should mark the
+// related stream card(s) as resolved so the next briefing doesn't keep
+// surfacing them. Without this tool, the only completion mechanism is the
+// 14-day age-out cron, which means resolved items keep nagging for two
+// weeks.
+
+const RESOLVE_STREAM_CARD_SCHEMA: ClaudeToolSchema = {
+  name: 'resolveStreamCard',
+  description:
+    'Mark stream cards as resolved (done) when the user confirms something is finished. ' +
+    'Call this whenever the user says something is done, sorted, fixed, completed, or handled — ' +
+    'don\'t just acknowledge verbally; close the loop in the data so future briefings stop surfacing it. ' +
+    'You can pass either specific cardIds (preferred when you can identify the exact card from context) ' +
+    'OR a topic substring; topic mode resolves any active card whose title or body case-insensitively ' +
+    'contains the substring. Returns the count of cards actually resolved.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      cardIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Specific stream card IDs to resolve. Use when you have card IDs from prior context.',
+      },
+      topic: {
+        type: 'string',
+        description: 'Substring to match against card title or body (case-insensitive). E.g. "climbing frame", "AWBS".',
+      },
+    },
+  },
+};
+
+interface ResolveStreamCardInput {
+  cardIds?: string[];
+  topic?: string;
+}
+
+async function executeResolveStreamCard(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const input = (rawInput || {}) as ResolveStreamCardInput;
+  const idList = Array.isArray(input.cardIds) ? input.cardIds.filter(s => typeof s === 'string' && s.length > 0) : [];
+  const topic = typeof input.topic === 'string' ? input.topic.trim() : '';
+
+  if (idList.length === 0 && topic.length === 0) {
+    return { ok: false, error: 'Provide cardIds or topic' };
+  }
+
+  try {
+    // The user typed in real names; Claude sees and emits anonymous tokens.
+    // Translate the topic back to real before substring-matching against
+    // stream_cards.title/body which are stored in real form.
+    const realTopic = topic ? await translateToReal(topic) : '';
+
+    const params: any[] = [ctx.familyId];
+    const clauses: string[] = [`family_id = $1`, `status = 'active'`];
+
+    if (idList.length > 0) {
+      params.push(idList);
+      clauses.push(`id = ANY($${params.length})`);
+    } else {
+      params.push(`%${realTopic.toLowerCase()}%`);
+      clauses.push(`(LOWER(title) LIKE $${params.length} OR LOWER(body) LIKE $${params.length})`);
+    }
+
+    const { rows } = await pool.query<{ id: string; title: string }>(
+      `UPDATE stream_cards
+         SET status = 'resolved', resolved_at = NOW()
+       WHERE ${clauses.join(' AND ')}
+       RETURNING id, title`,
+      params,
+    );
+
+    return {
+      ok: true,
+      output: {
+        resolvedCount: rows.length,
+        cardIds: rows.map(r => r.id),
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `resolveStreamCard failed: ${message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// markListItemDone
+// ---------------------------------------------------------------------------
+//
+// User says "I bought the barrel nuts" → corresponding `list_items` row(s)
+// should flip to `status = 'done'`. Without this, items stay pending and
+// the lists tab + briefing keep treating them as open.
+
+const MARK_LIST_ITEM_DONE_SCHEMA: ClaudeToolSchema = {
+  name: 'markListItemDone',
+  description:
+    'Mark list items as done when the user reports completing them. ' +
+    'Call this when the user says they\'ve bought / done / completed something on a list — ' +
+    'don\'t just acknowledge; flip the underlying list_items row to done so the count and ' +
+    'briefing stop treating it as pending. Pass either specific itemIds or a topic substring ' +
+    'matched against pending items\' text. Returns the count actually marked done.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      itemIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Specific list item IDs to mark done.',
+      },
+      topic: {
+        type: 'string',
+        description: 'Substring to match against pending items\' text (case-insensitive). E.g. "barrel nuts", "milk".',
+      },
+      list: {
+        type: 'string',
+        enum: ['shopping', 'task'],
+        description: 'Optional: restrict matching to one list type.',
+      },
+    },
+  },
+};
+
+interface MarkListItemDoneInput {
+  itemIds?: string[];
+  topic?: string;
+  list?: ListType;
+}
+
+async function executeMarkListItemDone(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const input = (rawInput || {}) as MarkListItemDoneInput;
+  const idList = Array.isArray(input.itemIds) ? input.itemIds.filter(s => typeof s === 'string' && s.length > 0) : [];
+  const topic = typeof input.topic === 'string' ? input.topic.trim() : '';
+  const listType = input.list;
+
+  if (idList.length === 0 && topic.length === 0) {
+    return { ok: false, error: 'Provide itemIds or topic' };
+  }
+
+  try {
+    let matched: string[] = idList;
+
+    if (matched.length === 0) {
+      const realTopic = await translateToReal(topic);
+      const params: any[] = [ctx.familyId, 'pending', `%${realTopic.toLowerCase()}%`];
+      let typeClause = '';
+      if (listType) {
+        params.push(listType);
+        typeClause = ` AND list_type = $${params.length}`;
+      }
+      const { rows } = await pool.query<{ id: string }>(
+        `SELECT id FROM list_items
+         WHERE family_id = $1 AND status = $2 AND LOWER(item_text) LIKE $3${typeClause}`,
+        params,
+      );
+      matched = rows.map(r => r.id);
+    }
+
+    let doneCount = 0;
+    for (const id of matched) {
+      const result = await completeItem(id, ctx.familyId);
+      if (result) doneCount += 1;
+    }
+
+    return {
+      ok: true,
+      output: {
+        doneCount,
+        itemIds: matched.slice(0, doneCount),
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `markListItemDone failed: ${message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 //
@@ -840,6 +1020,14 @@ export const interactiveQueryTools: Record<string, ToolDefinition> = {
   readUpcomingEvents: {
     schema: READ_UPCOMING_EVENTS_SCHEMA,
     execute: executeReadUpcomingEvents,
+  },
+  resolveStreamCard: {
+    schema: RESOLVE_STREAM_CARD_SCHEMA,
+    execute: executeResolveStreamCard,
+  },
+  markListItemDone: {
+    schema: MARK_LIST_ITEM_DONE_SCHEMA,
+    execute: executeMarkListItemDone,
   },
 };
 

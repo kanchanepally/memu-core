@@ -518,20 +518,62 @@ export async function deleteListItemApi(id: string) {
 }
 
 // Chat history
+export interface ChatMessageSpaceRef {
+  id: string;
+  name: string;
+  slug: string;
+  category?: string;
+}
+
 export interface ChatHistoryMessage {
   id: string;
-  userMessage: string;
+  conversationId?: string;
+  /**
+   * NULL for server-generated assistant-only messages (briefings) where
+   * there is no paired user prompt. Renderers should fall through to a
+   * single Memu bubble in that case.
+   */
+  userMessage: string | null;
   memuResponse: string;
   channel: string;
   timestamp: string;
+  spaces?: ChatMessageSpaceRef[];
+  /**
+   * Server-tagged type. 'briefing' marks the morning briefing turn for
+   * elevated rendering. Plain turns leave this null/absent.
+   */
+  type?: 'briefing' | null;
 }
 
 export interface ChatHistoryResponse {
   messages: ChatHistoryMessage[];
+  conversationId?: string | null;
 }
 
-export async function getChatHistory(limit: number = 50): Promise<ApiResponse<ChatHistoryResponse>> {
-  return request<ChatHistoryResponse>(`/api/chat/history?limit=${limit}`);
+export interface ConversationSummary {
+  id: string;
+  startedAt: string;
+  lastMessageAt: string | null;
+  messageCount: number;
+  title: string | null;
+  preview: string | null;
+}
+
+export interface ConversationListResponse {
+  conversations: ConversationSummary[];
+}
+
+export async function getChatHistory(
+  limit: number = 100,
+  conversationId?: string,
+): Promise<ApiResponse<ChatHistoryResponse>> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (conversationId) qs.set('conversationId', conversationId);
+  return request<ChatHistoryResponse>(`/api/chat/history?${qs.toString()}`);
+}
+
+export async function listConversations(): Promise<ApiResponse<ConversationListResponse>> {
+  return request<ConversationListResponse>('/api/chat/conversations');
 }
 
 // Privacy Ledger
@@ -557,6 +599,7 @@ export interface SynthesisPage {
   id: string;
   category: string;
   title: string;
+  slug?: string;            // deep-link target for chat artefact chips
   body_markdown: string;
   last_updated_at: string;
 }

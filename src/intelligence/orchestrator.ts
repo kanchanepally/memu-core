@@ -284,8 +284,13 @@ export async function processIntelligencePipeline(
     console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (no spaces, no embeddings, no fallback, no tools).`);
   }
 
-  // 6. Immutable Message Storage (Audit Trail)
-  await storeMessageAudit(profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId);
+  // 6. Immutable Message Storage (Audit Trail) — includes tool call provenance
+  // so /api/chat/history can surface Space artefacts as inline chips beneath
+  // Memu's bubble (replaces the substring-matching fallback).
+  await storeMessageAudit(
+    profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId,
+    dispatchResult.toolCalls,
+  );
 
   // 6b. Provenance record — what retrieval path answered this message.
   // Helps debugging and feeds the Spaces-tab "recent queries" UI.
@@ -443,15 +448,28 @@ async function storeMessageAudit(
   claudeRaw: string,
   realResp: string,
   channel: string,
-  messageId: string
+  messageId: string,
+  toolCalls?: Array<{ name: string; ok: boolean; error?: string; output?: Record<string, unknown> }>,
 ) {
   const convId = await getOrCreateConversation(profileId);
 
+  // Persist the tool-call log on the message row. Used by /api/chat/history
+  // to derive Space artefact chips: createSpace / updateSpace / findSpaces
+  // outputs carry URIs that resolve to the actual Spaces touched. Storing
+  // structured names + outputs (not free text) means future readers can
+  // filter precisely without re-scanning response prose.
+  const actionsExecuted = toolCalls && toolCalls.length > 0
+    ? toolCalls.map(c => ({ name: c.name, ok: c.ok, error: c.error, output: c.output }))
+    : null;
+
   await pool.query(
     `INSERT INTO messages
-    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [messageId, convId, profileId, 'user', original, translated, claudeRaw, realResp, channel]
+    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      messageId, convId, profileId, 'user', original, translated, claudeRaw, realResp, channel,
+      actionsExecuted ? JSON.stringify(actionsExecuted) : null,
+    ],
   );
 
   // Update conversation message count

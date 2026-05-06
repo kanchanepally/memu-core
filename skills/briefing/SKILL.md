@@ -4,12 +4,12 @@ description: The unified briefing engine. Composes a single executive briefing f
 model: sonnet
 cost_tier: standard
 requires_twin: true
-version: 5
+version: 6
 ---
 
 # Briefing
 
-Sent as the user prompt to the model. Template variables: `{{today_label}}`, `{{domain_header}}`, `{{today_events}}`, `{{upcoming_events}}`, `{{active_cards}}`, `{{inbox_transcript}}`, `{{collisions}}`, `{{channel}}`, `{{max_paragraphs}}`.
+Sent as the user prompt to the model. Template variables: `{{today_label}}`, `{{domain_header}}`, `{{today_events}}`, `{{upcoming_events}}`, `{{active_cards}}`, `{{inbox_transcript}}`, `{{collisions}}`, `{{weather_line}}`, `{{news_brief}}`, `{{channel}}`, `{{max_paragraphs}}`.
 
 `{{channel}}` is `whatsapp`, `push`, or `app`. WhatsApp needs plain text (no markdown bolding). Push and app can take light markdown.
 
@@ -20,6 +20,10 @@ Sent as the user prompt to the model. Template variables: `{{today_label}}`, `{{
 `{{inbox_transcript}}` is the anonymised text of any messages received since the last briefing. When the value is "No new messages." the briefing is a pure morning briefing — do not invent inbox content.
 
 `{{collisions}}` is a deterministic list of detected calendar overlaps in the next 48h, already filtered. When it says "None detected." do not invent collisions.
+
+`{{weather_line}}` is a one-line weather string for the user's configured location (default London) — e.g. *"London: 7°C now, drizzly (high 11°C, low 4°C)."*. When the value is *"Weather unavailable."*, omit weather entirely. Otherwise weave the temperature and one descriptive word ("drizzly", "clear", "showery") into the opening paragraph alongside the day so the reader gets the practical "what to wear today" feel — never a separate "Weather" section.
+
+`{{news_brief}}` is a numbered list of up to 5 BBC top headlines. When the value is *"News unavailable."*, omit it. Otherwise pick AT MOST ONE headline that's likely to materially matter to the reader's day or week (a major UK political/economic story, a transport disruption, a public-health item) and mention it in a single sentence at the END of the briefing under a "Worth knowing" line. Skip the news block entirely on quiet news days, on celebrity/lifestyle stories, or when nothing rises above noise — DO NOT force a headline. The user's calendar and commitments are the primary signal; news is decoration.
 
 ## Prompt
 
@@ -35,15 +39,19 @@ If the header has any ⚠ or ✕ lines, gently surface in the prose what action 
 
 ## Then, in order:
 
-1. **Anticipations.** If `{{collisions}}` lists overlaps, flag them at the top of the prose — they are time-sensitive and the reader's morning depends on this. Use the format "10:00 swim clashes with 10:30 dentist — both involve the same person." Ask once, gently, how to handle it. Do not invent collisions if none were detected.
+1. **Day + weather opener** (only if `{{weather_line}}` is not "Weather unavailable."). One sentence that grounds the reader in the day: weave the temperature and the descriptive weather word from `{{weather_line}}` into a natural opening — *"It's 7°C and drizzly in London this morning…"* — and continue straight into the events paragraph. Do NOT use a separate "Weather:" line, do NOT cite the high/low unless it's meaningfully relevant (e.g. "warming to 18°C by afternoon" if there's an outdoor commitment in the calendar). Skip entirely if `{{weather_line}}` says unavailable.
 
-2. **Today's calendar.** Today is **{{today_label}}**. Weave the events from `{{today_events}}` into one short paragraph, in chronological order. Do not bullet-list — synthesise. If `{{today_events}}` says "No events scheduled for today.", say so directly ("Calendar's clear today.") and move on. **Never** describe an event from `{{upcoming_events}}` as if it were today. If the only events in the next 48h fall on a later day, name that day explicitly (e.g. "tomorrow's 11:00 Zoom is the only thing in your diary right now") rather than treating it as today's.
+2. **Anticipations.** If `{{collisions}}` lists overlaps, flag them next — they are time-sensitive and the reader's morning depends on this. Use the format "10:00 swim clashes with 10:30 dentist — both involve the same person." Ask once, gently, how to handle it. Do not invent collisions if none were detected.
 
-3. **Looking ahead** (only if `{{upcoming_events}}` is non-empty and substantive). One sentence noting the most relevant upcoming event in the 48h window — the one that would most affect today's planning. Skip if everything's routine.
+3. **Today's calendar.** Today is **{{today_label}}**. Weave the events from `{{today_events}}` into one short paragraph, in chronological order. Do not bullet-list — synthesise. If `{{today_events}}` says "No events scheduled for today.", say so directly ("Calendar's clear today.") and move on. **Never** describe an event from `{{upcoming_events}}` as if it were today. If the only events in the next 48h fall on a later day, name that day explicitly (e.g. "tomorrow's 11:00 Zoom is the only thing in your diary right now") rather than treating it as today's.
 
-4. **Inbox triage** (only if `{{inbox_transcript}}` is non-empty and substantive). Group what arrived by sphere (Family / Admin / Work / Social). Surface only what's new, novel, or actionable. Skip "ok", "thanks", reaction-only messages, and noise. If the entire inbox is noise, say so in one line and move on. Do not pretend otherwise.
+4. **Looking ahead** (only if `{{upcoming_events}}` is non-empty and substantive). One sentence noting the most relevant upcoming event in the 48h window — the one that would most affect today's planning. Skip if everything's routine.
 
-5. **Open commitments** (`{{active_cards}}`). Pick 1–2 items that are sphere-relevant to the day. **The list is already pre-sorted least-mentioned-first**, so prefer items at the top — they have not been brought up in recent briefings. When you mention an item from the numbered `{{active_cards}}` list, ALSO record its 1-indexed number in `mentioned_card_indexes` (see schema below) so the system can track what's been said and rotate fresh items in next time. If `{{active_cards}}` says "No pending items.", skip this section entirely.
+5. **Inbox triage** (only if `{{inbox_transcript}}` is non-empty and substantive). Group what arrived by sphere (Family / Admin / Work / Social). Surface only what's new, novel, or actionable. Skip "ok", "thanks", reaction-only messages, and noise. If the entire inbox is noise, say so in one line and move on. Do not pretend otherwise.
+
+6. **Open commitments** (`{{active_cards}}`). Pick 1–2 items that are sphere-relevant to the day. **The list is already pre-sorted least-mentioned-first**, so prefer items at the top — they have not been brought up in recent briefings. When you mention an item from the numbered `{{active_cards}}` list, ALSO record its 1-indexed number in `mentioned_card_indexes` (see schema below) so the system can track what's been said and rotate fresh items in next time. If `{{active_cards}}` says "No pending items.", skip this section entirely.
+
+7. **Worth knowing** (only if `{{news_brief}}` is not "News unavailable." AND at least one headline rises above noise). End with a single short sentence prefixed *"Worth knowing —"* that names the most consequential headline in plain language. Pick at most ONE; pick none if everything is celebrity/lifestyle/light. Never list multiple headlines, never editorialise, never pretend a headline is more relevant than it is. The signal-to-noise tax of a forced news touch is bigger than the value of one. When in doubt, omit.
 
 ## Drafted next-actions
 
@@ -99,3 +107,9 @@ OPEN COMMITMENTS (stream cards still active, sorted least-mentioned first; numbe
 
 INBOX SINCE LAST BRIEFING (anonymised):
 {{inbox_transcript}}
+
+AMBIENT — WEATHER:
+{{weather_line}}
+
+AMBIENT — TOP HEADLINES (BBC):
+{{news_brief}}
