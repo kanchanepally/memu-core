@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-06-pwa-bug-ef">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-06-pwa-tdz-fix">
 </head>
 <body>
 <!-- Auth gate -->
@@ -2246,49 +2246,6 @@ function showEl(id, text) {
 
 function hideEl(id) {
     document.getElementById(id).classList.add('hidden');
-}
-
-// ========== QUICK COMPOSER (Today tab) ==========
-
-const quickInput = document.getElementById('quick-input');
-const quickSend = document.getElementById('quick-send');
-let quickSending = false;
-
-quickInput.addEventListener('input', () => {
-    quickSend.disabled = !quickInput.value.trim() || quickSending;
-});
-
-quickInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !quickSending) {
-        e.preventDefault();
-        sendQuick();
-    }
-});
-
-async function sendQuick() {
-    const text = quickInput.value.trim();
-    if (!text || quickSending) return;
-    quickSending = true;
-    quickSend.disabled = true;
-    const originalPlaceholder = quickInput.placeholder;
-    quickInput.value = '';
-    quickInput.placeholder = 'Memu is thinking...';
-    try {
-        const res = await api('/api/message', {
-            method: 'POST',
-            body: JSON.stringify({ content: text }),
-        });
-        const data = await res.json();
-        showToast(data.response ? data.response.slice(0, 120) + (data.response.length > 120 ? '…' : '') : 'Sent');
-        loadBrief();
-    } catch (err) {
-        showToast('Message failed', true);
-    } finally {
-        quickSending = false;
-        quickSend.disabled = !quickInput.value.trim();
-        quickInput.placeholder = originalPlaceholder;
-        quickInput.focus();
-    }
 }
 
 // ========== SPACES TAB ==========
