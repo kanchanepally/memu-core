@@ -26,42 +26,117 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
-### Pickup for the next session (added 2026-04-26 evening close)
+### Pickup for the next session (added 2026-05-06 evening close)
+
+**Priority shift confirmed by Hareesh tonight: get Founding-50 beta
+families onboarded ASAP.** Personal dogfood is in good enough shape
+post-2026-05-06 deploy to not block beta. Further dogfood iteration
+runs in parallel, not ahead of, Milestone C.
 
 **Top of the list, in priority order:**
 
-1. **Rach onboarding dogfood.** Multi-profile registration shipped (commit
-   `04620da`). Settings → Household → Add household member generates a
-   magic link. Use the walkthrough script + briefing doc in
-   `memu-platform/presentations/`. The demo is the test — anything that
-   breaks during her first hour with Memu is the next bug list.
+1. **Z2 + APK verification of tonight's deploy.** The 2026-05-06 PWA
+   fixpass merged via `feat/sidebar-conversations` (commits `36cea29`,
+   `7e68dd3`, `c8e987d`, `d85fe1c`). Hareesh pulled on the Z2 +
+   kicked off EAS Android build. Verify on hard refresh: (a)
+   browser console clean on first paint (no `addEventListener` null,
+   no TDZ on `stagedAttachment`/`spacesState`); (b) chat send fires
+   on Enter and click; (c) Spaces tab loads — if it doesn't, the
+   new structured `[loadSpaces]` console messages name the failing
+   branch (network / HTTP / parse / render); (d) canvas → click
+   node → opens that Space (deep-link IIFE now runs); (e) switching
+   conversations clears the composer (Bug F).
 
-2. **Investigate the container_id 400.** See bug entry below. Needs a real
-   repro (the original was `req_011CaSsALet9nquWKrmnW8Vm` from
-   2026-04-26 19:35:46 in the privacy ledger). Likely a quirk of how
-   `src/skills/router.ts:512+` reconstructs Claude's content array when
-   the assistant response includes server-side `web_search_tool_result`
-   blocks alongside text or local tool_use blocks. Don't speculate —
-   capture another repro first.
+2. **Milestone C kick-off — Tier-1 hosted readiness for ~20
+   Founding-50 beta families.** Per `memu-platform/memu-build-plan.md`
+   Part 7 (C-Infrastructure + C-Product). Six slices, in rough order:
+   real `family_id` audit (catch any remaining `profile_id`-scoped
+   queries that block multi-family hosting); magic-link auth review
+   (already shipped for invites — needs to be the primary path for
+   Founding-50 sign-up too, not Google OAuth); conversational
+   onboarding (per the 2026-04-26 feature note — replaces the
+   form-based wizard); Hetzner deploy + secrets management; DPIA +
+   Privacy-by-Design dossier (the wedge story documented for
+   regulators); Stripe + Founding-50 grandfather (£2.99/month locked
+   for life). The pricing strategy doc at
+   `memu-platform/Pricing and economics/files/memu-gtm-pricing-funding-strategy.md`
+   is the canonical source for tier pricing + billing logic.
 
-3. **Autolearn → DeepSeek-V3 migration.** First skill to test on the new
-   provider per the routing matrix below. Edit `skills/autolearn/SKILL.md`
-   `model: haiku` → `model: deepseek-chat`. Run a week, compare ledger
-   `latency_ms` + observation quality on real Hareesh + Rach traffic. If
-   it holds, escalate to synthesis_update + synthesis_write together.
+3. **Investigate the container_id 400.** Still no second repro (the
+   original was `req_011CaSsALet9nquWKrmnW8Vm` from 2026-04-26
+   19:35:46). Likely a quirk of how `src/skills/router.ts:512+`
+   reconstructs Claude's content array when the assistant response
+   includes server-side `web_search_tool_result` blocks alongside
+   text or local tool_use blocks. Don't fix blind — capture another
+   repro with the request body logged. Add a request-body dump
+   gated on `MEMU_DEBUG_TOOL_LOOP=true` env so we can flip it on
+   when the symptom recurs without spamming logs in production.
 
-4. **CLAUDE.md sweep for "single-tenant" wording.** Multi-profile shipped
-   tonight (commit `04620da`). The `auth.ts` doc-comments + the build
-   plan still say "single-tenant MVP" in places. 5-10 minute pass to
-   reflect today's reality.
+4. **Autolearn → DeepSeek-V3 migration.** First skill to test on the
+   new provider per the routing matrix below. Edit
+   `skills/autolearn/SKILL.md` `model: haiku` → `model: deepseek-chat`.
+   Run a week, compare ledger `latency_ms` + observation quality on
+   real Hareesh + Rach traffic. If it holds, escalate to
+   synthesis_update + synthesis_write together. **Defer until
+   Milestone C ships** — provider economics are nice-to-have
+   compared to actually having paying customers.
 
-5. **Pod-drive directory dry-run on Z2** (no hardware needed). Per
-   `memu-platform/14-POD-DRIVES.md` closing section: prototype the
-   `/private/<profile_id>/` and `/family/` directory layout on the
-   existing 4TB drive, move private-visibility Spaces into them,
-   symlink for backward compat, verify retrieval still works. Validates
-   the data shape before any LUKS / udev / hardware lifecycle work.
-   Roughly 1 session.
+5. **CLAUDE.md sweep for "single-tenant" wording.** Multi-profile
+   shipped 2026-04-26. The `auth.ts` doc-comments + the build plan
+   still say "single-tenant MVP" in places. 5-10 minute pass to
+   reflect reality. Worth bundling with the C-Infrastructure
+   `family_id` audit since both touch the same scoping vocabulary.
+
+6. **Pod-drive directory dry-run on Z2** (no hardware needed). Per
+   `memu-platform/14-POD-DRIVES.md` closing section. Validates the
+   data shape before any LUKS / udev / hardware lifecycle work. Not
+   on the critical path for Founding-50 (Tier-1 hosted doesn't use
+   per-person drives) — defer to Tier-2 work post-beta.
+
+### From 2026-05-06 PWA fixpass session — root cause + scars
+
+- 2026-05-06 (H, bug, ✅ **RESOLVED commit `c8e987d`**): "Pressing
+  Enter or clicking the send button does nothing" plus
+  "Couldn't load Spaces" plus canvas-click-goes-to-chat — all three
+  were the same root cause. The Today quick composer was retired
+  earlier in the week, but only its HTML was deleted; the matching
+  JS block at `dashboard.html:2253` still called
+  `document.getElementById('quick-input').addEventListener(...)`
+  on elements that no longer existed. That single throw at script
+  load aborted the rest of the inline `<script>`, leaving every
+  `let` declaration after it (`stagedAttachment`, `spacesState`)
+  in the temporal dead zone, AND skipping the deep-link IIFE at
+  the bottom of the script that reads `?space=` from the URL. So
+  canvas → Space lost its routing, chat send TDZ'd on
+  `stagedAttachment`, Spaces tab TDZ'd on `spacesState`. Deleted
+  the 39-line dead block; defensive null guards on
+  `chatInput`/`chatSend`/`chatMessages` retained as belt-and-braces.
+
+  **Lesson captured.** When "everything is broken at once" in a
+  single inline-script PWA, look for one early-load throw before
+  papering over each surface. The defensive guards I'd added in
+  the earlier commit (`36cea29`) didn't fix the bug — they revealed
+  it by surfacing the cascade in DevTools console where the original
+  silent abort had hidden it. Worth keeping the structured-error
+  branches in `loadSpaces()` for the same reason: future
+  refactors will introduce future zombie listeners; surface fast.
+
+- 2026-05-06 (obs, ✅ **RESOLVED commit `d85fe1c`**): Same class of
+  refactor leftover on mobile, but RN's module isolation made it
+  harmless rather than fatal. Strict typecheck
+  (`tsc --noEmit --noUnusedLocals --noUnusedParameters`) found
+  `chat.tsx` `activeConversationId` write-only state and
+  `Toast.tsx` unused `View` import. Pure dead code, removed. No
+  behaviour change. Worth running strict typecheck periodically
+  to catch refactor zombies before they have a chance to grow.
+
+- 2026-05-06 (obs): Pre-existing shimmed functions
+  `setChatTitle(_title)`, `toggleChatHistory(_force)`,
+  `closeChatHistoryOnNarrow` callsites guarded by
+  `typeof === 'function'` — all from the pre-drawer history-modal
+  era. Safe (they're no-ops or guarded), but worth a follow-up
+  cleanup pass once Hareesh confirms tonight's deploy is stable
+  (let the dust settle before sweeping). Tracked as nice-to-have.
 
 ### Routing matrix (decision pending — added 2026-04-26 evening)
 

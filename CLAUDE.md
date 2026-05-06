@@ -497,6 +497,49 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### 2026-05-06 evening — PWA fixpass + beta priority confirmed
+
+Closing a long arc that started 2026-05-04 with a chat reshape and ran
+through morning briefing weather/news, tenant isolation hardening,
+chat-first landing, web_search reliability, deep-link polish, and ended
+tonight with a four-commit PWA fixpass that took the Z2 dashboard from
+broken-on-multiple-surfaces back to working baseline. Personal dogfood
+baseline restored; Founding-50 beta is now the critical path.
+
+**Branch:** `feat/sidebar-conversations`, merged to main 2026-05-06
+evening.
+
+| Commit | What |
+|---|---|
+| `36cea29` | First-pass PWA fixpass — topbar default "Today" → "Chat", INIT calls `switchTab('chat')` so title + view + sidebar conversations align on landing; topbar-search icon stub added; `loadSpaces()` rewritten with structured error reporting (network / HTTP / parse / render branches each `console.error` + visible message); canvas.js replaced unreliable `cy.on('tap', 'node')` with tapstart/tapend pair using manual movement-based click detection (8px / 800ms thresholds); defensive null guards on `chatInput`/`chatSend`/`chatMessages` with `console.error` diagnostics; non-OK `/api/message` responses log status + body and surface a clearer message; **Bug F** — composer state is per-conversation in PWA (pickConversation + startNewConversation clear input + drop staged attachment); cache-buster bumped to `2026-05-06-pwa-bug-ef`. |
+| `7e68dd3` | Mobile parity — `ScreenHeader` title hardcoded to "Chat" (was conditional, mirrored PWA topbar fix); `SideDrawer` reloads conversations on every drawer open (was gated on chat path, so opening from Today/Spaces/Calendar showed a stale list); **Bug F** mobile equivalent — `setInput('')` on conversation switch via the params-driven useEffect; removed dead Modal import + formatThreadDate function + ~100 lines of history-modal StyleSheet rules from the pre-drawer era. |
+| `c8e987d` | **The load-bearing fix.** Deleted dead quick-composer JS block at `dashboard.html:2253`. The Today quick composer was retired earlier in the week, but only the HTML was removed — the matching JS still called `document.getElementById('quick-input').addEventListener(...)` on elements that no longer existed. That single throw at script load aborted the rest of the inline `<script>`, leaving every `let` after it (`stagedAttachment`, `spacesState`) in the temporal dead zone, AND skipping the deep-link IIFE that reads `?space=` from the URL. Cascade of three symptoms (chat send TDZ, Spaces tab TDZ, canvas-click-goes-to-chat) all rooted in this one early throw. The defensive guards from `36cea29` didn't fix the bug — they revealed it by surfacing the cascade in DevTools where the silent abort had hidden it. |
+| `d85fe1c` | Same class of refactor leftover, mobile sweep. Strict typecheck (`tsc --noEmit --noUnusedLocals --noUnusedParameters`) found `chat.tsx` `activeConversationId` write-only state (set in three places, read nowhere) and `Toast.tsx` unused `View` import. RN's module isolation made these harmless rather than fatal — included for hygiene, no behaviour change. |
+
+**Lesson captured for future sessions.** When "everything is broken at
+once" in a single inline-script PWA, look for one early-load throw
+before papering over each surface. The structured-error branches in
+`loadSpaces()` stay in place — future refactors will introduce future
+zombie listeners; surface fast rather than silently abort. Saved as
+memory entry `feedback_pwa_inline_script.md`.
+
+**Test state:** **597 passing across 34 files**. TypeScript clean both
+backend (`npx tsc --noEmit`) and mobile
+(`npx tsc --noEmit --noUnusedLocals --noUnusedParameters`).
+
+**Z2 deploy state:** Hareesh pulled on the Z2 + kicked off EAS Android
+preview build post-merge. Verification queue in
+`memu-core/backlog/INBOX.md` § "Pickup for the next session" — five
+surfaces to smoke-test on hard refresh.
+
+**Priority shift confirmed by Hareesh tonight.** Founding-50 beta is
+now the critical path. Personal dogfood iteration runs in parallel,
+not ahead of, Milestone C. The build plan Part 0 is updated to reflect
+this — see `memu-platform/memu-build-plan.md`. Provider economics
+(DeepSeek migration), single-tenant wording sweep, pod-drive dry-run,
+and B-live-5/6/7 all slip behind C unless they actively block
+hosting.
+
 ### 2026-04-26 evening — multi-profile + PWA Littlebird + DeepSeek + WhatsApp gate
 
 Twelve commits, two repos. End of a long session that took Memu from
