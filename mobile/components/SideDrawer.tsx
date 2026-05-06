@@ -71,16 +71,20 @@ export default function SideDrawer() {
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
 
-  // Refresh conversations whenever the drawer opens AND we're in the Chat
-  // section. No point keeping a polled list when the drawer is closed.
+  // Reload conversations whenever the drawer opens — regardless of which
+  // section is currently active. Conversations are a navigation surface
+  // available from any tab, so the list should be fresh whenever the user
+  // opens the drawer (e.g. from Today, Spaces) — not only when they're
+  // already on Chat. The list itself is only RENDERED under the Chat row
+  // (chatActive ternary below).
   const reloadConversations = useCallback(async () => {
     const { data } = await listConversations();
     if (data?.conversations) setConversations(data.conversations);
   }, []);
 
   useEffect(() => {
-    if (open && isChatActive(pathname)) reloadConversations();
-  }, [open, pathname, reloadConversations]);
+    if (open) reloadConversations();
+  }, [open, reloadConversations]);
 
   useEffect(() => {
     if (open) {
