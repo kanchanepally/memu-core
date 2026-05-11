@@ -8,7 +8,7 @@
  * same shape (family, Space URI, summary, actor).
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import type { Provenance } from './retrieval';
 
 export async function recordRetrievalProvenance(
@@ -19,7 +19,7 @@ export async function recordRetrievalProvenance(
   if (provenance.path === 'none') return;
   const uris = provenance.spaceUris.length > 0 ? provenance.spaceUris : ['(embedding-only)'];
   for (const uri of uris) {
-    await pool.query(
+    await db.query(
       `INSERT INTO spaces_log (family_id, space_uri, event, summary, actor_profile_id)
        VALUES ($1, $2, 'query_served', $3, $4)`,
       [

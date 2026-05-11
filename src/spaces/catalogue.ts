@@ -13,7 +13,7 @@
  * sees Hareesh's private Spaces.
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import type { Space, SpaceCategory, SpaceDomain, FamilyRoster, Visibility } from './model';
 import { canSee } from './model';
 
@@ -48,7 +48,7 @@ interface CatalogueRow {
  * column. Leaving TODO for that rather than over-engineering now.
  */
 export async function loadRoster(familyId: string): Promise<FamilyRoster> {
-  const res = await pool.query<{ id: string; role: string }>(
+  const res = await db.query<{ id: string; role: string }>(
     `SELECT id, role FROM profiles WHERE id = $1 OR id IN (
         SELECT id FROM profiles WHERE id != $1
      ) ORDER BY role, created_at`,
@@ -74,7 +74,7 @@ function parseVisibility(stored: string): Visibility {
 export async function getCatalogue(familyId: string, viewerProfileId: string): Promise<CatalogueEntry[]> {
   const [roster, rows] = await Promise.all([
     loadRoster(familyId),
-    pool.query<CatalogueRow>(
+    db.query<CatalogueRow>(
       `SELECT uri, slug, title, category, description, domains, people, visibility, confidence, last_updated_at
          FROM synthesis_pages WHERE family_id = $1
         ORDER BY last_updated_at DESC`,

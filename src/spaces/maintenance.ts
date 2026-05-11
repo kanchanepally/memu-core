@@ -10,7 +10,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 const execFileAsync = promisify(execFile);
 
@@ -92,7 +92,7 @@ export async function snapshotFamilyRepo(familyId: string): Promise<{ tarPath: s
 
   const stat = await fs.stat(tarPath);
 
-  await pool.query(
+  await db.query(
     `INSERT INTO spaces_log (family_id, event, summary)
      VALUES ($1, 'snapshot', $2)`,
     [familyId, `Snapshot taken (${stat.size} bytes)`],

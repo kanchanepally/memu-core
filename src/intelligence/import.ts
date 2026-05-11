@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import { seedContext } from './context';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -151,7 +151,7 @@ function hashContent(content: string): string {
 }
 
 async function isAlreadyImported(sourceId: string): Promise<boolean> {
-  const res = await pool.query(
+  const res = await db.query(
     'SELECT 1 FROM context_entries WHERE source_id = $1 LIMIT 1',
     [sourceId]
   );
@@ -238,7 +238,7 @@ export async function importWhatsAppExport(
     }
 
     // Mark this batch as processed (store a lightweight entry for dedup)
-    await pool.query(
+    await db.query(
       `INSERT INTO context_entries (source, source_id, content, metadata)
        VALUES ('whatsapp_group', $1, $2, $3)`,
       [sourceId, `[Import batch: ${facts.length} facts extracted]`, JSON.stringify({ profile_id: profileId, import_type: 'whatsapp', chat_name: chatName })]
@@ -301,7 +301,7 @@ export async function importTextFile(
     }
 
     // Mark chunk as processed
-    await pool.query(
+    await db.query(
       `INSERT INTO context_entries (source, source_id, content, metadata)
        VALUES ('document', $1, $2, $3)`,
       [sourceId, `[Import: ${filename}${chunk.heading ? ' > ' + chunk.heading : ''} — ${facts.length} facts]`, JSON.stringify({ profile_id: profileId, import_type: 'file', filename })]

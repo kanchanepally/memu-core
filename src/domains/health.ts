@@ -14,7 +14,7 @@
  *           conditions, OR a contradiction unresolved > 7 days
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { SPACE_DOMAINS, type SpaceDomain } from '../spaces/model';
 
 export type DomainHealth = 'green' | 'amber' | 'red';
@@ -38,7 +38,7 @@ interface StandardCounts {
 }
 
 async function countStandardsByDomain(familyId: string): Promise<Map<SpaceDomain, StandardCounts>> {
-  const res = await pool.query<{
+  const res = await db.query<{
     domain: string;
     status: 'on_track' | 'approaching' | 'overdue';
     description: string;
@@ -96,7 +96,7 @@ async function countRecentFindingsByDomain(familyId: string): Promise<Map<SpaceD
   // We join through the card body's linked space URIs is complex; instead
   // we approximate by scanning reflection_findings joined to stream_cards,
   // and bucketing by ANY domain that appears in a matching Space.
-  const res = await pool.query<{
+  const res = await db.query<{
     kind: string;
     first_seen_at: Date;
     body: string;
@@ -111,7 +111,7 @@ async function countRecentFindingsByDomain(familyId: string): Promise<Map<SpaceD
   );
 
   // Pull all spaces for the family to map URI → domains[].
-  const spaceRes = await pool.query<{ uri: string; domains: string[] }>(
+  const spaceRes = await db.query<{ uri: string; domains: string[] }>(
     `SELECT uri, domains FROM synthesis_pages WHERE family_id = $1 AND uri IS NOT NULL`,
     [familyId],
   );
@@ -140,7 +140,7 @@ async function countRecentFindingsByDomain(familyId: string): Promise<Map<SpaceD
 }
 
 async function lastActivityByDomain(familyId: string): Promise<Map<SpaceDomain, Date>> {
-  const res = await pool.query<{ domain: string; last_updated_at: Date }>(
+  const res = await db.query<{ domain: string; last_updated_at: Date }>(
     `SELECT UNNEST(domains) AS domain, MAX(last_updated_at) AS last_updated_at
        FROM synthesis_pages
       WHERE family_id = $1
@@ -225,7 +225,7 @@ export async function computeDomainStates(familyId: string): Promise<DomainState
     };
     out.push(state);
 
-    await pool.query(
+    await db.query(
       `INSERT INTO domain_states
          (family_id, domain, health, last_activity, open_items, overdue_standards, approaching_standards, notes, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
@@ -253,7 +253,7 @@ export async function computeDomainStates(familyId: string): Promise<DomainState
 }
 
 export async function listDomainStates(familyId: string): Promise<DomainState[]> {
-  const res = await pool.query<{
+  const res = await db.query<{
     domain: string;
     health: DomainHealth;
     last_activity: Date | null;

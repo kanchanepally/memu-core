@@ -25,7 +25,7 @@
 import type { ClaudeServerSideTool, ClaudeToolSchema } from './claude';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { addItem, listItems, completeItem, type ListType, type ListFilter, type ListStatus } from '../lists/store';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { upsertSpace, findSpaceByUri, findSpaceBySlug, validateParentRelationship, countChildrenForParents } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from '../spaces/model';
 import { getCatalogue } from '../spaces/catalogue';
@@ -871,7 +871,7 @@ async function executeResolveStreamCard(rawInput: unknown, ctx: ToolContext): Pr
       clauses.push(`(LOWER(title) LIKE $${params.length} OR LOWER(body) LIKE $${params.length})`);
     }
 
-    const { rows } = await pool.query<{ id: string; title: string }>(
+    const { rows } = await db.query<{ id: string; title: string }>(
       `UPDATE stream_cards
          SET status = 'resolved', resolved_at = NOW()
        WHERE ${clauses.join(' AND ')}
@@ -956,7 +956,7 @@ async function executeMarkListItemDone(rawInput: unknown, ctx: ToolContext): Pro
         params.push(listType);
         typeClause = ` AND list_type = $${params.length}`;
       }
-      const { rows } = await pool.query<{ id: string }>(
+      const { rows } = await db.query<{ id: string }>(
         `SELECT id FROM list_items
          WHERE family_id = $1 AND status = $2 AND LOWER(item_text) LIKE $3${typeClause}`,
         params,

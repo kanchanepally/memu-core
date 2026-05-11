@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { fetchUpcomingEvents } from '../channels/calendar/google';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
@@ -119,7 +119,7 @@ export async function runUnifiedBriefing(
 
   try {
     // 1. Inbox queue (WhatsApp accumulator). Empty is the morning-briefing case.
-    const inboxRes = await pool.query(
+    const inboxRes = await db.query(
       `SELECT id, channel, sender_jid, content, created_at
          FROM inbox_messages
         WHERE profile_id = $1 AND processed = false
@@ -182,7 +182,7 @@ export async function runUnifiedBriefing(
     //
     // Cap at 12 items in the prompt — beyond that the LLM can't keep them
     // straight and the daily expiry pass handles the long tail anyway.
-    const streamRes = await pool.query<{
+    const streamRes = await db.query<{
       id: string;
       title: string;
       body: string;
@@ -312,7 +312,7 @@ export async function runUnifiedBriefing(
     // 7. Mark inbox processed regardless of substantive flag — they have been
     // read and synthesised. Re-showing them next batch would be churn.
     if (messageIds.length > 0) {
-      await pool.query(
+      await db.query(
         `UPDATE inbox_messages SET processed = true WHERE id = ANY($1)`,
         [messageIds],
       );
@@ -330,7 +330,7 @@ export async function runUnifiedBriefing(
         }
       }
       if (mentionedIds.length > 0) {
-        await pool.query(
+        await db.query(
           `UPDATE stream_cards
               SET mentioned_count = mentioned_count + 1,
                   last_mentioned_at = NOW()
@@ -372,7 +372,7 @@ export async function runUnifiedBriefing(
       ? await deepTranslateToReal(parsed.suggested_actions)
       : [];
 
-    await pool.query(
+    await db.query(
       `INSERT INTO stream_cards (id, family_id, title, body, card_type, source, status, actions)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
@@ -497,7 +497,7 @@ async function postBriefingAsChatMessage(profileId: string, briefingMarkdown: st
   // today, do not insert a second one. A failed push retry that calls
   // pushMorningBriefingToMobile twice in the same morning should not
   // produce duplicate chat entries.
-  const existing = await pool.query(
+  const existing = await db.query(
     `SELECT m.id FROM messages m
      WHERE m.profile_id = $1
        AND m.metadata->>'type' = 'briefing'
@@ -513,13 +513,13 @@ async function postBriefingAsChatMessage(profileId: string, briefingMarkdown: st
   // Fresh conversation each morning. Tapping the push lands the user on
   // a clean thread with the briefing visible; follow-up replies build the
   // day's conversation forward from there.
-  const conv = await pool.query<{ id: string }>(
+  const conv = await db.query<{ id: string }>(
     `INSERT INTO conversations (profile_id) VALUES ($1) RETURNING id`,
     [profileId],
   );
   const convId = conv.rows[0].id;
 
-  await pool.query(
+  await db.query(
     `INSERT INTO messages
        (id, conversation_id, profile_id, role,
         content_response_translated, channel, metadata)
@@ -533,7 +533,7 @@ async function postBriefingAsChatMessage(profileId: string, briefingMarkdown: st
     ],
   );
 
-  await pool.query(
+  await db.query(
     `UPDATE conversations SET message_count = 1 WHERE id = $1`,
     [convId],
   );

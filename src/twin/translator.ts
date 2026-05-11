@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 // Fallback logic in case DB is empty during initial Slice 1 testing
 const FALLBACK_ENTITIES = [
@@ -11,7 +11,7 @@ const FALLBACK_ENTITIES = [
 export async function translateToAnonymous(text: string): Promise<string> {
   let translated = text;
   try {
-    const { rows } = await pool.query('SELECT real_name, anonymous_label FROM entity_registry');
+    const { rows } = await db.query('SELECT real_name, anonymous_label FROM entity_registry');
     const entities = rows.length > 0 ? rows : FALLBACK_ENTITIES;
     
     // Sort logic to avoid partial matches (e.g. replacing 'Rob' inside 'Robin')
@@ -31,7 +31,7 @@ export async function translateToAnonymous(text: string): Promise<string> {
 export async function translateToReal(text: string): Promise<string> {
   let translated = text;
   try {
-    const { rows } = await pool.query('SELECT real_name, anonymous_label FROM entity_registry');
+    const { rows } = await db.query('SELECT real_name, anonymous_label FROM entity_registry');
     const entities = rows.length > 0 ? rows : FALLBACK_ENTITIES;
     
     entities.sort((a, b) => b.anonymous_label.length - a.anonymous_label.length);

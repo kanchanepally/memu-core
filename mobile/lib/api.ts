@@ -729,15 +729,15 @@ export async function deleteTwinEntity(id: string) {
 }
 
 // ==========================================
-// Household members + Pod grants (Story 3.4)
+// Collective members + Pod grants (Story 3.4)
 // ==========================================
 
 export type MemberStatus = 'invited' | 'active' | 'leaving' | 'left';
 export type LeavePolicy = 'retain_attributed' | 'anonymise' | 'remove';
 
-export interface HouseholdMember {
+export interface CollectiveMember {
   id: string;
-  householdAdminProfileId: string;
+  collectiveAdminProfileId: string;
   memberWebid: string;
   memberDisplayName: string;
   internalProfileId: string | null;
@@ -787,48 +787,48 @@ export interface SyncReport {
     | { kind: 'error'; reason: string; message: string };
 }
 
-export async function listHouseholdMembers(includeLeft = false) {
+export async function listCollectiveMembers(includeLeft = false) {
   const qs = includeLeft ? '?includeLeft=true' : '';
-  return request<{ members: HouseholdMember[] }>(`/api/households/members${qs}`);
+  return request<{ members: CollectiveMember[] }>(`/api/households/members${qs}`);
 }
 
-export async function inviteHouseholdMember(params: {
+export async function inviteCollectiveMember(params: {
   memberWebid: string;
   memberDisplayName: string;
   internalProfileId?: string | null;
   leavePolicyForEmergent?: LeavePolicy;
   gracePeriodDays?: number;
 }) {
-  return request<{ member: HouseholdMember }>('/api/households/members', {
+  return request<{ member: CollectiveMember }>('/api/households/members', {
     method: 'POST',
     body: JSON.stringify(params),
   });
 }
 
-export async function acceptHouseholdInvite(memberId: string) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/accept`, {
+export async function acceptCollectiveInvite(memberId: string) {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}/accept`, {
     method: 'POST',
   });
 }
 
-export async function leaveHousehold(
+export async function leaveCollective(
   memberId: string,
   opts: { policyOverride?: LeavePolicy; gracePeriodDaysOverride?: number } = {},
 ) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/leave`, {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}/leave`, {
     method: 'POST',
     body: JSON.stringify(opts),
   });
 }
 
-export async function cancelHouseholdLeave(memberId: string) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/cancel-leave`, {
+export async function cancelCollectiveLeave(memberId: string) {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}/cancel-leave`, {
     method: 'POST',
   });
 }
 
-export async function removeHouseholdMember(memberId: string) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}`, {
+export async function removeCollectiveMember(memberId: string) {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}`, {
     method: 'DELETE',
   });
 }

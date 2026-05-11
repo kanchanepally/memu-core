@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { getSkill, renderTemplate, getSoulBodyOrUndefined, type Skill, type SkillModel, type SkillCostTier } from './loader';
 import {
   callClaude,
@@ -261,7 +261,7 @@ async function writeLedger(
   },
 ): Promise<string | undefined> {
   try {
-    const res = await pool.query(
+    const res = await db.query(
       `INSERT INTO privacy_ledger (
         family_id, profile_id, skill_name, requested_model, dispatched_model, provider,
         cost_tier, requires_twin, twin_verified, key_identifier,

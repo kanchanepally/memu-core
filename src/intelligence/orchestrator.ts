@@ -13,7 +13,7 @@ import { reconcileListMentions } from './listReconciler';
 import { interactiveQueryTools, interactiveQueryServerTools } from './tools';
 import { formatToolSummaryFooter } from './toolSummary';
 import { scrapeUrlContent } from './browser';
-import { pool } from '../db/connection';
+import { db, enterCollectiveContext } from '../db/tenant';
 import { processSynthesisUpdate } from './synthesis';
 import { retrieveForQuery, buildContextBlock } from '../spaces/retrieval';
 import { recordRetrievalProvenance } from '../spaces/provenance';
@@ -24,7 +24,7 @@ const CONVERSATION_GAP_MS = 30 * 60 * 1000; // 30 minutes — start new conversa
 // Fetch recent conversation history for a profile, already in anonymous form
 async function getConversationHistory(profileId: string): Promise<ConversationMessage[]> {
   try {
-    const convRes = await pool.query(
+    const convRes = await db.query(
       'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
       [profileId]
     );
@@ -32,7 +32,7 @@ async function getConversationHistory(profileId: string): Promise<ConversationMe
 
     const convId = convRes.rows[0].id;
 
-    const msgRes = await pool.query(
+    const msgRes = await db.query(
       `SELECT content_translated, content_response_raw
        FROM messages
        WHERE conversation_id = $1
@@ -61,7 +61,7 @@ async function getConversationHistory(profileId: string): Promise<ConversationMe
 
 // Get or create a conversation, starting a new one if the last message was >30 min ago
 async function getOrCreateConversation(profileId: string): Promise<string> {
-  const convRes = await pool.query(
+  const convRes = await db.query(
     'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
     [profileId]
   );
@@ -70,7 +70,7 @@ async function getOrCreateConversation(profileId: string): Promise<string> {
     const convId = convRes.rows[0].id;
 
     // Check if the last message in this conversation is recent enough
-    const lastMsg = await pool.query(
+    const lastMsg = await db.query(
       'SELECT created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 1',
       [convId]
     );
@@ -88,7 +88,7 @@ async function getOrCreateConversation(profileId: string): Promise<string> {
   }
 
   // Start a new conversation
-  const newConv = await pool.query(
+  const newConv = await db.query(
     'INSERT INTO conversations (profile_id) VALUES ($1) RETURNING id',
     [profileId]
   );
@@ -339,106 +339,123 @@ export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessa
   }
 
   try {
-    const participantJid = msg.key?.participant || senderJid;
-    const profileId = await lookupOrCreateProfile(participantJid);
+    const profile = await lookupPrimaryProfile();
+    if (!profile) {
+      console.warn(`[WHATSAPP] No primary profile registered — dropping message ${msg.key?.id || 'unknown'} from ${senderJid}`);
+      return;
+    }
 
-    // Document Ingestion (Vision)
-    if (isImage) {
+    // Pre-Beta Stream 1 — WhatsApp ingest runs outside the request
+    // lifecycle, so we enter the collective context explicitly. Every
+    // db.query downstream sees this collective and is gated by RLS.
+    await enterCollectiveContext(profile.collectiveId, async () => {
+      const profileId = profile.id;
 
-      const buffer = await downloadMediaMessage(
-        msg as import('@whiskeysockets/baileys').WAMessage,
-        'buffer',
-        {},
-        {
-          logger: console as any,
-          reuploadRequest: sock.updateMediaMessage
+      // Document Ingestion (Vision)
+      if (isImage) {
+        const buffer = await downloadMediaMessage(
+          msg as import('@whiskeysockets/baileys').WAMessage,
+          'buffer',
+          {},
+          {
+            logger: console as any,
+            reuploadRequest: sock.updateMediaMessage,
+          },
+        );
+
+        if (buffer) {
+          const mimeType = imageMessage?.mimetype || 'image/jpeg';
+          const itemsFound = await processVisualDocumentExtraction(
+            profileId, buffer as Buffer, mimeType, content, msg.key?.id || 'unknown',
+          );
+
+          if (itemsFound && itemsFound > 0) {
+            console.log(`[VISION] Extracted ${itemsFound} action item(s) from image`);
+          } else {
+            console.log(`[VISION] Couldn't find actionable deadlines in image`);
+          }
         }
-      );
-
-      if (buffer) {
-        const mimeType = imageMessage?.mimetype || 'image/jpeg';
-        const itemsFound = await processVisualDocumentExtraction(profileId, buffer as Buffer, mimeType, content, msg.key?.id || 'unknown');
-
-        if (itemsFound && itemsFound > 0) {
-          console.log(`[VISION] Extracted ${itemsFound} action item(s) from image`);
-        } else {
-          console.log(`[VISION] Couldn't find actionable deadlines in image`);
-        }
+        return;
       }
-      return;
-    }
 
-    // Real-time observation path — fires extraction (stream cards, autolearn-driven
-    // Spaces) immediately rather than queueing for a batch worker that doesn't exist.
-    //
-    // Two channels reach this path:
-    //   1. Group chats (@g.us) — passive observation of messages the user sees
-    //      in family / friend group threads.
-    //   2. Self-chat (the user forwarding messages to their own "Message yourself"
-    //      thread) — primary curation surface. The user copies/forwards interesting
-    //      content here, expects Memu to extract and synthesise it. Detected by
-    //      remoteJid matching the bot's own JID after device-suffix normalisation
-    //      (`447xxx:17@s.whatsapp.net` → `447xxx@s.whatsapp.net`).
-    //
-    // Pre-2026-04-29: only `@g.us` was routed here. Self-chat fell through to
-    // the inbox_messages queue below — which has no batch processor, so self-chat
-    // ingestion was a silent no-op. Hareesh forwarded Rach's messages into self-chat
-    // for two weeks before we noticed nothing was happening with them.
-    const ownJidNormalised = normaliseJid(sock.user?.id);
-    const senderJidNormalised = normaliseJid(senderJid);
-    const isGroupChat = senderJid.endsWith('@g.us');
-    const isSelfChat = !!ownJidNormalised && senderJidNormalised === ownJidNormalised;
-    if (isGroupChat || isSelfChat) {
-      await processGroupMessageExtraction(profileId, content, senderJid, msg.key?.id || 'unknown');
-      return;
-    }
+      // Real-time observation path — fires extraction (stream cards, autolearn-driven
+      // Spaces) immediately rather than queueing for a batch worker that doesn't exist.
+      //
+      // Two channels reach this path:
+      //   1. Group chats (@g.us) — passive observation of messages the user sees
+      //      in family / friend group threads.
+      //   2. Self-chat (the user forwarding messages to their own "Message yourself"
+      //      thread) — primary curation surface. The user copies/forwards interesting
+      //      content here, expects Memu to extract and synthesise it. Detected by
+      //      remoteJid matching the bot's own JID after device-suffix normalisation
+      //      (`447xxx:17@s.whatsapp.net` → `447xxx@s.whatsapp.net`).
+      //
+      // Pre-2026-04-29: only `@g.us` was routed here. Self-chat fell through to
+      // the inbox_messages queue below — which has no batch processor, so self-chat
+      // ingestion was a silent no-op. Hareesh forwarded Rach's messages into self-chat
+      // for two weeks before we noticed nothing was happening with them.
+      const ownJidNormalised = normaliseJid(sock.user?.id);
+      const senderJidNormalised = normaliseJid(senderJid);
+      const isGroupChat = senderJid.endsWith('@g.us');
+      const isSelfChat = !!ownJidNormalised && senderJidNormalised === ownJidNormalised;
+      if (isGroupChat || isSelfChat) {
+        await processGroupMessageExtraction(profileId, content, senderJid, msg.key?.id || 'unknown');
+        return;
+      }
 
-    // Phase 1: Omnivorous Batched Ingestion (legacy — only reached in MEMU_WHATSAPP_INGESTION=all mode).
-    // We log the raw message to the inbox queue. The batched Chief of Staff engine will process it later.
-    const messageId = msg.key?.id || `msg-${Date.now()}`;
-    await pool.query(
-      `INSERT INTO inbox_messages (id, profile_id, channel, sender_jid, content, is_image) 
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO NOTHING`,
-      [messageId, profileId, 'whatsapp', senderJid, content, isImage]
-    );
-    console.log(`[INBOX] Logged message ${messageId} from ${senderJid} for batched processing.`);
+      // Phase 1: Omnivorous Batched Ingestion (legacy — only reached in MEMU_WHATSAPP_INGESTION=all mode).
+      // We log the raw message to the inbox queue. The batched Chief of Staff engine will process it later.
+      const messageId = msg.key?.id || `msg-${Date.now()}`;
+      await db.query(
+        `INSERT INTO inbox_messages (id, profile_id, channel, sender_jid, content, is_image)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [messageId, profileId, 'whatsapp', senderJid, content, isImage],
+      );
+      console.log(`[INBOX] Logged message ${messageId} from ${senderJid} for batched processing.`);
 
-    // Fast-path: We still run the regex list extractor so direct commands ("add milk to shopping") work instantly
-    const listResult = await handleListCommand(profileId, content, 'whatsapp', messageId);
-    if (listResult) {
-      console.log(`[LIST FAST-PATH]: Extracted ${listResult.items.length} items directly.`);
-    }
+      // Fast-path: We still run the regex list extractor so direct commands ("add milk to shopping") work instantly
+      const listResult = await handleListCommand(profileId, content, 'whatsapp', messageId);
+      if (listResult) {
+        console.log(`[LIST FAST-PATH]: Extracted ${listResult.items.length} items directly.`);
+      }
+    });
   } catch (err) {
     console.error('Error handling incoming message:', err);
   }
 }
 
-async function lookupOrCreateProfile(jid: string): Promise<string> {
-  // PERSONAL ASSISTANT OVERRIDE:
-  // Since Memu is connected to the user's personal WhatsApp (not a generic bot number),
-  // we do not want to create separate isolated dashboards for every person who texts them.
-  // We route all intercepted intelligence directly to the primary Hub Owner's dashboard
-  // so they can actually see the tasks, stream cards, and drafts.
-  
+/**
+ * Pre-Beta Stream 1 — return the primary collective-owner profile + its
+ * collective. WhatsApp messages route to this profile's collective
+ * because Memu connects to a single user's personal WhatsApp account;
+ * every message is contextually that user's, not a separate tenant's.
+ *
+ * Reads from `profiles` are permitted under the Tier-B RLS policy
+ * even without a collective context set (see migration 028) — that's
+ * what makes this lookup the bootstrap before context-entry.
+ *
+ * Returns null if no profile is registered yet (fresh install
+ * pre-onboarding). Callers must drop the message in that case;
+ * profile creation is a deliberate user action via /api/register.
+ */
+async function lookupPrimaryProfile(): Promise<{ id: string; collectiveId: string } | null> {
   try {
-    const ownerRes = await pool.query('SELECT id FROM profiles ORDER BY created_at ASC LIMIT 1');
-    if (ownerRes.rows.length > 0) {
-      return ownerRes.rows[0].id;
-    }
+    // queryAsBootstrap — this is a deliberate cross-collective read
+    // (WhatsApp's "send everything to the deployment's primary user"
+    // pattern, since Memu connects to one personal WhatsApp account).
+    // The Tier-B policy on profiles requires either context match or
+    // bootstrap flag.
+    const res = await db.queryAsBootstrap<{ id: string; collective_id: string }>(
+      'SELECT id, collective_id FROM profiles ORDER BY created_at ASC LIMIT 1',
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return { id: row.id, collectiveId: row.collective_id };
   } catch (err) {
     console.error('Error finding primary profile:', err);
+    return null;
   }
-
-  // Fallback if DB is empty (should not happen in a running hub)
-  console.log(`Creating test profile for new number: ${jid}`);
-  const idRes = await pool.query('INSERT INTO profiles (display_name, role) VALUES ($1, $2) RETURNING id', ['Hub Owner', 'adult']);
-  const newProfileId = idRes.rows[0].id;
-
-  await pool.query('INSERT INTO profile_channels (profile_id, channel, channel_identifier) VALUES ($1, $2, $3)', [newProfileId, 'whatsapp', jid]);
-  await pool.query('INSERT INTO personas (id, profile_id, persona_label) VALUES ($1, $2, $3)', [`adult-${Date.now()}`, newProfileId, 'Adult-1']);
-
-  return newProfileId;
 }
 
 async function storeMessageAudit(
@@ -462,7 +479,7 @@ async function storeMessageAudit(
     ? toolCalls.map(c => ({ name: c.name, ok: c.ok, error: c.error, output: c.output }))
     : null;
 
-  await pool.query(
+  await db.query(
     `INSERT INTO messages
     (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -473,7 +490,7 @@ async function storeMessageAudit(
   );
 
   // Update conversation message count
-  await pool.query(
+  await db.query(
     'UPDATE conversations SET message_count = message_count + 1 WHERE id = $1',
     [convId]
   );

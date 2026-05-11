@@ -1,7 +1,7 @@
 /**
  * Story 3.4b — external Pod read pipeline.
  *
- * Walks pod_grants for a member (or all active grants across the household),
+ * Walks pod_grants for a member (or all active grants across the collective),
  * fetches each granted Space from the member's external Pod via
  * solid_client.fetchExternalSpaceConditional, upserts the parsed result into
  * external_space_cache, and propagates cache hints (etag, last-modified) back
@@ -19,9 +19,9 @@
  *   - End-to-end test against a real second deployment (3.4d)
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { fetchExternalSpaceConditional, type ExternalSpace, type FetchCacheHints, SolidClientError } from './solid_client';
-import { findMember, listGrants, recordGrantSync, type HouseholdMember, type PodGrant } from '../households/membership';
+import { findMember, listGrants, recordGrantSync, type CollectiveMember, type PodGrant } from '../households/membership';
 import { resetEntityNameCache } from '../twin/guard';
 
 export class ExternalSyncError extends Error {
@@ -116,7 +116,7 @@ export function buildConditionalHeaders(
  * twin/novel.ts allocateLabel for the 'person' kind.
  */
 async function allocatePersonLabel(): Promise<string> {
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     "SELECT COUNT(*)::int AS n FROM entity_registry WHERE entity_type = 'person'",
   );
   const next = (rows[0]?.n ?? 0) + 1;
@@ -130,14 +130,14 @@ async function allocatePersonLabel(): Promise<string> {
  */
 export async function registerForeignWebid(webid: string, displayName: string): Promise<boolean> {
   if (!/^https:\/\//i.test(webid)) return false;
-  const existing = await pool.query(
+  const existing = await db.query(
     'SELECT id FROM entity_registry WHERE webid = $1 LIMIT 1',
     [webid],
   );
   if ((existing.rowCount ?? 0) > 0) return false;
 
   const label = await allocatePersonLabel();
-  await pool.query(
+  await db.query(
     `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, webid, detected_by, confirmed)
      VALUES ('person', $1, $2, $3, 'auto_pod_grant', FALSE)`,
     [displayName, label, webid],
@@ -195,7 +195,7 @@ function rowToCache(row: DbCacheRow): CachedExternalSpace {
 }
 
 async function upsertCache(memberId: string, space: ExternalSpace): Promise<CachedExternalSpace> {
-  const res = await pool.query<DbCacheRow>(
+  const res = await db.query<DbCacheRow>(
     `INSERT INTO external_space_cache (
         member_id, space_url, source_url, uri, category, slug, name, description,
         domains, people, visibility, confidence, source_references, tags,
@@ -245,7 +245,7 @@ async function upsertCache(memberId: string, space: ExternalSpace): Promise<Cach
 }
 
 async function findCache(memberId: string, spaceUrl: string): Promise<CachedExternalSpace | null> {
-  const res = await pool.query<DbCacheRow>(
+  const res = await db.query<DbCacheRow>(
     'SELECT * FROM external_space_cache WHERE member_id = $1 AND space_url = $2 LIMIT 1',
     [memberId, spaceUrl],
   );
@@ -253,7 +253,7 @@ async function findCache(memberId: string, spaceUrl: string): Promise<CachedExte
 }
 
 export async function listCachedSpacesForMember(memberId: string): Promise<CachedExternalSpace[]> {
-  const res = await pool.query<DbCacheRow>(
+  const res = await db.query<DbCacheRow>(
     'SELECT * FROM external_space_cache WHERE member_id = $1 ORDER BY fetched_at DESC',
     [memberId],
   );
@@ -265,7 +265,7 @@ export async function listCachedSpacesForMember(memberId: string): Promise<Cache
  * revokeGrant so a revoked Space is no longer surfaced.
  */
 export async function dropCacheForGrant(memberId: string, spaceUrl: string): Promise<void> {
-  await pool.query(
+  await db.query(
     'DELETE FROM external_space_cache WHERE member_id = $1 AND space_url = $2',
     [memberId, spaceUrl],
   );
@@ -273,10 +273,10 @@ export async function dropCacheForGrant(memberId: string, spaceUrl: string): Pro
 
 /**
  * Drop every cache entry for a member — called by finaliseLeave so a
- * fully-left member's Spaces stop appearing in the household.
+ * fully-left member's Spaces stop appearing in the collective.
  */
 export async function dropAllCacheForMember(memberId: string): Promise<void> {
-  await pool.query('DELETE FROM external_space_cache WHERE member_id = $1', [memberId]);
+  await db.query('DELETE FROM external_space_cache WHERE member_id = $1', [memberId]);
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +291,7 @@ export async function dropAllCacheForMember(memberId: string): Promise<void> {
  * shouldn't poison the rest of the sweep.
  */
 export async function syncGrant(
-  member: Pick<HouseholdMember, 'id' | 'memberWebid' | 'memberDisplayName'>,
+  member: Pick<CollectiveMember, 'id' | 'memberWebid' | 'memberDisplayName'>,
   grant: PodGrant,
   opts: SyncOptions = {},
 ): Promise<SyncOutcome> {
@@ -330,7 +330,7 @@ export async function syncGrant(
     lastModified: result.cacheHints.lastModified,
   });
   // Member's own WebID — register on first encounter so the Twin guard
-  // protects it. Display name from the household roster.
+  // protects it. Display name from the collective roster.
   await registerForeignWebid(member.memberWebid, member.memberDisplayName);
   // Foreign WebIDs surfaced by the Space's people[].
   for (const webid of extractForeignWebids(result.space)) {
@@ -359,18 +359,18 @@ export async function syncMemberGrants(memberId: string, opts: SyncOptions = {})
 }
 
 /**
- * Walk every active grant across every active member of a household and
+ * Walk every active grant across every active member of a collective and
  * sync. Used by the cron (3.4 sweep).
  */
 export async function syncHouseholdGrants(
-  householdAdminProfileId: string,
+  collectiveAdminProfileId: string,
   opts: SyncOptions = {},
 ): Promise<SyncReport[]> {
-  const memberRows = await pool.query<{ id: string; member_webid: string; member_display_name: string }>(
+  const memberRows = await db.query<{ id: string; member_webid: string; member_display_name: string }>(
     `SELECT id, member_webid, member_display_name
-       FROM household_members
-      WHERE household_admin_profile_id = $1 AND status IN ('invited', 'active', 'leaving')`,
-    [householdAdminProfileId],
+       FROM collective_members
+      WHERE collective_admin_profile_id = $1 AND status IN ('invited', 'active', 'leaving')`,
+    [collectiveAdminProfileId],
   );
   const reports: SyncReport[] = [];
   for (const row of memberRows.rows) {

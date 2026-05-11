@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 // Expo's push API — HTTPS POST, no SDK needed.
 // https://docs.expo.dev/push-notifications/sending-notifications/
@@ -18,7 +18,7 @@ export async function registerPushToken(
   if (!token || !token.startsWith('ExponentPushToken')) {
     throw new Error('Invalid Expo push token');
   }
-  await pool.query(
+  await db.query(
     `INSERT INTO push_tokens (token, profile_id, platform, last_seen_at)
      VALUES ($1, $2, $3, NOW())
      ON CONFLICT (token) DO UPDATE
@@ -30,7 +30,7 @@ export async function registerPushToken(
 }
 
 export async function getTokensForProfile(profileId: string): Promise<string[]> {
-  const res = await pool.query(
+  const res = await db.query(
     'SELECT token FROM push_tokens WHERE profile_id = $1',
     [profileId],
   );
@@ -87,7 +87,7 @@ export async function sendPush(tokens: string[], payload: PushPayload): Promise<
       const errCode = receipt.details?.error || 'unknown';
       console.error(`[PUSH] Token #${i} rejected: ${errCode} — ${receipt.message || ''}`);
       if (errCode === 'DeviceNotRegistered') {
-        await pool.query('DELETE FROM push_tokens WHERE token = $1', [tokens[i]]).catch(() => {});
+        await db.query('DELETE FROM push_tokens WHERE token = $1', [tokens[i]]).catch(() => {});
         removedDead++;
       }
     }

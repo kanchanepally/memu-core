@@ -243,10 +243,39 @@ JWKS is generated once on first boot and persisted to `oidc_jwks`. Rotate `MEMU_
 ### Database
 
 - Migrations via schema.sql (auto-loaded in Docker Compose)
-- No raw SQL in route handlers -- use parameterised queries via pg Pool
+- No raw SQL in route handlers -- use parameterised queries via `db.query`
 - All timestamps as TIMESTAMPTZ (timezone-aware)
 - JSONB for flexible metadata columns
 - Foreign keys with CASCADE for referential integrity
+
+#### Multi-tenancy (Pre-Beta Stream 1, 2026-05-07; ARCH-01 rename 2026-05-10)
+
+- Every tenant-scoped query goes through `db.query` (or `db.transaction`)
+  from `src/db/tenant.ts` — NOT `pool.query`. The wrapper enters a
+  transaction with `set_config('memu.collective_id', $1, true)` if a
+  collective context is active; RLS policies enforce tenant isolation.
+- Authenticated routes get a collective context automatically — the
+  `requireCollective` middleware (after `requireAuth`) calls
+  `bindCollectiveContext(collectiveId)` so every `db.query` later in
+  the request is collective-scoped.
+- Cron jobs and the WhatsApp ingest path enter context explicitly:
+  `await enterCollectiveContext(collectiveId, async () => { ... })`.
+- When adding a new tenant-scoped table:
+  1. Add `collective_id TEXT NOT NULL REFERENCES collectives(id)
+     DEFAULT NULLIF(current_setting('memu.collective_id', true), '')`
+  2. Add `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY`
+     + a `_collective_isolation` policy
+  3. Add a covering index on `collective_id`
+  4. Add an isolation test in `src/__tests__/rls-isolation.test.ts`
+- `db.queryWithoutTenant` is reserved for cross-collective reads in
+  cron jobs (enumerate collectives, then enter each context).
+  Anywhere else, it's a smell — the query should be using `db.query`.
+- `pool.query` and `pool.connect()` are reserved for: the boot-time
+  migrations runner, the auth bootstrap (registerProfile,
+  signInWithGoogle first-boot), and Tier-C tables (oidc_payload,
+  oidc_jwks, collectives itself, schema_migrations). New uses go
+  through review.
+- Full pattern doc: `memu-platform/docs/MULTI-TENANCY.md`.
 
 ### Docker
 

@@ -3,6 +3,7 @@ import 'dotenv/config'; // Load env variables immediately before other imports
 import Fastify from 'fastify';
 import pino from 'pino';
 import { testConnection, pool } from './db/connection';
+import { db, enterCollectiveContext } from './db/tenant';
 import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
@@ -19,7 +20,7 @@ import {
 import { copyForStep, buildAcknowledgement } from './onboarding/prompts';
 import { processOnboardingAnswer } from './intelligence/onboarding';
 import { registerPushToken } from './channels/mobile';
-import { requireAuth, registerProfile } from './auth';
+import { requireAuth, requireCollective, registerProfile } from './auth';
 import { verifyGoogleIdToken, signInWithGoogle, GoogleSignInRejected } from './channels/auth/google-signin';
 import { importWhatsAppExport, importTextFile, importFileBundle } from './intelligence/import';
 import { validateAllSkills, listSkills } from './skills/loader';
@@ -104,7 +105,7 @@ server.get('/readyz', async (_request, reply) => {
   let overallOk = true;
 
   try {
-    await pool.query('SELECT 1');
+    await db.query('SELECT 1');
     checks.db = { ok: true };
   } catch (err) {
     overallOk = false;
@@ -169,24 +170,47 @@ server.post('/api/register', async (request, reply) => {
 // AUTH MIDDLEWARE — all /api/* routes below require auth
 // ==========================================
 
+// Pre-Beta Stream 1 — auth chain.
+//   Phase 1: requireAuth      — populates request.profileId from API key.
+//   Phase 2: requireCollective — populates request.collectiveId, enters the
+//                               AsyncLocalStorage tenant context, blocks
+//                               collectives pending GDPR erasure (Stream 3).
+//   Phase 3: logger binding   — request-scoped pino child logger.
+//
+// Routes that are deliberately unauthenticated (health checks, register,
+// Google sign-in, OAuth callback, static assets) skip phase 1 + 2.
+//
+// /api/register and /api/auth/google/signin run AUTH but not COLLECTIVE,
+// because the very purpose of those routes is to land a user on a profile
+// (and therefore a collective). After they return, the client carries an
+// API key that future requests use to traverse both phases.
+
+const UNAUTHENTICATED_ROUTES = new Set<string>([
+  '/health',
+  '/healthz',
+  '/readyz',
+  '/api/register',
+  '/api/auth/google/signin',
+  '/api/admin/trigger-briefing',
+]);
+
+function isUnauthenticatedRoute(url: string): boolean {
+  if (UNAUTHENTICATED_ROUTES.has(url)) return true;
+  if (url.startsWith('/api/auth/google/callback')) return true;
+  if (!url.startsWith('/api/')) return true;
+  return false;
+}
+
 server.addHook('preHandler', async (request, reply) => {
-  const url = request.url;
-  // Skip auth for liveness/readiness, registration, Google sign-in, OAuth
-  // callback, and static assets. /healthz + /readyz must remain unauthed
-  // so load balancers / Docker healthchecks can hit them without an API key.
-  if (
-    url === '/health' ||
-    url === '/healthz' ||
-    url === '/readyz' ||
-    url === '/api/register' ||
-    url === '/api/auth/google/signin' ||
-    url === '/api/admin/trigger-briefing' ||
-    url.startsWith('/api/auth/google/callback') ||
-    !url.startsWith('/api/')
-  ) {
-    return;
-  }
+  if (isUnauthenticatedRoute(request.url)) return;
   return requireAuth(request, reply);
+});
+
+server.addHook('preHandler', async (request, reply) => {
+  if (isUnauthenticatedRoute(request.url)) return;
+  // requireAuth has populated request.profileId; resolve collective
+  // and enter the AsyncLocalStorage context for tenant-scoped queries.
+  return requireCollective(request, reply);
 });
 
 // After auth, bind the resolved profileId into the request logger so every
@@ -219,7 +243,7 @@ server.post('/api/auth/google/signin', async (request, reply) => {
     };
   } catch (err: any) {
     if (err instanceof GoogleSignInRejected) {
-      // 403 — token is valid, but this household hasn't invited this email.
+      // 403 — token is valid, but this collective hasn't invited this email.
       // Distinct from 401 (invalid token) so the client can show a clear
       // "ask your admin to invite you" message rather than "sign-in broken".
       return reply.code(403).send({ error: err.message, reason: err.reason });
@@ -503,7 +527,7 @@ server.post('/api/profile/oidc-password', async (request, reply) => {
 server.get('/api/family/settings', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    const res = await pool.query(
+    const res = await db.query(
       `SELECT reflection_enabled FROM family_settings WHERE family_id = $1`,
       [profileId],
     );
@@ -526,7 +550,7 @@ server.post('/api/family/settings', async (request, reply) => {
       return reply.code(400).send({ error: 'reflection_enabled (boolean) required' });
     }
     const profileId = (request as any).profileId;
-    await pool.query(
+    await db.query(
       `INSERT INTO family_settings (family_id, reflection_enabled, updated_at)
        VALUES ($1, $2, NOW())
        ON CONFLICT (family_id) DO UPDATE
@@ -724,7 +748,7 @@ const VALID_ENTITY_TYPES = [
 
 server.get('/api/twin/registry', async (_request, reply) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT id, entity_type, real_name, anonymous_label, detected_by, confirmed,
               first_seen_at, confirmed_at
          FROM entity_registry
@@ -750,7 +774,7 @@ server.post('/api/twin/registry', async (request, reply) => {
       return reply.code(400).send({ error: 'anonymousLabel is required' });
     }
     const profileId = (request as any).profileId;
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by, confirmed, confirmed_at, confirmed_by)
        VALUES ($1, $2, $3, 'manual', TRUE, NOW(), $4)
        RETURNING id, entity_type, real_name, anonymous_label, detected_by, confirmed`,
@@ -791,7 +815,7 @@ server.patch<{ Params: { id: string } }>('/api/twin/registry/:id', async (reques
     if (updates.length === 0) return reply.code(400).send({ error: 'No updates provided' });
 
     values.push(id);
-    const { rows, rowCount } = await pool.query(
+    const { rows, rowCount } = await db.query(
       `UPDATE entity_registry SET ${updates.join(', ')}
        WHERE id = $${i}
        RETURNING id, entity_type, real_name, anonymous_label, detected_by, confirmed`,
@@ -808,7 +832,7 @@ server.patch<{ Params: { id: string } }>('/api/twin/registry/:id', async (reques
 server.delete<{ Params: { id: string } }>('/api/twin/registry/:id', async (request, reply) => {
   try {
     const id = request.params.id;
-    const { rowCount } = await pool.query('DELETE FROM entity_registry WHERE id = $1', [id]);
+    const { rowCount } = await db.query('DELETE FROM entity_registry WHERE id = $1', [id]);
     if (rowCount === 0) return reply.code(404).send({ error: 'Entity not found' });
     return { success: true };
   } catch (err) {
@@ -867,7 +891,7 @@ server.get('/api/auth/google/callback', async (request, reply) => {
 server.delete('/api/auth/google', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    await pool.query(
+    await db.query(
       `DELETE FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`,
       [profileId]
     );
@@ -930,7 +954,7 @@ server.get('/api/push/diagnose', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
     if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
-    const res = await pool.query<{ token: string; platform: string | null; created_at: Date; last_seen_at: Date }>(
+    const res = await db.query<{ token: string; platform: string | null; created_at: Date; last_seen_at: Date }>(
       `SELECT token, platform, created_at, last_seen_at
          FROM push_tokens
         WHERE profile_id = $1
@@ -1103,7 +1127,7 @@ server.post('/api/push/test', async (request, reply) => {
 // Family Memory Endpoint
 server.get('/api/memory/recent', async (request, reply) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await db.query(
       `SELECT id, source, content, created_at FROM context_entries ORDER BY created_at DESC LIMIT 50`
     );
     return rows;
@@ -1146,17 +1170,17 @@ server.get('/api/dashboard/brief', async (request, reply) => {
     }
     
     // Check if the calendar is linked
-    const linkRes = await pool.query(`SELECT 1 FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
+    const linkRes = await db.query(`SELECT 1 FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
     const isCalendarConnected = linkRes.rows.length > 0;
     
     // 2. Fetch Active Stream Cards (excluding shopping)
-    const streamRes = await pool.query(
+    const streamRes = await db.query(
       `SELECT * FROM stream_cards WHERE family_id = $1 AND status = 'active' AND card_type != 'shopping' ORDER BY created_at DESC`, 
       [profileId]
     );
 
     // 3. Fetch Shopping List from list_items (bug 3 — committed items live here, not stream_cards)
-    const shoppingRes = await pool.query(
+    const shoppingRes = await db.query(
       `SELECT id, family_id, item_text AS title, note AS body, status, source, source_message_id, created_at
          FROM list_items
         WHERE family_id = $1 AND list_type = 'shopping' AND status = 'pending'
@@ -1191,7 +1215,7 @@ server.get('/api/dashboard/spaces', async (request, reply) => {
     // profile_id values but the same family_id. Symptom Hareesh saw —
     // canvas view showed every family Space, but the listing said
     // "Couldn't load Spaces". family_id is the canonical tenant scope.
-    const res = await pool.query(
+    const res = await db.query(
       `SELECT * FROM synthesis_pages WHERE family_id = $1 ORDER BY last_updated_at DESC`,
       [profileId]
     );
@@ -1325,7 +1349,7 @@ server.put('/api/spaces/:id', async (request, reply) => {
     // entirely.
     const ensurePeopleSelf = visibilityStored === 'private';
 
-    const res = await pool.query(
+    const res = await db.query(
       `UPDATE synthesis_pages
          SET title = COALESCE($1, title),
              body_markdown = COALESCE($2, body_markdown),
@@ -1380,7 +1404,7 @@ server.post('/api/spaces/:id/parent', async (request, reply) => {
     }
 
     // Resolve target Space + auth (must own the row, same family check).
-    const lookup = await pool.query(
+    const lookup = await db.query(
       `SELECT id, uri, family_id, profile_id FROM synthesis_pages WHERE id = $1 LIMIT 1`,
       [id],
     );
@@ -1434,7 +1458,7 @@ server.post('/api/spaces/:id/links', async (request, reply) => {
       ? body.label.trim()
       : 'Related';
 
-    const lookup = await pool.query(
+    const lookup = await db.query(
       `SELECT uri, family_id, profile_id FROM synthesis_pages WHERE id = $1 LIMIT 1`,
       [id],
     );
@@ -1498,7 +1522,7 @@ server.delete('/api/spaces/:id/links/:targetSlug', async (request, reply) => {
       return reply.code(400).send({ error: 'invalid slug format' });
     }
 
-    const lookup = await pool.query(
+    const lookup = await db.query(
       `SELECT uri, family_id, profile_id FROM synthesis_pages WHERE id = $1 LIMIT 1`,
       [id],
     );
@@ -1560,7 +1584,7 @@ server.get('/api/family/profiles', async (request, reply) => {
       where = 'WHERE role != $1';
       params.push('child');
     }
-    const res = await pool.query(
+    const res = await db.query(
       `SELECT id, display_name, email, role FROM profiles ${where} ORDER BY
           CASE role WHEN 'admin' THEN 1 WHEN 'adult' THEN 2 WHEN 'child' THEN 3 ELSE 4 END,
           display_name`,
@@ -1580,7 +1604,7 @@ server.get('/api/family/profiles', async (request, reply) => {
   }
 });
 
-// Invite a new household member. Creates a fresh profile + persona +
+// Invite a new collective member. Creates a fresh profile + persona +
 // entity_registry row, returns the API key + a one-tap magic link the
 // admin can send to the invitee via WhatsApp / SMS / etc. Adult and
 // admin profiles can invite; children cannot.
@@ -1592,7 +1616,7 @@ server.get('/api/family/profiles', async (request, reply) => {
 // signed-in.
 //
 // Security note: the API key is in the URL. URLs leak (browser history,
-// screenshots, accidentally-shared links). Acceptable for in-household
+// screenshots, accidentally-shared links). Acceptable for in-collective
 // invites where the admin is sending to a trusted person via a private
 // channel. For broader distribution we'd want a one-shot bearer-exchange
 // token; deferred until needed.
@@ -1621,9 +1645,9 @@ server.post('/api/profiles', async (request, reply) => {
     const email = (body.email ?? '').trim();
 
     // Reject if a profile with this email already exists — avoid silent
-    // duplicates which would split the household's data view.
+    // duplicates which would split the collective's data view.
     if (email) {
-      const dup = await pool.query('SELECT id FROM profiles WHERE email = $1 LIMIT 1', [email]);
+      const dup = await db.query('SELECT id FROM profiles WHERE email = $1 LIMIT 1', [email]);
       if (dup.rowCount && dup.rowCount > 0) {
         return reply.code(409).send({
           error: `A profile with email ${email} already exists`,
@@ -1696,7 +1720,7 @@ server.delete('/api/spaces/:id', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
     const { id } = request.params as { id: string };
-    const res = await pool.query(
+    const res = await db.query(
       `DELETE FROM synthesis_pages WHERE id = $1 AND profile_id = $2 RETURNING id`,
       [id, profileId]
     );
@@ -1740,7 +1764,7 @@ server.post('/api/stream/resolve', async (request, reply) => {
   const profileId = (request as any).profileId;
 
   try {
-    const { rowCount } = await pool.query(
+    const { rowCount } = await db.query(
       "UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2",
       [cardId, profileId],
     );
@@ -1759,7 +1783,7 @@ server.post('/api/stream/dismiss', async (request, reply) => {
   const profileId = (request as any).profileId;
 
   try {
-    const { rowCount } = await pool.query(
+    const { rowCount } = await db.query(
       "UPDATE stream_cards SET status = 'dismissed', resolved_at = NOW() WHERE id = $1 AND family_id = $2",
       [cardId, profileId],
     );
@@ -1799,7 +1823,7 @@ server.post('/api/stream/edit', async (request, reply) => {
     values.push(profileId);
     const familyParam = idx;
 
-    const upd = await pool.query(
+    const upd = await db.query(
       `UPDATE stream_cards SET ${updates.join(', ')} WHERE id = $${cardIdParam} AND family_id = $${familyParam}`,
       values,
     );
@@ -1808,7 +1832,7 @@ server.post('/api/stream/edit', async (request, reply) => {
     // Return the updated card — also tenant-filtered to defend against the
     // (impossible-after-the-UPDATE-check-but-cheap-to-keep) scenario where
     // someone races a delete + recreate-with-same-id between statements.
-    const res = await pool.query(
+    const res = await db.query(
       "SELECT * FROM stream_cards WHERE id = $1 AND family_id = $2",
       [cardId, profileId],
     );
@@ -1826,7 +1850,7 @@ server.post('/api/stream/to-shopping', async (request, reply) => {
 
   try {
     const profileId = (request as any).profileId;
-    const cardRes = await pool.query(
+    const cardRes = await db.query(
       `SELECT * FROM stream_cards WHERE id = $1 AND family_id = $2`,
       [cardId, profileId]
     );
@@ -1844,7 +1868,7 @@ server.post('/api/stream/to-shopping', async (request, reply) => {
       createdBy: profileId,
     });
 
-    await pool.query(
+    await db.query(
       `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2`,
       [cardId, profileId],
     );
@@ -1867,7 +1891,7 @@ type LoadActionResult =
   | { kind: 'ok'; card: any; action: any };
 
 async function loadBriefingAction(cardId: string, actionIndex: number, profileId: string): Promise<LoadActionResult> {
-  const res = await pool.query(
+  const res = await db.query(
     `SELECT id, family_id, actions FROM stream_cards WHERE id = $1`,
     [cardId],
   );
@@ -1881,7 +1905,7 @@ async function loadBriefingAction(cardId: string, actionIndex: number, profileId
 }
 
 async function resolveCard(cardId: string, familyId: string) {
-  await pool.query(
+  await db.query(
     `UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2`,
     [cardId, familyId],
   );
@@ -2178,7 +2202,7 @@ server.post('/api/calendar/add', async (request, reply) => {
 
   try {
     const profileId = (request as any).profileId;
-    const cardRes = await pool.query(
+    const cardRes = await db.query(
       "SELECT * FROM stream_cards WHERE id = $1 AND family_id = $2",
       [cardId, profileId],
     );
@@ -2191,7 +2215,7 @@ server.post('/api/calendar/add', async (request, reply) => {
 
     if (success) {
        // Mark card as handled — also tenant-scoped on the resolve.
-       await pool.query(
+       await db.query(
          "UPDATE stream_cards SET status = 'resolved', resolved_at = NOW() WHERE id = $1 AND family_id = $2",
          [cardId, profileId],
        );
@@ -2215,7 +2239,7 @@ server.get('/api/chat/conversations', async (request, reply) => {
     const query = request.query as any;
     const limit = Math.min(parseInt(query.limit || '50', 10), 200);
 
-    const res = await pool.query(
+    const res = await db.query(
       `SELECT
          c.id,
          c.started_at,
@@ -2268,7 +2292,7 @@ server.get('/api/chat/history', async (request, reply) => {
 
     let convId: string | null = null;
     if (requestedConvId) {
-      const ownership = await pool.query(
+      const ownership = await db.query(
         'SELECT id FROM conversations WHERE id = $1 AND profile_id = $2',
         [requestedConvId, profileId]
       );
@@ -2277,7 +2301,7 @@ server.get('/api/chat/history', async (request, reply) => {
       }
       convId = requestedConvId;
     } else {
-      const latest = await pool.query(
+      const latest = await db.query(
         'SELECT id FROM conversations WHERE profile_id = $1 ORDER BY started_at DESC LIMIT 1',
         [profileId]
       );
@@ -2291,7 +2315,7 @@ server.get('/api/chat/history', async (request, reply) => {
     //      IS NULL, content_response_translated IS NOT NULL, metadata.type='briefing'.
     // We accept either as long as content_response_translated exists; client-side
     // shape depends on whether userMessage is non-empty.
-    const msgRes = await pool.query(
+    const msgRes = await db.query(
       `SELECT id, conversation_id, content_original, content_response_translated,
               channel, created_at, actions_executed, metadata
        FROM messages
@@ -2314,7 +2338,7 @@ server.get('/api/chat/history', async (request, reply) => {
     //      substring-match Memu's response against existing Space titles.
     //      Word-boundary regex; min 3 chars to avoid noise. Lossy but
     //      avoids leaving the artefact column blank for historical chats.
-    const spacesRes = await pool.query(
+    const spacesRes = await db.query(
       `SELECT id, uri, title AS name, slug, category
        FROM synthesis_pages
        WHERE family_id = $1`,
@@ -2403,7 +2427,7 @@ server.get('/api/chat/history', async (request, reply) => {
 server.get('/api/ledger', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    const res = await pool.query(
+    const res = await db.query(
       `SELECT id, content_original, content_translated, content_response_raw,
               content_response_translated, entity_translations, channel,
               cloud_tokens_in, cloud_tokens_out, created_at
@@ -2425,7 +2449,7 @@ server.get('/api/admin/trigger-briefing', async (request, reply) => {
   try {
     let profileId = (request as any).profileId;
     if (!profileId) {
-       const res = await pool.query('SELECT id FROM profiles LIMIT 1');
+       const res = await db.query('SELECT id FROM profiles LIMIT 1');
        if (res.rows.length === 0) {
           return reply.code(400).send({ error: 'No profiles exist to run briefing for' });
        }
@@ -2481,7 +2505,7 @@ server.get('/api/export', async (request, reply) => {
       return reply.code(403).send({ error: 'Children cannot trigger exports' });
     }
     const profileId = (request as any).profileId;
-    const profileRes = await pool.query("SELECT id FROM profiles WHERE id = $1", [profileId]);
+    const profileRes = await db.query("SELECT id FROM profiles WHERE id = $1", [profileId]);
     if (profileRes.rows.length === 0) return reply.code(404).send({ error: 'No profile found' });
 
     const { buildArticle20Export } = await import('./export/article20');
@@ -2514,7 +2538,7 @@ server.patch('/api/profile', async (request, reply) => {
       return reply.code(400).send({ error: 'displayName required' });
     }
     const trimmed = displayName.trim().slice(0, 80);
-    const res = await pool.query(
+    const res = await db.query(
       "UPDATE profiles SET display_name = $1 WHERE id = $2 RETURNING id, display_name, role",
       [trimmed, profileId]
     );
@@ -2530,7 +2554,7 @@ server.patch('/api/profile', async (request, reply) => {
 server.post('/api/chat/clear', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    await pool.query("DELETE FROM messages WHERE profile_id = $1", [profileId]);
+    await db.query("DELETE FROM messages WHERE profile_id = $1", [profileId]);
     return { success: true };
   } catch (err) {
     server.log.error(err);
@@ -2544,13 +2568,13 @@ server.post('/api/family/detach', async (request, reply) => {
     const primaryId = (request as any).profileId;
 
     // 1. Physically sever the secondary adult into their own parallel household namespace
-    const newAdult = await pool.query("INSERT INTO profiles (display_name, role) VALUES ('Detached Adult', 'adult') RETURNING id");
+    const newAdult = await db.query("INSERT INTO profiles (display_name, role) VALUES ('Detached Adult', 'adult') RETURNING id");
     const detachedId = newAdult.rows[0].id;
 
     // 2. Safely clone the child personas so BOTH parents independently retain the AI's child context going forward
-    const childPersonas = await pool.query("SELECT * FROM personas WHERE persona_label LIKE 'Child-%'");
+    const childPersonas = await db.query("SELECT * FROM personas WHERE persona_label LIKE 'Child-%'");
     for (const child of childPersonas.rows) {
-       await pool.query("INSERT INTO personas (id, profile_id, persona_label, attributes) VALUES ($1, $2, $3, $4)",
+       await db.query("INSERT INTO personas (id, profile_id, persona_label, attributes) VALUES ($1, $2, $3, $4)",
          [`child-${Date.now()}-${Math.random().toString(36).substring(7)}`, detachedId, child.persona_label, child.attributes]
        );
     }
@@ -2558,7 +2582,7 @@ server.post('/api/family/detach', async (request, reply) => {
     return { 
        success: true, 
        message: 'Household successfully separated. Data silos enforced.',
-       new_household_id: detachedId,
+       new_collective_id: detachedId,
        cloned_child_contexts: childPersonas.rows.length
     };
   } catch (err) {
@@ -2574,7 +2598,7 @@ server.post('/api/family/detach', async (request, reply) => {
 // Authorization model:
 //   - admin: invite, list, accept-on-behalf-of, force-remove, list any
 //     member's grants
-//   - the linked internal member (when household_members.internal_profile_id
+//   - the linked internal member (when collective_members.internal_profile_id
 //     equals the caller's profile_id): record/revoke own grants, initiate
 //     own leave, cancel own leave
 //   - children: blocked from all of these (handled by role check)
@@ -2635,7 +2659,7 @@ server.post('/api/households/members', async (request, reply) => {
   try {
     const { inviteMember, MembershipError } = await import('./households/membership');
     const member = await inviteMember({
-      householdAdminProfileId: adminId,
+      collectiveAdminProfileId: adminId,
       memberWebid: body.memberWebid,
       memberDisplayName: body.memberDisplayName,
       invitedByProfileId: adminId,
@@ -2884,15 +2908,23 @@ const start = async () => {
     cron.schedule('0 7 * * *', async () => {
       server.log.info('Running daily morning briefings...');
 
-      const recipients = await pool.query(`
-        SELECT id, display_name
+      // Pre-Beta Stream 1 — queryAsBootstrap to enumerate adults across
+      // every collective. The Tier-B profiles policy requires either
+      // collective match or the explicit bootstrap flag; cron enumeration
+      // is one of the legitimate bootstrap-flag callers. After fetching
+      // we enter each recipient's collective context per-iteration so the
+      // briefing generator's tenant-scoped queries resolve correctly.
+      const recipients = await db.queryAsBootstrap<{ id: string; display_name: string; collective_id: string }>(`
+        SELECT id, display_name, collective_id
         FROM profiles
         WHERE role IN ('adult', 'admin')
       `);
       for (const row of recipients.rows) {
         try {
           server.log.info(`Generating morning briefing for ${row.display_name} (${row.id})`);
-          await pushMorningBriefingToMobile(row.id);
+          await enterCollectiveContext(row.collective_id, async () => {
+            await pushMorningBriefingToMobile(row.id);
+          });
         } catch (err) {
           server.log.error({ err, profileId: row.id }, 'Morning briefing failed');
         }
@@ -2923,7 +2955,7 @@ const start = async () => {
       // still discoverable via Spaces / search; this just stops them
       // counting as "open" for briefing rotation.
       try {
-        const expired = await pool.query(
+        const expired = await db.query(
           `UPDATE stream_cards
               SET status = 'expired', resolved_at = NOW()
             WHERE status = 'active'
@@ -2955,46 +2987,52 @@ const start = async () => {
       server.log.info({ summary }, 'Spaces git gc complete');
     }, { timezone: 'Europe/London' });
 
-    // Story 3.4 — daily 04:30 sweep: (1) finalise any household_members whose
+    // Story 3.4 — daily 04:30 sweep: (1) finalise any collective_members whose
     // leave grace period has elapsed (also drops their external Space cache),
-    // then (2) refresh granted external Pod Spaces for every household admin.
+    // then (2) refresh granted external Pod Spaces for every collective admin.
     cron.schedule('30 4 * * *', async () => {
-      server.log.info('Running daily household sweep (finaliseExpiredLeaves + syncHouseholdGrants)');
+      server.log.info('Running daily collective sweep (finaliseExpiredLeaves + syncHouseholdGrants)');
       try {
         const { finaliseExpiredLeaves } = await import('./households/membership');
         const { dropAllCacheForMember, syncHouseholdGrants } = await import('./spaces/external_sync');
-        const { pool } = await import('./db/connection');
 
-        const finalised = await finaliseExpiredLeaves();
-        for (const member of finalised) {
-          try {
-            await dropAllCacheForMember(member.id);
-          } catch (err) {
-            server.log.error({ err, memberId: member.id }, 'Failed to drop cache for finalised member');
-          }
-        }
-
-        const admins = await pool.query<{ household_admin_profile_id: string }>(
-          'SELECT DISTINCT household_admin_profile_id FROM household_members',
+        // Pre-Beta Stream 1 — enumerate collectives without an active
+        // tenant context (collectives is Tier-C, no RLS), then enter
+        // each one for the per-collective work.
+        const collectives = await db.queryWithoutTenant<{ id: string; primary_admin_profile_id: string }>(
+          `SELECT id, primary_admin_profile_id FROM collectives WHERE status = 'active'`,
         );
+
+        let totalFinalised = 0;
         let totalReports = 0;
-        for (const row of admins.rows) {
+        for (const hh of collectives.rows) {
           try {
-            const reports = await syncHouseholdGrants(row.household_admin_profile_id);
-            totalReports += reports.length;
+            await enterCollectiveContext(hh.id, async () => {
+              const finalised = await finaliseExpiredLeaves();
+              totalFinalised += finalised.length;
+              for (const member of finalised) {
+                try {
+                  await dropAllCacheForMember(member.id);
+                } catch (err) {
+                  server.log.error({ err, memberId: member.id }, 'Failed to drop cache for finalised member');
+                }
+              }
+              const reports = await syncHouseholdGrants(hh.primary_admin_profile_id);
+              totalReports += reports.length;
+            });
           } catch (err) {
             server.log.error(
-              { err, household: row.household_admin_profile_id },
-              'syncHouseholdGrants failed for household',
+              { err, collectiveId: hh.id },
+              'collective sweep failed for collective',
             );
           }
         }
         server.log.info(
-          { finalised: finalised.length, households: admins.rows.length, grantReports: totalReports },
-          'Daily household sweep complete',
+          { finalised: totalFinalised, collectives: collectives.rows.length, grantReports: totalReports },
+          'Daily collective sweep complete',
         );
       } catch (err) {
-        server.log.error({ err }, 'Daily household sweep failed');
+        server.log.error({ err }, 'Daily collective sweep failed');
       }
     }, { timezone: 'Europe/London' });
 

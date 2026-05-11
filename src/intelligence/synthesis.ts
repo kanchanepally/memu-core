@@ -9,7 +9,7 @@
  * care_standards.last_completed / next_due via markCompleted().
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { dispatch } from '../skills/router';
 import { upsertSpace } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory, type SpaceDomain } from '../spaces/model';
@@ -43,7 +43,7 @@ export async function processSynthesisUpdate(
   aiResponse: string,
 ) {
   const [pagesRes, standards] = await Promise.all([
-    pool.query(
+    db.query(
       `SELECT category, title, body_markdown
          FROM synthesis_pages
         WHERE family_id = $1 OR profile_id = $1`,

@@ -28,7 +28,7 @@
  * only.
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { canSee, resolveVisibility, type FamilyRoster, type SpaceCategory, type SpaceDomain, type Visibility } from '../spaces/model';
 import { loadRoster } from '../spaces/catalogue';
 
@@ -370,7 +370,7 @@ export async function loadGraphForViewer(
 ): Promise<GraphResult> {
   const [roster, rows] = await Promise.all([
     loadRoster(familyId),
-    pool.query<GraphRow>(
+    db.query<GraphRow>(
       `SELECT id, uri, slug, title, category, description, domains, people, tags,
               visibility, confidence, body_markdown, last_updated_at, parent_space_uri
          FROM synthesis_pages WHERE family_id = $1

@@ -1,5 +1,5 @@
 import { pipeline } from '@xenova/transformers';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 // Singleton for the embedding pipeline to save memory overhead
 let extractor: any = null;
@@ -26,7 +26,7 @@ export type Visibility = 'personal' | 'family';
 
 // Write a fact into the context store, scoped by visibility layer.
 // - visibility='personal' pins the fact to owner_profile_id (seen only by that profile)
-// - visibility='family' shares the fact across every profile in the household
+// - visibility='family' shares the fact across every profile in the collective
 export async function seedContext(
   content: string,
   source: string = 'manual',
@@ -36,7 +36,7 @@ export async function seedContext(
   const embedding = await embedText(content);
   const embeddingStr = `[${embedding.join(',')}]`;
 
-  await pool.query(
+  await db.query(
     `INSERT INTO context_entries (source, content, embedding, metadata, visibility, owner_profile_id)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [
@@ -67,7 +67,7 @@ export async function retrieveRelevantContext(
   let result;
   if (profileId) {
     if (layer === 'personal') {
-      result = await pool.query(
+      result = await db.query(
         `SELECT content, 1 - (embedding <=> $1) as similarity
            FROM context_entries
           WHERE embedding IS NOT NULL
@@ -78,7 +78,7 @@ export async function retrieveRelevantContext(
         [embeddingStr, profileId, limit],
       );
     } else {
-      result = await pool.query(
+      result = await db.query(
         `SELECT content, 1 - (embedding <=> $1) as similarity
            FROM context_entries
           WHERE embedding IS NOT NULL
@@ -94,7 +94,7 @@ export async function retrieveRelevantContext(
       );
     }
   } else {
-    result = await pool.query(
+    result = await db.query(
       `SELECT content, 1 - (embedding <=> $1) as similarity
          FROM context_entries
         WHERE embedding IS NOT NULL

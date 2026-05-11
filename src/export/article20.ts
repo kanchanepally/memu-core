@@ -15,7 +15,7 @@ import { promises as fs, createWriteStream, existsSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import archiver from 'archiver';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 function spacesRoot(): string {
   return process.env.MEMU_SPACES_ROOT ?? path.resolve(process.cwd(), 'data', 'spaces');
@@ -55,24 +55,24 @@ interface FamilyData {
 }
 
 async function gatherFamilyData(familyId: string): Promise<FamilyData> {
-  const profile = await pool.query("SELECT * FROM profiles WHERE id = $1", [familyId]);
-  const personas = await pool.query("SELECT * FROM personas WHERE profile_id = $1", [familyId]);
-  const channels = await pool.query(
+  const profile = await db.query("SELECT * FROM profiles WHERE id = $1", [familyId]);
+  const personas = await db.query("SELECT * FROM personas WHERE profile_id = $1", [familyId]);
+  const channels = await db.query(
     "SELECT channel, channel_identifier FROM profile_channels WHERE profile_id = $1",
     [familyId],
   );
-  const messages = await pool.query(
+  const messages = await db.query(
     "SELECT * FROM messages WHERE profile_id = $1 ORDER BY created_at ASC",
     [familyId],
   );
-  const streamCards = await pool.query(
+  const streamCards = await db.query(
     "SELECT * FROM stream_cards WHERE family_id = $1 ORDER BY created_at ASC",
     [familyId],
   );
   // Stream-card edit history. The actions table records every state
   // transition (created/modified/dismissed/resolved); join in cards
   // owned by this family.
-  const cardActions = await pool.query(
+  const cardActions = await db.query(
     `SELECT a.* FROM actions a
        JOIN stream_cards c ON c.id = a.stream_card_id
       WHERE c.family_id = $1
@@ -80,42 +80,42 @@ async function gatherFamilyData(familyId: string): Promise<FamilyData> {
     [familyId],
   ).catch(() => ({ rows: [] as any[] })); // actions table may not be wired yet
 
-  const synthesisPages = await pool.query(
+  const synthesisPages = await db.query(
     "SELECT * FROM synthesis_pages WHERE family_id = $1 OR profile_id = $1",
     [familyId],
   );
   // Embeddings are regenerable; strip them to keep the JSON small and
   // human-readable. text + source + timestamps stay.
-  const contextEntries = await pool.query(
+  const contextEntries = await db.query(
     `SELECT id, profile_id, content, source, created_at, owner_profile_id, visibility
        FROM context_entries WHERE profile_id = $1 OR owner_profile_id = $1`,
     [familyId],
   ).catch(() => ({ rows: [] as any[] }));
 
-  const ledger = await pool.query(
+  const ledger = await db.query(
     `SELECT * FROM privacy_ledger WHERE family_id = $1 OR profile_id = $1
       ORDER BY created_at ASC`,
     [familyId],
   ).catch(() => ({ rows: [] as any[] }));
 
-  const twin = await pool.query(
+  const twin = await db.query(
     `SELECT id, entity_type, real_name, anonymous_label, detected_by, confirmed,
             first_seen_at, confirmed_at
        FROM entity_registry
       ORDER BY entity_type, anonymous_label`,
   );
 
-  const careStandards = await pool.query(
+  const careStandards = await db.query(
     `SELECT * FROM care_standards WHERE family_id = $1`,
     [familyId],
   ).catch(() => ({ rows: [] as any[] }));
 
-  const domainStates = await pool.query(
+  const domainStates = await db.query(
     `SELECT * FROM domain_states WHERE family_id = $1`,
     [familyId],
   ).catch(() => ({ rows: [] as any[] }));
 
-  const reflectionFindings = await pool.query(
+  const reflectionFindings = await db.query(
     `SELECT * FROM reflection_findings WHERE family_id = $1`,
     [familyId],
   ).catch(() => ({ rows: [] as any[] }));
@@ -230,12 +230,12 @@ export async function buildArticle20Export(familyId: string, actorProfileId?: st
 
   const stat = await fs.stat(zipPath);
 
-  await pool.query(
+  await db.query(
     `INSERT INTO export_log (family_id, actor_profile_id, data_hash, byte_count, category_counts)
      VALUES ($1, $2, $3, $4, $5)`,
     [familyId, actorProfileId ?? null, dataHash, stat.size, JSON.stringify(counts)],
   );
-  await pool.query(
+  await db.query(
     `INSERT INTO spaces_log (family_id, event, summary, actor_profile_id)
      VALUES ($1, 'exported', $2, $3)`,
     [familyId, `Article 20 export (${stat.size} bytes, hash ${dataHash.slice(0, 12)}…)`, actorProfileId ?? null],

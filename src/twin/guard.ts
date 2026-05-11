@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { translateToAnonymous } from './translator';
 
 /**
@@ -62,7 +62,7 @@ export function resetEntityNameCache(): void {
 export async function loadEntityNames(): Promise<string[]> {
   if (cache && Date.now() - cache.loadedAt < CACHE_TTL_MS) return cache.names;
   try {
-    const { rows } = await pool.query('SELECT real_name FROM entity_registry');
+    const { rows } = await db.query('SELECT real_name FROM entity_registry');
     const names = rows
       .map(r => (typeof r.real_name === 'string' ? r.real_name.trim() : ''))
       .filter(n => n.length > 1);
