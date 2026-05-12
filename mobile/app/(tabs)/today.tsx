@@ -24,6 +24,7 @@ import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import AIInsightCard from '../../components/AIInsightCard';
 import PushStatusBanner from '../../components/PushStatusBanner';
+import NewsFeed from '../../components/NewsFeed';
 import StreamCard from '../../components/StreamCard';
 import GradientButton from '../../components/GradientButton';
 
@@ -398,6 +399,14 @@ export default function TodayScreen() {
               />
             );
           })()}
+        </View>
+
+        {/* News feed — Google-Discover-shaped block of curated headlines.
+            Sources, location-driven regional matching, and refresh cadence
+            are all driven by the user's brief preferences. Pull-to-refresh
+            on the inner scroll; "More news" expands per-source from 3 → 8. */}
+        <View style={styles.section}>
+          <NewsFeed />
         </View>
 
         {/* Calendar strip */}

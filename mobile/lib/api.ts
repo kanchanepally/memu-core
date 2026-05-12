@@ -400,6 +400,29 @@ export async function updateBriefPreferences(patch: BriefPreferencesPatch) {
   });
 }
 
+// Structured news feed — Today screen + PWA news block. Same source list
+// as the briefing (per profile prefs); typed items with thumbnails + links.
+export interface NewsItem {
+  id: string;
+  title: string;
+  url: string;
+  sourceId: string;
+  sourceLabel: string;
+  thumbnailUrl?: string;
+  publishedAt?: string;
+}
+
+export interface NewsFeedPayload {
+  items: NewsItem[];
+  fetchedAt: string;
+  sources: Array<{ id: string; label: string; count: number }>;
+}
+
+export async function getNewsFeed(perSourceMax?: number) {
+  const query = perSourceMax ? `?perSourceMax=${perSourceMax}` : '';
+  return request<NewsFeedPayload>(`/api/news${query}`);
+}
+
 // Onboarding — conversational seed-context flow.
 //
 // Mobile screens (people, rhythm, focus, preview, channels) call these to

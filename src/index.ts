@@ -15,6 +15,7 @@ import { generateBriefingText, generateProactiveSynthesis, pushMorningBriefingTo
 import { getTokensForProfile, sendPush } from './channels/mobile';
 import { getBriefPreferences, updateBriefPreferences } from './preferences/brief';
 import { geocodePlace, listAvailableNewsSources } from './intelligence/ambient';
+import { fetchNewsFeed } from './intelligence/news';
 import {
   getOnboardingState, recordStep, markComplete,
   type OnboardingStep, ONBOARDING_STEP_ORDER, nextPendingStep, isComplete,
@@ -1141,6 +1142,31 @@ server.get('/api/preferences/brief', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to load brief preferences' });
+  }
+});
+
+// Structured news feed for the Today screen + PWA. Same source list as
+// the morning briefing (per profile prefs) but returns typed NewsItem[]
+// with thumbnails + links instead of the plain-string briefing format.
+// `?perSourceMax=` overrides default 3 (used by the "More news" expand).
+server.get('/api/news', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const query = (request.query || {}) as { perSourceMax?: string };
+    const perSourceMax = query.perSourceMax
+      ? Math.min(10, Math.max(1, parseInt(query.perSourceMax, 10) || 3))
+      : 3;
+    const prefs = await getBriefPreferences(profileId);
+    const feed = await fetchNewsFeed({
+      sourceIds: prefs.newsSources,
+      placeName: prefs.location?.placeName,
+      perSourceMax,
+    });
+    return feed;
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load news feed' });
   }
 });
 

@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-sidebar-split">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-news-feed">
 </head>
 <body>
 <!-- Auth gate -->
@@ -174,6 +174,30 @@ async function api(path, opts = {}) {
     <section class="today-section">
         <div class="today-section-label">Today's schedule</div>
         <div id="calendar-section" class="calendar-strip"></div>
+    </section>
+
+    <!-- News feed — Google-Discover-shaped, populated by loadNewsFeed()
+         calling /api/news. Sources + location-driven regional matching are
+         driven by the user's brief preferences. Refresh icon top-right;
+         "More news" expand at the bottom. Tap a card → article in a new
+         tab. Empty / error / loading states all rendered inline. -->
+    <section class="today-section">
+        <div class="news-section-head">
+            <div>
+                <div class="today-section-label">News</div>
+                <div class="news-refreshed-at" id="news-refreshed-at"></div>
+            </div>
+            <button class="news-refresh-btn" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+            </button>
+        </div>
+        <div id="news-feed" class="news-feed">
+            <div class="news-loading">Pulling today's headlines…</div>
+        </div>
+        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()">
+            <span id="news-more-label">More news</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" id="news-more-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
     </section>
 
     <!-- Stream — cards from briefing / extraction / reflection. Section
@@ -878,7 +902,7 @@ function switchTab(tab) {
     // Auto-close sidebar on mobile after a tab tap so the canvas is visible
     if (isMobileViewport()) closeSidebar();
     // Load data on tab switch
-    if (tab === 'today') { loadBrief(); loadSynthesis(); }
+    if (tab === 'today') { loadBrief(); loadSynthesis(); loadNewsFeed(); }
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
     if (tab === 'lists') loadLists();
@@ -941,6 +965,114 @@ async function loadSynthesis() {
         }
     } catch (err) {
         bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
+    }
+}
+
+// News feed — Google-Discover-shaped block on Today. State held in a
+// small `newsState` blob so refresh + expand toggle share it.
+let newsState = { expanded: false, loading: false };
+
+async function loadNewsFeed() {
+    if (newsState.loading) return;
+    newsState.loading = true;
+    const feedEl = document.getElementById('news-feed');
+    const moreBtn = document.getElementById('news-more-btn');
+    const refreshedEl = document.getElementById('news-refreshed-at');
+    if (!feedEl) { newsState.loading = false; return; }
+
+    // Only show the "loading" placeholder when the feed is empty — on a
+    // refresh of an already-populated feed we leave the existing cards in
+    // place to avoid a jarring flash.
+    if (!feedEl.querySelector('.news-card')) {
+        feedEl.innerHTML = '<div class="news-loading">Pulling today\'s headlines…</div>';
+    }
+
+    try {
+        const perSource = newsState.expanded ? 8 : 3;
+        const res = await api(`/api/news?perSourceMax=${perSource}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const items = data.items || [];
+        if (items.length === 0) {
+            feedEl.innerHTML = '<div class="news-empty">No news right now. Pick more sources in <a href="#" onclick="switchTab(\'settings\');return false;">Settings → Your morning brief</a>.</div>';
+            if (moreBtn) moreBtn.classList.add('hidden');
+        } else {
+            feedEl.innerHTML = items.map(renderNewsCard).join('');
+            if (moreBtn) moreBtn.classList.remove('hidden');
+        }
+        if (refreshedEl && data.fetchedAt) {
+            refreshedEl.textContent = 'Refreshed ' + formatRelative(data.fetchedAt);
+        }
+    } catch (err) {
+        feedEl.innerHTML = '<div class="news-error" onclick="loadNewsFeed()">Couldn\'t load news. Tap to retry.</div>';
+        if (moreBtn) moreBtn.classList.add('hidden');
+    } finally {
+        newsState.loading = false;
+    }
+}
+
+function renderNewsCard(item) {
+    const tint = newsSourceTint(item.sourceId);
+    const thumb = item.thumbnailUrl
+        ? `<img class="news-card-thumb" src="${esc(item.thumbnailUrl)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="news-card-fallback" style="background:${tint};display:none;">${esc(item.sourceLabel.charAt(0).toUpperCase())}</span>`
+        : `<span class="news-card-fallback" style="background:${tint};">${esc(item.sourceLabel.charAt(0).toUpperCase())}</span>`;
+    const time = item.publishedAt ? ` · ${formatRelative(item.publishedAt)}` : '';
+    return `<a class="news-card" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">
+        <div class="news-card-thumb-wrap">${thumb}</div>
+        <div class="news-card-copy">
+            <div class="news-card-title">${esc(item.title)}</div>
+            <div class="news-card-meta">${esc(item.sourceLabel)}${time}</div>
+        </div>
+    </a>`;
+}
+
+function newsSourceTint(sourceId) {
+    switch (sourceId) {
+        case 'bbc-news': return '#B91C1C';
+        case 'bbc-tech': return '#7C2D12';
+        case 'guardian-uk': return '#1E3A8A';
+        case 'hacker-news': return '#EA580C';
+        case 'devon-live': return '#166534';
+        case 'plymouth-live': return '#0E7490';
+        default: return '#645A7A';
+    }
+}
+
+function refreshNewsFeed() {
+    // Pull-style refresh — re-fetch even if already populated.
+    const btn = document.getElementById('news-refresh-btn');
+    if (btn) btn.classList.add('news-refresh-spinning');
+    loadNewsFeed().finally(() => {
+        if (btn) btn.classList.remove('news-refresh-spinning');
+    });
+}
+
+function toggleNewsFeedExpanded() {
+    newsState.expanded = !newsState.expanded;
+    const label = document.getElementById('news-more-label');
+    const chev = document.getElementById('news-more-chevron');
+    if (label) label.textContent = newsState.expanded ? 'Show fewer' : 'More news';
+    if (chev) chev.innerHTML = newsState.expanded
+        ? '<polyline points="6 15 12 9 18 15"/>'
+        : '<polyline points="6 9 12 15 18 9"/>';
+    loadNewsFeed();
+}
+
+function formatRelative(iso) {
+    try {
+        const d = new Date(iso);
+        const diffMs = Date.now() - d.getTime();
+        if (diffMs < 0) return 'just now';
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'just now';
+        if (diffMin < 60) return diffMin + 'm ago';
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return diffHr + 'h ago';
+        const diffDay = Math.floor(diffHr / 24);
+        if (diffDay < 7) return diffDay + 'd ago';
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch {
+        return '';
     }
 }
 
