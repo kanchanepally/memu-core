@@ -183,6 +183,17 @@ WHERE c.status = 'active'
 -- The application code change shipped in the same PR as 028 enforces
 -- this; the constraint here is the defence in depth.
 
+-- Force the two circular DEFERRABLE INITIALLY DEFERRED FKs (collectives →
+-- profiles, profiles → collectives) to validate NOW instead of at COMMIT.
+-- Without this, the backfill INSERTs/UPDATEs above leave pending deferred
+-- trigger events on `profiles`, and the SET NOT NULL ALTER below fails
+-- with "cannot ALTER TABLE because it has pending trigger events" (SQLSTATE
+-- 55006 — observed on Hareesh's Z2 standalone deploy 2026-05-12). After
+-- this statement runs the deferred checks have fired; the FKs continue
+-- to be deferrable for future bootstrap-time transactions but the queue
+-- is empty so ALTER TABLE can proceed.
+SET CONSTRAINTS ALL IMMEDIATE;
+
 ALTER TABLE profiles
   ALTER COLUMN collective_id SET NOT NULL;
 
