@@ -991,6 +991,39 @@ textarea.input {
 .news-more-btn:hover {
   background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
 }
+
+/* ─── Thinking pill (Fix 4 — status ticker, 2026-05-12) ────────────────── */
+
+.thinking-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin: 6px 0 6px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 90, 122, 0.25);
+  background: rgba(100, 90, 122, 0.08);
+  color: var(--indigo-tertiary, #645A7A);
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 500;
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+.thinking-pill svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+.thinking-pill-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
+}
 .sidebar-conversation-row {
   display: flex;
   flex-direction: column;

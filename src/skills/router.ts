@@ -85,7 +85,32 @@ export interface DispatchInput {
    * ToolCallLogEntry per `server_tool_use` block for telemetry / footer.
    */
   serverTools?: ClaudeServerSideTool[];
+
+  /**
+   * Optional progress hook for streaming surfaces (Fix 4 — status ticker).
+   * Fired at key pipeline moments so the SSE endpoint can render
+   * "Routing through Gemini Flash…", "Searching the web…", etc. live in
+   * the chat UI instead of leaving the user in 30-90s of silence. Pure
+   * fire-and-forget — never await, never throw.
+   */
+  onProgress?: (event: DispatchProgressEvent) => void;
 }
+
+/**
+ * Progress events emitted from the dispatch tool loop.
+ *
+ *   - 'routing'      → fired once at the start with the resolved provider/model
+ *   - 'tool_use'     → fired before each local tool execution (findSpaces,
+ *                      addToList, createSpace, updateSpace, addCalendarEvent)
+ *                      and after a Claude turn that invoked a server-side
+ *                      tool (web_search). The tool name matches what shows
+ *                      up in the footer caption at the end of the reply.
+ *
+ * The orchestrator wraps these into SSE writes for the streaming endpoint.
+ */
+export type DispatchProgressEvent =
+  | { type: 'routing'; provider: string; model: string }
+  | { type: 'tool_use'; tool: string };
 
 export interface ToolCallLogEntry {
   name: string;
@@ -113,6 +138,21 @@ export interface DispatchResult {
 // web_search → reply can chain across many turns. Env-tunable so we can
 // dial it on Tier-1 hosted without rebuilding the image.
 const MAX_TOOL_ITERATIONS = parseMaxIterationsFromEnv();
+
+// Safe wrapper for the optional progress callback. Caller code can be
+// async / can throw; we don't want a buggy SSE writer to crash the
+// dispatch pipeline. Fire-and-forget swallow.
+function emitProgress(
+  cb: ((event: DispatchProgressEvent) => void) | undefined,
+  event: DispatchProgressEvent,
+): void {
+  if (!cb) return;
+  try {
+    cb(event);
+  } catch (err) {
+    console.warn('[ROUTER] onProgress threw — ignored:', err instanceof Error ? err.message : err);
+  }
+}
 function parseMaxIterationsFromEnv(): number {
   const raw = process.env.MEMU_MAX_TOOL_ITERATIONS;
   if (!raw) return 10;
@@ -553,6 +593,20 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
       let dummy = false;
       const toolCalls: ToolCallLogEntry[] = [];
 
+      // Status ticker — emit once at start so the chat UI can render
+      // "Routing through Gemini Flash, UK side" before the first LLM call
+      // returns (which can be slow when web_search is involved).
+      emitProgress(input.onProgress, {
+        type: 'routing',
+        provider: plan.provider,
+        model: plan.concreteModel,
+      });
+
+      // Track server-side tools we've already announced to the UI so we
+      // don't emit "searched the web" twice if Claude searches in two
+      // consecutive iterations.
+      const announcedServerTools = new Set<string>();
+
       for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
         const result = await callClaude({
           model: plan.concreteModel,
@@ -574,7 +628,18 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
         // ToolCallLogEntry so the orchestrator's footer can surface
         // "searched the web". Done every iteration — server-side calls
         // can fire on any iteration, not just the last.
+        const beforeCount = toolCalls.length;
         collectServerToolCalls(result.content, toolCalls);
+        // Status ticker — for each newly-seen server tool (e.g. webSearch),
+        // emit one tool_use event. The UI's pill copy maps the name to
+        // friendly variant text ("Cross-checking the web…").
+        for (let i = beforeCount; i < toolCalls.length; i++) {
+          const name = toolCalls[i].name;
+          if (!announcedServerTools.has(name)) {
+            announcedServerTools.add(name);
+            emitProgress(input.onProgress, { type: 'tool_use', tool: name });
+          }
+        }
 
         if (!hasLocalTools || result.stopReason !== 'tool_use' || result.dummy) {
           break;
@@ -589,6 +654,11 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
 
         const toolResults: ClaudeContentBlock[] = [];
         for (const call of toolUses) {
+          // Emit BEFORE the local tool fires so the UI pill morphs to the
+          // right caption while the tool runs (findSpaces / addToList /
+          // createSpace / updateSpace / addCalendarEvent).
+          emitProgress(input.onProgress, { type: 'tool_use', tool: call.name });
+
           const def = tools![call.name];
           let execResult: ToolExecutionResult;
           if (!def) {

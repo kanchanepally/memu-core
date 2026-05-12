@@ -423,6 +423,132 @@ export async function getNewsFeed(perSourceMax?: number) {
   return request<NewsFeedPayload>(`/api/news${query}`);
 }
 
+// ─── Streaming chat (Fix 4 — status ticker) ─────────────────────────────────
+//
+// /api/message/stream emits SSE events as the pipeline progresses (twin_check
+// / retrieving / routing / tool_use / synthesising / done). React Native's
+// older fetch implementations don't expose chunked streaming cleanly, so we
+// drive it via XMLHttpRequest.onprogress — each progress event delivers the
+// accumulated responseText, we track how much we've parsed and emit complete
+// SSE frames to the caller.
+
+export type StreamEvent =
+  | { name: 'twin_check'; data: Record<string, unknown> }
+  | { name: 'retrieving'; data: Record<string, unknown> }
+  | { name: 'routing'; data: { provider?: string; model?: string } }
+  | { name: 'tool_use'; data: { tool?: string } }
+  | { name: 'synthesising'; data: Record<string, unknown> }
+  | { name: 'done'; data: { response?: string } }
+  | { name: 'error'; data: { error?: string } };
+
+export interface StreamHandle {
+  /** Cancel the underlying XHR; further events will not fire. */
+  cancel: () => void;
+}
+
+export function sendMessageStreaming(
+  content: string,
+  layer: Visibility,
+  onEvent: (event: StreamEvent) => void,
+  onError: (message: string) => void,
+): StreamHandle {
+  let cancelled = false;
+  const xhr = new XMLHttpRequest();
+  let lastParsedLength = 0;
+
+  // Detach this so a sync throw inside getConfig doesn't escape — XHR isn't
+  // promise-shaped, so we resolve config asynchronously and kick off the
+  // request once we have it.
+  (async () => {
+    const auth = await loadAuthState();
+    const baseUrl = auth.serverUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3100';
+    const apiKey = auth.apiKey;
+    if (cancelled) return;
+
+    xhr.open('POST', `${baseUrl}/api/message/stream`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('ngrok-skip-browser-warning', 'true');
+    if (apiKey) xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
+
+    xhr.onprogress = () => {
+      if (cancelled) return;
+      const fresh = xhr.responseText.slice(lastParsedLength);
+      lastParsedLength = xhr.responseText.length;
+      const events = parseSseChunks(fresh);
+      for (const ev of events) {
+        if (cancelled) return;
+        onEvent(ev);
+      }
+    };
+    xhr.onerror = () => {
+      if (cancelled) return;
+      onError('Network error');
+    };
+    xhr.onload = () => {
+      if (cancelled) return;
+      // Flush any tail that didn't trigger an onprogress event (rare —
+      // most platforms fire onprogress for the last chunk too, but be
+      // defensive).
+      const fresh = xhr.responseText.slice(lastParsedLength);
+      lastParsedLength = xhr.responseText.length;
+      const events = parseSseChunks(fresh);
+      for (const ev of events) onEvent(ev);
+      // 4xx/5xx — surface as error if not already.
+      if (xhr.status >= 400) {
+        onError(`Server returned ${xhr.status}`);
+      }
+    };
+
+    xhr.send(JSON.stringify({ content, visibility: layer }));
+  })().catch(err => {
+    if (!cancelled) onError(err instanceof Error ? err.message : 'Connect failed');
+  });
+
+  return {
+    cancel: () => {
+      cancelled = true;
+      try { xhr.abort(); } catch { /* swallow */ }
+    },
+  };
+}
+
+// Split an SSE chunk into event objects. SSE frames are separated by a
+// blank line; each frame has an optional `event:` line and one or more
+// `data:` lines. We support both single-line and multi-line data.
+function parseSseChunks(raw: string): StreamEvent[] {
+  // SSE frames terminate on a blank line. Buffer remainder across calls
+  // would be ideal — but XHR.responseText is cumulative and we already
+  // dedupe by `lastParsedLength`. So we just split on \n\n here; partial
+  // frames at the tail will be picked up on the next onprogress when the
+  // blank-line separator arrives.
+  const frames = raw.split('\n\n');
+  const out: StreamEvent[] = [];
+  for (const frame of frames) {
+    if (!frame.trim()) continue;
+    let eventName = 'message';
+    const dataLines: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trim());
+      } else if (line.startsWith(':')) {
+        // Keep-alive comment — ignore.
+      }
+    }
+    if (dataLines.length === 0) continue;
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(dataLines.join('\n'));
+    } catch {
+      // Malformed data line — skip.
+      continue;
+    }
+    out.push({ name: eventName, data } as StreamEvent);
+  }
+  return out;
+}
+
 // Onboarding — conversational seed-context flow.
 //
 // Mobile screens (people, rhythm, focus, preview, channels) call these to

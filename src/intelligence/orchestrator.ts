@@ -96,13 +96,45 @@ async function getOrCreateConversation(profileId: string): Promise<string> {
 }
 
 // Shared pipeline for both WhatsApp and mobile app
+/**
+ * Progress event from the intelligence pipeline.
+ *
+ *   - 'twin_check'   → Twin guard about to anonymise the prompt
+ *   - 'retrieving'   → synthesis + embedding retrieval starting
+ *   - 'routing'      → LLM provider selected (forwarded from dispatch)
+ *   - 'tool_use'     → a tool fired mid-turn (forwarded from dispatch)
+ *   - 'synthesising' → final response synthesis after tool loop
+ *   - 'done'         → response ready
+ *
+ * Optional callback consumed by the SSE endpoint (Fix 4 — status ticker).
+ * Pure fire-and-forget — never awaited, errors swallowed.
+ */
+export type PipelineProgressEvent =
+  | { type: 'twin_check' }
+  | { type: 'retrieving' }
+  | { type: 'routing'; provider: string; model: string }
+  | { type: 'tool_use'; tool: string }
+  | { type: 'synthesising' }
+  | { type: 'done' };
+
+export interface PipelineOptions {
+  onProgress?: (event: PipelineProgressEvent) => void;
+}
+
 export async function processIntelligencePipeline(
   profileId: string,
   content: string,
   channel: string,
   messageId: string = 'unknown',
   visibility: Visibility = 'family',
+  options: PipelineOptions = {},
 ): Promise<string> {
+  const onProgress = options.onProgress;
+  const emit = (event: PipelineProgressEvent) => {
+    if (!onProgress) return;
+    try { onProgress(event); } catch { /* swallow */ }
+  };
+  emit({ type: 'twin_check' });
   // 0. Novel-entity detection — register any unseen proper nouns so step 1
   // can anonymise them on the subsequent pass. Fire-and-forget safe: on
   // failure the function logs + returns [], and the regex translator proceeds
@@ -131,6 +163,7 @@ export async function processIntelligencePipeline(
   // catalogue matching pull from compiled Spaces; we only fall back to
   // embedding recall when nothing else fits. Everything coming back is
   // run through the Twin before it reaches the LLM.
+  emit({ type: 'retrieving' });
   const retrieval = await retrieveForQuery({
     familyId: profileId,
     viewerProfileId: profileId,
@@ -212,7 +245,12 @@ export async function processIntelligencePipeline(
       channel,
       messageId,
     },
+    // Forward router-level progress (routing, tool_use) to the pipeline
+    // consumer so the streaming endpoint can keep the user informed.
+    onProgress: onProgress ? (ev) => emit(ev) : undefined,
   });
+  // After the dispatch tool loop exits, the response is the final synthesis.
+  emit({ type: 'synthesising' });
   const claudeResponse = dispatchResult.text;
   if (dispatchResult.toolCalls && dispatchResult.toolCalls.length > 0) {
     const summary = dispatchResult.toolCalls
@@ -313,6 +351,7 @@ export async function processIntelligencePipeline(
     console.error('[SYNTHESIS] Background synthesis update failed:', err);
   });
 
+  emit({ type: 'done' });
   return realResponse;
 }
 

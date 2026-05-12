@@ -343,6 +343,102 @@ server.post('/api/message', async (request, reply) => {
   }
 });
 
+/**
+ * Streaming chat — Server-Sent Events variant of /api/message.
+ *
+ * The blocking POST endpoint can sit silent for 30-90 seconds when Claude
+ * runs a multi-iteration tool loop with web_search. This streams progress
+ * events back as the pipeline moves through Twin guard / retrieval /
+ * routing / tool calls / synthesis, so the chat UI can render a live
+ * "thinking pill" instead of a black-box spinner. Final reply is delivered
+ * on the `done` event.
+ *
+ * Event types:
+ *   twin_check    — { } — Twin guard about to anonymise
+ *   retrieving    — { } — pulling Spaces + embeddings
+ *   routing       — { provider, model } — LLM provider selected
+ *   tool_use      — { tool } — a tool fired (webSearch, findSpaces, …)
+ *   synthesising  — { } — tool loop done; final response synthesis
+ *   done          — { response } — full text ready
+ *   error         — { error } — pipeline failed
+ *
+ * Client picks copy variants for each event ("Cross-checking the web…",
+ * "Pulling what I know about Robin", etc.) — the server returns
+ * structural events only.
+ */
+server.post('/api/message/stream', async (request, reply) => {
+  const body = request.body as any;
+  if (!body || !body.content) return reply.code(400).send({ error: 'Content required' });
+
+  const profileId = (request as any).profileId;
+  if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+
+  // SSE setup. Take over the raw response — Fastify reply.hijack()
+  // releases the framework's serialisation so we can write chunked events.
+  reply.raw.setHeader('Content-Type', 'text/event-stream');
+  reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+  reply.raw.setHeader('Connection', 'keep-alive');
+  reply.raw.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+  reply.hijack();
+  reply.raw.flushHeaders();
+
+  const sse = (eventName: string, payload: Record<string, unknown>) => {
+    try {
+      reply.raw.write(`event: ${eventName}\n`);
+      reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch (err) {
+      // Client may have disconnected mid-stream — fine, just stop writing.
+    }
+  };
+
+  // Keep-alive comment every 15s so intermediaries / proxies don't close
+  // the connection during a slow tool loop (web_search can take 20+ s).
+  const keepAlive = setInterval(() => {
+    try { reply.raw.write(': ping\n\n'); } catch { /* swallow */ }
+  }, 15000);
+
+  // Client disconnect → cancel keepAlive. Pipeline runs to completion so
+  // any side effects (Space writes, list inserts) still persist; we just
+  // stop writing events to a closed socket.
+  let aborted = false;
+  request.raw.on('close', () => { aborted = true; clearInterval(keepAlive); });
+
+  try {
+    const messageId = `mobile-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const visibility = body.visibility === 'personal' ? 'personal' : 'family';
+
+    const responseText = await processIntelligencePipeline(
+      profileId,
+      body.content,
+      'mobile',
+      messageId,
+      visibility,
+      {
+        onProgress: (event) => {
+          if (aborted) return;
+          // 'done' fires from the pipeline; we add the response payload at
+          // the endpoint boundary (the pipeline doesn't carry the final
+          // text into its event shape).
+          if (event.type === 'done') return; // handled after the await
+          sse(event.type, event as Record<string, unknown>);
+        },
+      },
+    );
+
+    if (!aborted) {
+      sse('done', { response: responseText });
+    }
+  } catch (err) {
+    server.log.error(err);
+    if (!aborted) {
+      sse('error', { error: err instanceof Error ? err.message : 'Pipeline failed' });
+    }
+  } finally {
+    clearInterval(keepAlive);
+    try { reply.raw.end(); } catch { /* swallow */ }
+  }
+});
+
 // Chat Vision API — caller sends a base64 image + optional caption. The
 // vision skill extracts stream cards and we return a human-readable summary
 // for the chat bubble.

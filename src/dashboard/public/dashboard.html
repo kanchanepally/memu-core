@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-news-feed">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-thinking-pill">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1683,40 +1683,189 @@ async function sendMessage() {
     chatSend.disabled = true;
     chatSending = true;
 
-    // Typing indicator
-    const typing = document.createElement('div');
-    typing.className = 'typing-indicator';
-    typing.id = 'typing';
-    typing.textContent = 'Memu is thinking...';
-    chatMessages.appendChild(typing);
+    // Thinking pill (Fix 4 — status ticker). Replaces the static
+    // "Memu is thinking…" indicator with a live pill that morphs as the
+    // SSE stream emits pipeline events. We surface what Memu is doing in
+    // real time so the user doesn't sit through 30-90s of silence on a
+    // web_search turn (which used to look like "Network error").
+    const pill = document.createElement('div');
+    pill.className = 'thinking-pill';
+    pill.id = 'thinking-pill';
+    pill.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="thinking-pill-text">Thinking…</span>`;
+    chatMessages.appendChild(pill);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    try {
-        const res = await api('/api/message', {
-            method: 'POST',
-            body: JSON.stringify({ content: text }),
-        });
-        if (!res.ok) {
-            console.error('[chat] /api/message returned non-OK', res.status, await res.text().catch(() => ''));
-            document.getElementById('typing')?.remove();
-            addChatMessage(`Memu replied with ${res.status}. Check the server.`, false);
-            return;
+    // 15s slow-warning timer.
+    let slowTimer = setTimeout(() => {
+        const node = document.getElementById('thinking-pill');
+        if (node) {
+            const txt = node.querySelector('.thinking-pill-text');
+            if (txt) txt.textContent = "Still on it — this one's worth getting right";
         }
-        const data = await res.json();
-        document.getElementById('typing')?.remove();
-        addChatMessage(data.response || 'No response received.', false);
-    } catch (err) {
-        console.error('[chat] /api/message failed', err);
-        document.getElementById('typing')?.remove();
-        addChatMessage('Something went wrong. Check your connection.', false);
-    } finally {
+    }, 15000);
+
+    let finalised = false;
+    const finalise = (memuText, isError) => {
+        if (finalised) return;
+        finalised = true;
+        clearTimeout(slowTimer);
+        document.getElementById('thinking-pill')?.remove();
+        addChatMessage(memuText, false);
         chatSending = false;
         chatSend.disabled = !chatInput.value.trim();
         chatInput.focus();
-        // Refresh the conversations panel so a brand-new thread appears,
-        // and an existing thread floats to the top with its new last-active
-        // timestamp. Fire-and-forget; UI doesn't block on this.
         loadConversations().catch(() => {});
+    };
+
+    try {
+        await streamPwaChat(text, (event) => {
+            const node = document.getElementById('thinking-pill');
+            if (!node) return;
+            const txt = node.querySelector('.thinking-pill-text');
+            const iconEl = node.querySelector('svg');
+            const apply = (label, icon) => {
+                if (txt) txt.textContent = label;
+                if (iconEl && icon) iconEl.innerHTML = icon;
+            };
+            switch (event.name) {
+                case 'twin_check':
+                    apply('Anonymising before I send this off', PILL_ICONS.shield);
+                    break;
+                case 'retrieving':
+                    apply('Reading your Spaces', PILL_ICONS.folder);
+                    break;
+                case 'routing': {
+                    const provider = event.data?.provider || 'the model';
+                    const friendly = pwaProviderLabel(provider);
+                    apply(`Through ${friendly}, UK side`, PILL_ICONS.route);
+                    break;
+                }
+                case 'tool_use': {
+                    const tool = event.data?.tool || 'a tool';
+                    apply(pwaToolLabel(tool), PILL_ICONS[pwaToolIcon(tool)] || PILL_ICONS.cog);
+                    break;
+                }
+                case 'synthesising':
+                    apply('Pulling it together', PILL_ICONS.pen);
+                    break;
+                case 'done':
+                    finalise(event.data?.response || 'No response received.', false);
+                    break;
+                case 'error':
+                    finalise(`Couldn't reach Memu: ${event.data?.error || 'unknown error'}`, true);
+                    break;
+            }
+        }, (errMsg) => {
+            finalise(`Couldn't reach Memu: ${errMsg}`, true);
+        });
+    } catch (err) {
+        console.error('[chat] stream failed', err);
+        finalise('Something went wrong. Check your connection.', true);
+    }
+}
+
+// SSE pill catalogue — small inline SVGs as innerHTML strings so we can
+// swap them per stage without re-rendering the wrapping pill node.
+const PILL_ICONS = {
+    shield: '<path d="M12 2l9 4v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V6l9-4z"/><path d="M9 12l2 2 4-4"/>',
+    folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+    route: '<polyline points="3 11 12 4 21 11"/><path d="M5 10v10h14V10"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+    list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    document: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    cog: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+};
+
+function pwaProviderLabel(provider) {
+    switch (provider) {
+        case 'anthropic': return 'Claude';
+        case 'gemini': return 'Gemini Flash';
+        case 'deepseek': return 'DeepSeek';
+        case 'ollama': return 'a local model';
+        default: return provider || 'the model';
+    }
+}
+
+function pwaToolLabel(tool) {
+    switch (tool) {
+        case 'webSearch':
+        case 'web_search': return 'Cross-checking the web';
+        case 'findSpaces': return 'Searching your Spaces';
+        case 'addToList': return 'Adding to your list';
+        case 'createSpace': return 'Creating a new Space';
+        case 'updateSpace': return 'Updating your Space';
+        case 'addCalendarEvent': return 'Adding to your calendar';
+        default: return `Working with ${tool}`;
+    }
+}
+
+function pwaToolIcon(tool) {
+    switch (tool) {
+        case 'webSearch':
+        case 'web_search': return 'search';
+        case 'findSpaces': return 'folder';
+        case 'addToList': return 'list';
+        case 'createSpace':
+        case 'updateSpace': return 'document';
+        case 'addCalendarEvent': return 'calendar';
+        default: return 'cog';
+    }
+}
+
+// Stream SSE from /api/message/stream via fetch + ReadableStream. Each
+// completed frame (separated by a blank line) is parsed and fed to onEvent.
+// Uses the same `auth` global as the api() helper so credentials are shared.
+async function streamPwaChat(content, onEvent, onError) {
+    let res;
+    try {
+        res = await fetch(auth.serverUrl + '/api/message/stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + auth.apiKey,
+            },
+            body: JSON.stringify({ content }),
+        });
+    } catch (err) {
+        onError(err.message || 'Network error');
+        return;
+    }
+    if (!res.ok || !res.body) {
+        onError(`Server returned ${res.status}`);
+        return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    while (true) {
+        let chunk;
+        try {
+            chunk = await reader.read();
+        } catch (err) {
+            onError('Stream interrupted');
+            return;
+        }
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        // SSE frames separated by blank line. Process complete frames and
+        // keep the trailing partial in the buffer.
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() || '';
+        for (const frame of frames) {
+            if (!frame.trim()) continue;
+            let eventName = 'message';
+            const dataLines = [];
+            for (const line of frame.split('\n')) {
+                if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+            }
+            if (dataLines.length === 0) continue;
+            let data;
+            try { data = JSON.parse(dataLines.join('\n')); } catch { continue; }
+            onEvent({ name: eventName, data });
+        }
     }
 }
 
