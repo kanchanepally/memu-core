@@ -1,5 +1,5 @@
 import { google, calendar_v3 } from 'googleapis';
-import { db } from '../../db/tenant';
+import { db, enterCollectiveContext } from '../../db/tenant';
 import { startOfDay, endOfDay } from 'date-fns';
 
 const OAUTH2_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -38,19 +38,41 @@ export async function handleGoogleCallback(code: string, profileId: string): Pro
 
   oauth2Client.setCredentials(tokens);
   const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-  
+
   // Get user's email to use as channel_identifier
   const res = await calendar.calendars.get({ calendarId: 'primary' });
   const email = res.data.id || 'unknown@calendar.google.com';
 
-  // Store credentials securely in profile_channels (upsert on profile/channel)
-  await db.query(
-    `INSERT INTO profile_channels (profile_id, channel, channel_identifier, credentials)
-     VALUES ($1, 'google_calendar', $2, $3)
-     ON CONFLICT (profile_id, channel) 
-     DO UPDATE SET credentials = EXCLUDED.credentials, channel_identifier = EXCLUDED.channel_identifier`,
-    [profileId, email, JSON.stringify(tokens)]
+  // The Google OAuth callback is registered as unauthenticated (the caller
+  // is Google's redirect, the user is identified by the state parameter
+  // that round-trips profileId). That means requireCollective never ran, so
+  // there's no AsyncLocalStorage tenant context — and profile_channels has
+  // `collective_id NOT NULL DEFAULT current_setting('memu.collective_id')`,
+  // which resolves to NULL without context.
+  //
+  // Two-step fix: look up the profile's collective_id with the unscoped
+  // helper (profiles is Tier-C, no RLS on collective_id), then enter that
+  // context so the INSERT's default fires correctly. Surfaced 2026-05-12
+  // evening when Hareesh tried to reconnect after the OAuth token expired.
+  const profRes = await db.queryWithoutTenant<{ collective_id: string }>(
+    'SELECT collective_id FROM profiles WHERE id = $1',
+    [profileId],
   );
+  const collectiveId = profRes.rows[0]?.collective_id;
+  if (!collectiveId) {
+    throw new Error(`Profile ${profileId} has no collective_id — cannot link Google Calendar`);
+  }
+
+  await enterCollectiveContext(collectiveId, async () => {
+    // Store credentials securely in profile_channels (upsert on profile/channel).
+    await db.query(
+      `INSERT INTO profile_channels (profile_id, channel, channel_identifier, credentials)
+       VALUES ($1, 'google_calendar', $2, $3)
+       ON CONFLICT (profile_id, channel)
+       DO UPDATE SET credentials = EXCLUDED.credentials, channel_identifier = EXCLUDED.channel_identifier`,
+      [profileId, email, JSON.stringify(tokens)]
+    );
+  });
 
   return email;
 }
