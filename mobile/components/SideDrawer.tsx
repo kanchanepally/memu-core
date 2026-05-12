@@ -7,7 +7,7 @@ import {
   Animated,
   Dimensions,
   Pressable,
-  ScrollView,
+  FlatList,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -29,6 +29,7 @@ type Destination = {
   path: string;
 };
 
+// Primary nav — the surfaces the user opens daily.
 const PRIMARY: Destination[] = [
   { label: 'Chat', icon: 'chatbubble-outline', iconActive: 'chatbubble', path: '/(tabs)/chat' },
   { label: 'Today', icon: 'sunny-outline', iconActive: 'sunny', path: '/(tabs)/today' },
@@ -37,6 +38,8 @@ const PRIMARY: Destination[] = [
   { label: 'Lists', icon: 'list-outline', iconActive: 'list', path: '/(tabs)/lists' },
 ];
 
+// Secondary nav — less-frequent surfaces. Settings sits under a divider so
+// the eye groups it apart from the daily flow.
 const SECONDARY: Destination[] = [
   { label: 'Settings', icon: 'settings-outline', iconActive: 'settings', path: '/(tabs)/settings' },
 ];
@@ -61,6 +64,20 @@ function formatConvDate(iso: string | null): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+/**
+ * Two-region drawer.
+ *
+ * Top region (fixed height): all primary nav + divider + secondary nav (Settings).
+ * Always visible — no matter how many conversations accumulate.
+ *
+ * Bottom region (flex: 1, scrolls independently): "Conversations" label +
+ * "New chat" button (pinned) + scrolling FlatList of conversations.
+ *
+ * Before this restructure the conversations rendered inline under the
+ * Chat nav row in a single ScrollView, so 30+ threads pushed Settings
+ * off-screen (visible in the 2026-05-12 screenshot). The split keeps menu
+ * discoverable while giving conversation history its own scroll context.
+ */
 export default function SideDrawer() {
   const { open, hide } = useDrawer();
   const router = useRouter();
@@ -71,12 +88,6 @@ export default function SideDrawer() {
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
 
-  // Reload conversations whenever the drawer opens — regardless of which
-  // section is currently active. Conversations are a navigation surface
-  // available from any tab, so the list should be fresh whenever the user
-  // opens the drawer (e.g. from Today, Spaces) — not only when they're
-  // already on Chat. The list itself is only RENDERED under the Chat row
-  // (chatActive ternary below).
   const reloadConversations = useCallback(async () => {
     const { data } = await listConversations();
     if (data?.conversations) setConversations(data.conversations);
@@ -115,7 +126,43 @@ export default function SideDrawer() {
     setTimeout(() => router.push('/(tabs)/chat?new=1' as any), 120);
   }, [hide, router]);
 
-  const chatActive = isChatActive(pathname);
+  const renderNavRow = (dest: Destination) => {
+    const active = isActive(pathname, dest);
+    return (
+      <Pressable
+        key={dest.path}
+        onPress={() => navigate(dest.path)}
+        style={({ pressed }) => [
+          styles.row,
+          active && styles.rowActive,
+          pressed && styles.rowPressed,
+        ]}
+      >
+        <Ionicons
+          name={active ? dest.iconActive : dest.icon}
+          size={20}
+          color={active ? colors.primary : colors.onSurfaceVariant}
+        />
+        <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
+          {dest.label}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  const renderConversation = useCallback(({ item }: { item: ConversationSummary }) => (
+    <Pressable
+      onPress={() => openConversation(item.id)}
+      style={({ pressed }) => [styles.conversationRow, pressed && styles.rowPressed]}
+    >
+      <Text style={styles.conversationTitle} numberOfLines={1}>
+        {item.title || 'New conversation'}
+      </Text>
+      <Text style={styles.conversationDate}>
+        {formatConvDate(item.lastMessageAt || item.startedAt)}
+      </Text>
+    </Pressable>
+  ), [openConversation]);
 
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={hide}>
@@ -125,101 +172,53 @@ export default function SideDrawer() {
         </Animated.View>
 
         <Animated.View style={[styles.drawer, { transform: [{ translateX: translate }] }]}>
+          {/* Brand header — always at the top. */}
           <View style={styles.header}>
             <LogoMark size={36} />
             <Text style={styles.wordmark}>Memu</Text>
           </View>
 
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          {/* Top region — primary + secondary nav. Fixed height; never
+              scrolls regardless of how many conversations accumulate. */}
+          <View style={styles.navRegion}>
             <View style={styles.section}>
-              {PRIMARY.map(dest => {
-                const active = isActive(pathname, dest);
-                const isChatRow = dest.path === '/(tabs)/chat';
-                return (
-                  <React.Fragment key={dest.path}>
-                    <Pressable
-                      onPress={() => navigate(dest.path)}
-                      style={({ pressed }) => [
-                        styles.row,
-                        active && styles.rowActive,
-                        pressed && styles.rowPressed,
-                      ]}
-                    >
-                      <Ionicons
-                        name={active ? dest.iconActive : dest.icon}
-                        size={20}
-                        color={active ? colors.primary : colors.onSurfaceVariant}
-                      />
-                      <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
-                        {dest.label}
-                      </Text>
-                    </Pressable>
-
-                    {/* Conversations nested under Chat — only visible when
-                        Chat is the active section. New chat button at top,
-                        scrollable conversations list below. */}
-                    {isChatRow && chatActive ? (
-                      <View style={styles.chatChildren}>
-                        <Pressable
-                          onPress={startNewConversation}
-                          style={({ pressed }) => [styles.newChatRow, pressed && styles.rowPressed]}
-                        >
-                          <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
-                          <Text style={styles.newChatLabel}>New chat</Text>
-                        </Pressable>
-                        {conversations.length === 0 ? (
-                          <Text style={styles.emptyConversations}>No conversations yet.</Text>
-                        ) : (
-                          conversations.slice(0, 30).map(c => (
-                            <Pressable
-                              key={c.id}
-                              onPress={() => openConversation(c.id)}
-                              style={({ pressed }) => [styles.conversationRow, pressed && styles.rowPressed]}
-                            >
-                              <Text style={styles.conversationTitle} numberOfLines={1}>
-                                {c.title || 'New conversation'}
-                              </Text>
-                              <Text style={styles.conversationDate}>
-                                {formatConvDate(c.lastMessageAt || c.startedAt)}
-                              </Text>
-                            </Pressable>
-                          ))
-                        )}
-                      </View>
-                    ) : null}
-                  </React.Fragment>
-                );
-              })}
+              {PRIMARY.map(renderNavRow)}
             </View>
-
             <View style={styles.divider} />
-
             <View style={styles.section}>
-              {SECONDARY.map(dest => {
-                const active = isActive(pathname, dest);
-                return (
-                  <Pressable
-                    key={dest.path}
-                    onPress={() => navigate(dest.path)}
-                    style={({ pressed }) => [
-                      styles.row,
-                      active && styles.rowActive,
-                      pressed && styles.rowPressed,
-                    ]}
-                  >
-                    <Ionicons
-                      name={active ? dest.iconActive : dest.icon}
-                      size={20}
-                      color={active ? colors.primary : colors.onSurfaceVariant}
-                    />
-                    <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
-                      {dest.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+              {SECONDARY.map(renderNavRow)}
             </View>
-          </ScrollView>
+          </View>
+
+          {/* Bottom region — conversations. Section label + pinned New
+              chat button + FlatList that takes the remaining height and
+              scrolls on its own. */}
+          <View style={styles.conversationsRegion}>
+            <View style={styles.conversationsHeader}>
+              <Text style={styles.conversationsLabel}>Conversations</Text>
+              <Pressable
+                onPress={startNewConversation}
+                style={({ pressed }) => [styles.newChatBtn, pressed && styles.rowPressed]}
+                accessibilityLabel="Start new chat"
+              >
+                <Ionicons name="add" size={16} color={colors.primary} />
+                <Text style={styles.newChatLabel}>New</Text>
+              </Pressable>
+            </View>
+
+            {conversations.length === 0 ? (
+              <Text style={styles.emptyConversations}>No conversations yet.</Text>
+            ) : (
+              <FlatList
+                data={conversations}
+                keyExtractor={c => c.id}
+                renderItem={renderConversation}
+                style={styles.conversationsList}
+                contentContainerStyle={styles.conversationsListContent}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -247,6 +246,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 12,
     elevation: 12,
+    // Layout: header + navRegion fixed at top, conversationsRegion fills
+    // the remaining vertical space.
+    display: 'flex',
+    flexDirection: 'column',
   },
   header: {
     flexDirection: 'row',
@@ -261,13 +264,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.headline,
     letterSpacing: typography.tracking.tight,
   },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: spacing.lg },
+  navRegion: {
+    // Fixed natural height — no flex so it doesn't grow.
+  },
   section: { gap: 2 },
   divider: {
     height: 1,
     backgroundColor: colors.surfaceVariant,
-    marginVertical: spacing.md,
+    marginVertical: spacing.sm,
     marginHorizontal: spacing.sm,
   },
   row: {
@@ -294,30 +298,50 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.bodyBold,
   },
 
-  // ---- Conversations nested under Chat ----
-  chatChildren: {
-    marginLeft: spacing.lg,
-    paddingLeft: spacing.sm,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.surfaceVariant,
-    marginBottom: spacing.sm,
-    gap: 2,
+  // ---- Bottom region — independently-scrolling conversation history ----
+  conversationsRegion: {
+    flex: 1,
+    marginTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceVariant,
+    paddingTop: spacing.sm,
+    minHeight: 0, // critical: lets FlatList shrink/scroll inside flex parent
   },
-  newChatRow: {
+  conversationsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: 6,
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
+    paddingVertical: 6,
+  },
+  conversationsLabel: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+  },
+  newChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
   },
   newChatLabel: {
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.bodyMedium,
     color: colors.primary,
   },
+  conversationsList: {
+    flex: 1,
+  },
+  conversationsListContent: {
+    paddingBottom: spacing.lg,
+  },
   conversationRow: {
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.sm,
   },
@@ -333,7 +357,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyConversations: {
-    paddingVertical: 6,
+    paddingVertical: 12,
     paddingHorizontal: spacing.sm,
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.body,

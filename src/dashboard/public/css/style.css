@@ -807,47 +807,61 @@ textarea.input {
    Chat
    ========================================================================== */
 
-/* Conversations list nested under the Chat sidebar nav item. Replaces the
-   prior three-column shell (sidebar + chat-history-column + canvas) with
-   a strict two-column layout: sidebar (carrying the conversations when
-   chat is the active section) + canvas. Hidden when any other section
-   is active. */
-.sidebar-chat-children {
-  display: none;
-  flex-direction: column;
-  margin: var(--space-xs) 0 var(--space-sm) 22px;
-  padding-left: var(--space-sm);
-  border-left: 1px solid var(--border);
-  gap: 2px;
-}
-.sidebar-chat-children-open {
+/* Conversations region — bottom of the sidebar, beneath nav + Settings.
+   Sits in its own flex: 1 container so the conversation list takes the
+   remaining vertical space and scrolls independently. Always visible
+   (regardless of which tab is active) so history is one click away from
+   any surface. */
+.sidebar-conversations-region {
   display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;             /* critical: lets the inner list shrink + scroll */
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
 }
-.sidebar-new-chat-btn {
+.sidebar-conversations-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  padding: 4px var(--space-sm) 6px;
+}
+.sidebar-conversations-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.sidebar-new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill, 999px);
   color: var(--color-accent);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  text-align: left;
   cursor: pointer;
 }
 .sidebar-new-chat-btn:hover {
   background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
 }
 .sidebar-conversations-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 50vh;
+  flex: 1 1 auto;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 2px 4px var(--space-md) 0;
 }
+/* Back-compat aliases — older JS may still reference the legacy class names
+   (sidebar-chat-children + sidebar-chat-children-open). The HTML now uses
+   sidebar-conversations-region directly, but the old IDs are preserved so
+   switchTab()'s show/hide logic continues to work. The region is always
+   visible regardless of which class is applied. */
+.sidebar-chat-children { display: flex; }
+.sidebar-chat-children-open { display: flex; }
 .sidebar-conversation-row {
   display: flex;
   flex-direction: column;
@@ -1640,7 +1654,10 @@ textarea.input {
   width: 240px;
   flex-shrink: 0;
   height: 100vh;
-  overflow-y: auto;
+  /* The sidebar itself no longer scrolls — the conversations-region inside
+     it owns the scroll context. This keeps the primary nav + Settings
+     anchored regardless of how many threads accumulate. */
+  overflow: hidden;
   position: sticky;
   top: 0;
   transition: width 0.25s ease, padding 0.25s ease;

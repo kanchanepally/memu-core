@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-06-pwa-tdz-fix">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-sidebar-split">
 </head>
 <body>
 <!-- Auth gate -->
@@ -71,23 +71,14 @@ async function api(path, opts = {}) {
         </svg>
         <span class="sidebar-logo-text">Memu</span>
     </a>
+    <!-- Top region: primary + secondary nav. Fixed natural height. Conversations
+         do NOT live here any more — they had been pushing Settings off-screen
+         once 20+ threads accumulated. They now live in the bottom region. -->
     <nav class="sidebar-nav">
         <button class="sidebar-nav-item active" id="tab-chat" onclick="switchTab('chat')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span>Chat</span>
         </button>
-        <!-- Conversations list — nested under Chat nav item. Only rendered
-             when Chat is the active section. switchTab() toggles its
-             visibility. Populated by renderConversationsList(). -->
-        <div class="sidebar-chat-children sidebar-chat-children-open" id="sidebar-chat-children">
-            <button class="sidebar-new-chat-btn" onclick="startNewConversation()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
-                <span>New chat</span>
-            </button>
-            <div id="sidebar-conversations" class="sidebar-conversations-list">
-                <div class="sidebar-conversations-empty">No conversations yet.</div>
-            </div>
-        </div>
         <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
             <span>Today</span>
@@ -120,6 +111,23 @@ async function api(path, opts = {}) {
             <span>Settings</span>
         </button>
     </nav>
+
+    <!-- Bottom region: conversations. Section label + pinned New chat button,
+         then a flex: 1 scroll container so the list takes the remaining
+         sidebar height and scrolls on its own. Visible regardless of which
+         tab is currently active — conversation history is always reachable. -->
+    <div class="sidebar-conversations-region" id="sidebar-chat-children">
+        <div class="sidebar-conversations-head">
+            <span class="sidebar-conversations-label">Conversations</span>
+            <button class="sidebar-new-chat-btn" onclick="startNewConversation()" title="Start new chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+                <span>New</span>
+            </button>
+        </div>
+        <div id="sidebar-conversations" class="sidebar-conversations-list">
+            <div class="sidebar-conversations-empty">No conversations yet.</div>
+        </div>
+    </div>
 </aside>
 <main class="app-main">
 
@@ -847,10 +855,14 @@ function switchTab(tab) {
         document.getElementById('spaces-list-view')?.classList.remove('hidden');
         document.getElementById('spaces-detail-view')?.classList.add('hidden');
     }
-    // Sidebar conversations panel — visible only when Chat is the active
-    // section. The conversations list lives nested under the Chat nav item;
-    // collapses when any other section is active so the sidebar stays
-    // compact for Today / Spaces / Lists / etc.
+    // Sidebar conversations region — now always visible regardless of which
+    // section is active (Fix 2 — 2026-05-12). Previously nested under Chat
+    // and toggled by tab, which meant: (a) you couldn't reach a past chat
+    // from Today / Spaces / etc without first clicking Chat, and (b) when
+    // visible, the conversation list pushed Settings off-screen. Now it
+    // lives in its own flex: 1 region at the bottom of the sidebar with
+    // an independent scroll context. The class toggle is kept as a no-op
+    // for back-compat with any stale page state that might reference it.
     const chatChildren = document.getElementById('sidebar-chat-children');
     if (chatChildren) chatChildren.classList.toggle('sidebar-chat-children-open', tab === 'chat');
     // Update topbar title
