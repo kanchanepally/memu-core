@@ -12,8 +12,10 @@ import {
   executeAddToListAction, executeAddCalendarEventAction, executeUpdateSpaceAction, ackReplyDraftAction,
   completeCareStandard,
   getOnboardingState,
+  getPushDiagnostics,
   type BriefEvent, type StreamCard as StreamCardData, type StreamCardAction,
   type OnboardingStep,
+  type PushTokenSummary,
 } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { loadAuthState } from '../../lib/auth';
@@ -21,6 +23,7 @@ import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import AIInsightCard from '../../components/AIInsightCard';
+import PushStatusBanner from '../../components/PushStatusBanner';
 import StreamCard from '../../components/StreamCard';
 import GradientButton from '../../components/GradientButton';
 
@@ -60,7 +63,16 @@ export default function TodayScreen() {
   const [displayName, setDisplayName] = useState('');
   const [synthesis, setSynthesis] = useState<string | null>(null);
 
+  // Push status — surfaced as a banner above the hero so the user can verify
+  // notification delivery in two taps rather than four-deep in Settings.
+  const [pushTokens, setPushTokens] = useState<PushTokenSummary[]>([]);
+
   const todayHeader = useTodayHeader(displayName);
+
+  const loadPushStatus = useCallback(async () => {
+    const { data } = await getPushDiagnostics();
+    if (data) setPushTokens(data.tokens);
+  }, []);
 
   // Onboarding resume banner — shows when the user has not finished the
   // conversational seed flow. Tapping it sends them back to the next
@@ -109,17 +121,19 @@ export default function TodayScreen() {
       loadBrief();
       loadSynthesis();
       loadOnboardingBanner();
-    }, [loadBrief, loadSynthesis, loadOnboardingBanner])
+      loadPushStatus();
+    }, [loadBrief, loadSynthesis, loadOnboardingBanner, loadPushStatus])
   );
 
   useEffect(() => {
     loadBrief();
     loadSynthesis();
     loadOnboardingBanner();
+    loadPushStatus();
     loadAuthState().then(auth => {
       if (auth.displayName) setDisplayName(auth.displayName);
     });
-  }, [loadBrief, loadSynthesis, loadOnboardingBanner]);
+  }, [loadBrief, loadSynthesis, loadOnboardingBanner, loadPushStatus]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -335,6 +349,12 @@ export default function TodayScreen() {
             <Ionicons name="chevron-forward" size={16} color={colors.outline} />
           </Pressable>
         ) : null}
+
+        {/* Push status banner — shown when notifications aren't set up yet
+            (loud, CTA-shaped) and when they are (subtle, with a one-tap test).
+            Sits just above the hero so the lock-screen brief gate is visible
+            the moment Today opens. */}
+        <PushStatusBanner tokens={pushTokens} onTokensChange={setPushTokens} />
 
         {/* Hero: AI synthesis. The backend gates Sonnet behind a data-availability
             check (briefing.ts isFullyEmpty), so `synthesis` arrives as null

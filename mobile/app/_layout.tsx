@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, AppState, StyleSheet, type AppStateStatus } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Manrope_300Light, Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -57,10 +57,32 @@ export default function RootLayout() {
     }
   }, [isReady, isAuthenticated, segments, fontsLoaded]);
 
-  // Register for push notifications once the user is signed in.
+  // Register for push notifications once the user is signed in, and re-register
+  // when the app returns to the foreground if it's been more than 24h since the
+  // last attempt. Expo push tokens can rotate (OS-driven, especially Android),
+  // so without periodic refresh the server holds a stale token and the morning
+  // brief lands at the void. AppState-driven retry keeps it warm without a
+  // background task.
+  const lastPushRegistrationRef = useRef<number>(0);
   useEffect(() => {
     if (!isAuthenticated) return;
-    registerForPushNotifications().catch(() => {});
+
+    const maybeRegister = () => {
+      const now = Date.now();
+      const ageMs = now - lastPushRegistrationRef.current;
+      if (ageMs < 24 * 60 * 60 * 1000) return; // already registered within 24h
+      lastPushRegistrationRef.current = now;
+      registerForPushNotifications().catch(() => {});
+    };
+
+    // Fire immediately on auth.
+    maybeRegister();
+
+    // Re-check on foreground.
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') maybeRegister();
+    });
+    return () => sub.remove();
   }, [isAuthenticated]);
 
   // Deep-link when a notification is tapped. Two paths:
