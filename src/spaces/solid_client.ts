@@ -10,8 +10,8 @@
  *   - Tier-2 wizard discovers a family member already has a Pod elsewhere
  *     and wants to keep it as the source of truth for their personal Spaces.
  *     Memu fetches and caches; never overwrites.
- *   - Cross-household sharing (Story 3.4): one household publishes a
- *     Space; another household's Memu fetches it via WebID-based ACP.
+ *   - Cross-collective sharing (Story 3.4): one collective publishes a
+ *     Space; another collective's Memu fetches it via WebID-based ACP.
  *
  * What this is NOT:
  *   - A general RDF/Turtle parser. We parse JSON-LD natively (it's just

@@ -359,6 +359,217 @@ export async function sendTestPush() {
   });
 }
 
+// Brief preferences — per-profile customisation of the morning briefing.
+// Backed by profiles.brief_preferences JSONB (migration 030).
+export interface BriefLocation {
+  lat: number;
+  lon: number;
+  placeName: string;
+}
+
+export interface BriefPreferences {
+  location?: BriefLocation;
+  newsSources: string[];
+  topics: string[];
+  thinkingPromptEnabled: boolean;
+}
+
+export interface NewsSourceOption {
+  id: string;
+  label: string;
+}
+
+export async function getBriefPreferences() {
+  return request<{ preferences: BriefPreferences; availableSources: NewsSourceOption[] }>(
+    '/api/preferences/brief',
+  );
+}
+
+export interface BriefPreferencesPatch {
+  placeName?: string;
+  location?: BriefLocation;
+  newsSources?: string[];
+  topics?: string[];
+  thinkingPromptEnabled?: boolean;
+}
+
+export async function updateBriefPreferences(patch: BriefPreferencesPatch) {
+  return request<{ preferences: BriefPreferences }>('/api/preferences/brief', {
+    method: 'POST',
+    body: JSON.stringify(patch),
+  });
+}
+
+// Structured news feed — Today screen + PWA news block. Same source list
+// as the briefing (per profile prefs); typed items with thumbnails + links.
+export interface NewsItem {
+  id: string;
+  title: string;
+  url: string;
+  sourceId: string;
+  sourceLabel: string;
+  thumbnailUrl?: string;
+  publishedAt?: string;
+}
+
+export interface NewsFeedPayload {
+  items: NewsItem[];
+  fetchedAt: string;
+  sources: Array<{ id: string; label: string; count: number }>;
+}
+
+export async function getNewsFeed(perSourceMax?: number) {
+  const query = perSourceMax ? `?perSourceMax=${perSourceMax}` : '';
+  return request<NewsFeedPayload>(`/api/news${query}`);
+}
+
+// ─── Streaming chat (Fix 4 — status ticker) ─────────────────────────────────
+//
+// /api/message/stream emits SSE events as the pipeline progresses (twin_check
+// / retrieving / routing / tool_use / synthesising / done). React Native's
+// older fetch implementations don't expose chunked streaming cleanly, so we
+// drive it via XMLHttpRequest.onprogress — each progress event delivers the
+// accumulated responseText, we track how much we've parsed and emit complete
+// SSE frames to the caller.
+
+export type StreamEvent =
+  | { name: 'twin_check'; data: Record<string, unknown> }
+  | { name: 'retrieving'; data: Record<string, unknown> }
+  | { name: 'routing'; data: { provider?: string; model?: string } }
+  | { name: 'tool_use'; data: { tool?: string } }
+  | { name: 'synthesising'; data: Record<string, unknown> }
+  | { name: 'done'; data: { response?: string } }
+  | { name: 'error'; data: { error?: string } };
+
+export interface StreamHandle {
+  /** Cancel the underlying XHR; further events will not fire. */
+  cancel: () => void;
+}
+
+export function sendMessageStreaming(
+  content: string,
+  layer: Visibility,
+  onEvent: (event: StreamEvent) => void,
+  onError: (message: string) => void,
+): StreamHandle {
+  let cancelled = false;
+  const xhr = new XMLHttpRequest();
+  let lastParsedLength = 0;
+
+  // Detach this so a sync throw inside getConfig doesn't escape — XHR isn't
+  // promise-shaped, so we resolve config asynchronously and kick off the
+  // request once we have it.
+  (async () => {
+    const auth = await loadAuthState();
+    const baseUrl = auth.serverUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3100';
+    const apiKey = auth.apiKey;
+    if (cancelled) return;
+
+    xhr.open('POST', `${baseUrl}/api/message/stream`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('ngrok-skip-browser-warning', 'true');
+    if (apiKey) xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
+
+    xhr.onprogress = () => {
+      if (cancelled) return;
+      const fresh = xhr.responseText.slice(lastParsedLength);
+      lastParsedLength = xhr.responseText.length;
+      const events = parseSseChunks(fresh);
+      for (const ev of events) {
+        if (cancelled) return;
+        onEvent(ev);
+      }
+    };
+    xhr.onerror = () => {
+      if (cancelled) return;
+      onError('Network error');
+    };
+    xhr.onload = () => {
+      if (cancelled) return;
+      // Flush any tail that didn't trigger an onprogress event (rare —
+      // most platforms fire onprogress for the last chunk too, but be
+      // defensive).
+      const fresh = xhr.responseText.slice(lastParsedLength);
+      lastParsedLength = xhr.responseText.length;
+      const events = parseSseChunks(fresh);
+      for (const ev of events) onEvent(ev);
+      // 4xx/5xx — surface as error if not already.
+      if (xhr.status >= 400) {
+        onError(`Server returned ${xhr.status}`);
+      }
+    };
+
+    xhr.send(JSON.stringify({ content, visibility: layer }));
+  })().catch(err => {
+    if (!cancelled) onError(err instanceof Error ? err.message : 'Connect failed');
+  });
+
+  return {
+    cancel: () => {
+      cancelled = true;
+      try { xhr.abort(); } catch { /* swallow */ }
+    },
+  };
+}
+
+// ─── Capture nudges (Fix 5 — daytime prompts) ───────────────────────────────
+
+export interface CapturePrompt {
+  id: string;
+  notification: string;
+  question: string;
+  hint: string;
+}
+
+export async function getCapturePrompt(promptId?: string) {
+  const query = promptId ? `?promptId=${encodeURIComponent(promptId)}` : '';
+  return request<{ prompt: CapturePrompt }>(`/api/capture/prompt${query}`);
+}
+
+export async function submitCapture(payload: { promptId?: string; question?: string; answer: string }) {
+  return request<{ ok: boolean; acknowledgement: string }>('/api/capture', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// Split an SSE chunk into event objects. SSE frames are separated by a
+// blank line; each frame has an optional `event:` line and one or more
+// `data:` lines. We support both single-line and multi-line data.
+function parseSseChunks(raw: string): StreamEvent[] {
+  // SSE frames terminate on a blank line. Buffer remainder across calls
+  // would be ideal — but XHR.responseText is cumulative and we already
+  // dedupe by `lastParsedLength`. So we just split on \n\n here; partial
+  // frames at the tail will be picked up on the next onprogress when the
+  // blank-line separator arrives.
+  const frames = raw.split('\n\n');
+  const out: StreamEvent[] = [];
+  for (const frame of frames) {
+    if (!frame.trim()) continue;
+    let eventName = 'message';
+    const dataLines: string[] = [];
+    for (const line of frame.split('\n')) {
+      if (line.startsWith('event:')) {
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trim());
+      } else if (line.startsWith(':')) {
+        // Keep-alive comment — ignore.
+      }
+    }
+    if (dataLines.length === 0) continue;
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(dataLines.join('\n'));
+    } catch {
+      // Malformed data line — skip.
+      continue;
+    }
+    out.push({ name: eventName, data } as StreamEvent);
+  }
+  return out;
+}
+
 // Onboarding — conversational seed-context flow.
 //
 // Mobile screens (people, rhythm, focus, preview, channels) call these to
@@ -729,15 +940,15 @@ export async function deleteTwinEntity(id: string) {
 }
 
 // ==========================================
-// Household members + Pod grants (Story 3.4)
+// Collective members + Pod grants (Story 3.4)
 // ==========================================
 
 export type MemberStatus = 'invited' | 'active' | 'leaving' | 'left';
 export type LeavePolicy = 'retain_attributed' | 'anonymise' | 'remove';
 
-export interface HouseholdMember {
+export interface CollectiveMember {
   id: string;
-  householdAdminProfileId: string;
+  collectiveAdminProfileId: string;
   memberWebid: string;
   memberDisplayName: string;
   internalProfileId: string | null;
@@ -787,48 +998,48 @@ export interface SyncReport {
     | { kind: 'error'; reason: string; message: string };
 }
 
-export async function listHouseholdMembers(includeLeft = false) {
+export async function listCollectiveMembers(includeLeft = false) {
   const qs = includeLeft ? '?includeLeft=true' : '';
-  return request<{ members: HouseholdMember[] }>(`/api/households/members${qs}`);
+  return request<{ members: CollectiveMember[] }>(`/api/households/members${qs}`);
 }
 
-export async function inviteHouseholdMember(params: {
+export async function inviteCollectiveMember(params: {
   memberWebid: string;
   memberDisplayName: string;
   internalProfileId?: string | null;
   leavePolicyForEmergent?: LeavePolicy;
   gracePeriodDays?: number;
 }) {
-  return request<{ member: HouseholdMember }>('/api/households/members', {
+  return request<{ member: CollectiveMember }>('/api/households/members', {
     method: 'POST',
     body: JSON.stringify(params),
   });
 }
 
-export async function acceptHouseholdInvite(memberId: string) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/accept`, {
+export async function acceptCollectiveInvite(memberId: string) {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}/accept`, {
     method: 'POST',
   });
 }
 
-export async function leaveHousehold(
+export async function leaveCollective(
   memberId: string,
   opts: { policyOverride?: LeavePolicy; gracePeriodDaysOverride?: number } = {},
 ) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/leave`, {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}/leave`, {
     method: 'POST',
     body: JSON.stringify(opts),
   });
 }
 
-export async function cancelHouseholdLeave(memberId: string) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}/cancel-leave`, {
+export async function cancelCollectiveLeave(memberId: string) {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}/cancel-leave`, {
     method: 'POST',
   });
 }
 
-export async function removeHouseholdMember(memberId: string) {
-  return request<{ member: HouseholdMember }>(`/api/households/members/${memberId}`, {
+export async function removeCollectiveMember(memberId: string) {
+  return request<{ member: CollectiveMember }>(`/api/households/members/${memberId}`, {
     method: 'DELETE',
   });
 }

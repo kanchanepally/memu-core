@@ -39,7 +39,7 @@ import { detectAndRegisterNovelEntities } from '../twin/novel';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
 import { upsertSpace } from '../spaces/store';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { interactiveQueryTools, interactiveQueryServerTools } from './tools';
 import { formatToolSummaryFooter } from './toolSummary';
 
@@ -466,7 +466,7 @@ export async function processDocumentIngestion(
       const cardBody = await translateToReal(typeof sc.body === 'string' ? sc.body : '');
       if (cardTitle.trim().length === 0) continue;
       try {
-        await pool.query(
+        await db.query(
           `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [

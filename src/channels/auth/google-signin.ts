@@ -1,10 +1,12 @@
+import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { pool } from '../../db/connection';
+import { db, enterCollectiveContext } from '../../db/tenant';
 import { generateApiKey } from '../../auth';
 
 /**
  * Google Sign-In (OIDC) — verifies an ID token minted by Google on the mobile
- * client and maps it to a Memu profile. Single-tenant MVP: the first profile
+ * client and maps it to a Memu profile. Single-collective MVP: the first profile
  * in the DB is always returned, so web + mobile share the same data.
  *
  * Env:
@@ -53,7 +55,7 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdenti
  * Resolve a Google sign-in to a Memu profile. Multi-profile aware:
  *
  *   1. If a profile with this email already exists → return it. (Rach signs
- *      in on her own device → finds her profile that the household admin
+ *      in on her own device → finds her profile that the collective admin
  *      previously invited.)
  *
  *   2. Else if there's a primary profile with NO recorded email yet → adopt
@@ -63,9 +65,9 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdenti
  *   3. Else if the database is completely empty → create the primary profile
  *      from the Google identity. (First-boot.)
  *
- *   4. Otherwise → reject. The household has profiles, this email isn't one
+ *   4. Otherwise → reject. The collective has profiles, this email isn't one
  *      of them, and we don't auto-register strangers via Google sign-in. The
- *      household admin must explicitly invite via POST /api/profiles. This is
+ *      collective admin must explicitly invite via POST /api/profiles. This is
  *      the structural privacy boundary — sign-in is authentication, not a
  *      registration backdoor.
  */
@@ -77,10 +79,14 @@ export class GoogleSignInRejected extends Error {
 }
 
 export async function signInWithGoogle(identity: GoogleIdentity) {
-  // Step 1 — exact email match.
+  // Step 1 — exact email match. queryAsBootstrap so the Tier-B
+  // permissive policy on profiles allows the cross-collective lookup
+  // before any collective context is set. (Without bootstrap, this
+  // returns zero rows even though the row exists — the policy is
+  // strict by default.)
   if (identity.email) {
-    const byEmail = await pool.query(
-      'SELECT id, display_name, email, role, api_key, created_at FROM profiles WHERE email = $1 LIMIT 1',
+    const byEmail = await db.queryAsBootstrap(
+      'SELECT id, display_name, email, role, api_key, collective_id, created_at FROM profiles WHERE email = $1 LIMIT 1',
       [identity.email]
     );
     if (byEmail.rowCount && byEmail.rows[0]) {
@@ -89,13 +95,19 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
   }
 
   // Step 2 — adopt email onto primary if it has none yet.
-  const primary = await pool.query(
-    'SELECT id, display_name, email, role, api_key, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
+  const primary = await db.queryAsBootstrap(
+    'SELECT id, display_name, email, role, api_key, collective_id, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
   );
   if (primary.rowCount && primary.rows[0]) {
     const profile = primary.rows[0];
     if (!profile.email && identity.email) {
-      await pool.query('UPDATE profiles SET email = $1 WHERE id = $2', [identity.email, profile.id]);
+      // The UPDATE here is on the profile we just bootstrap-read.
+      // It still requires collective_id match in the FOR ALL policy's
+      // USING/WITH CHECK — but the collective IS this profile's own,
+      // so we enter that collective's context for the write.
+      await enterCollectiveContext(profile.collective_id, async () => {
+        await db.query('UPDATE profiles SET email = $1 WHERE id = $2', [identity.email, profile.id]);
+      });
       profile.email = identity.email;
       return profile;
     }
@@ -107,27 +119,59 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
     );
   }
 
-  // Step 3 — first boot: create the primary profile.
+  // Step 3 — first boot: create the primary profile + a fresh collective
+  // for it.
+  //
+  // Pre-Beta Stream 1: this is structurally the same flow as
+  // registerProfile()'s "no options.collectiveId" branch — create a
+  // collective ex nihilo, atomically with its first profile, dealing
+  // with the circular FK via deferred constraints (migration 026).
+  // Delegate to the same helper rather than duplicate the transaction
+  // shape. The 'detected_by' marker on the entity_registry self-row
+  // is the only thing that would differ from registerProfile's
+  // version, and a mismatch there isn't worth a bespoke transaction.
   const apiKey = generateApiKey();
-  const inserted = await pool.query(
-    `INSERT INTO profiles (display_name, email, role, api_key)
-       VALUES ($1, $2, 'adult', $3)
-     RETURNING id, display_name, email, role, api_key, created_at`,
-    [identity.name, identity.email, apiKey]
-  );
-  const profile = inserted.rows[0];
+  const collectiveId = crypto.randomUUID();
+  const collectiveName = (identity.name?.trim() || 'Household') + "'s household";
 
-  const personaId = `adult-${Date.now()}-${profile.id.slice(0, 4)}`;
-  await pool.query(
-    'INSERT INTO personas (id, profile_id, persona_label) VALUES ($1, $2, $3)',
-    [personaId, profile.id, `Adult-${profile.id.slice(0, 4)}`]
-  );
-  await pool.query(
-    `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by)
-       VALUES ('person', $1, $2, 'google_signin')
-     ON CONFLICT DO NOTHING`,
-    [identity.name.trim(), `Adult-${profile.id.slice(0, 4)}`]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('memu.collective_id', $1, true)", [collectiveId]);
 
-  return profile;
+    // Profile first (deferred FK lets it reference the not-yet-created collective).
+    const profileRes = await client.query(
+      `INSERT INTO profiles (display_name, email, role, api_key, collective_id)
+       VALUES ($1, $2, 'adult', $3, $4)
+       RETURNING id, display_name, email, role, api_key, collective_id, created_at`,
+      [identity.name, identity.email, apiKey, collectiveId],
+    );
+    const profile = profileRes.rows[0];
+
+    // Collective second (FK to profiles satisfied — profile exists now).
+    await client.query(
+      `INSERT INTO collectives (id, type, name, primary_admin_profile_id)
+       VALUES ($1, 'household', $2, $3)`,
+      [collectiveId, collectiveName, profile.id],
+    );
+
+    const personaId = `adult-${Date.now()}-${profile.id.slice(0, 4)}`;
+    await client.query(
+      'INSERT INTO personas (id, profile_id, persona_label, collective_id) VALUES ($1, $2, $3, $4)',
+      [personaId, profile.id, `Adult-${profile.id.slice(0, 4)}`, collectiveId],
+    );
+    await client.query(
+      `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by, collective_id)
+       VALUES ('person', $1, $2, 'google_signin', $3) ON CONFLICT DO NOTHING`,
+      [identity.name.trim(), `Adult-${profile.id.slice(0, 4)}`, collectiveId],
+    );
+
+    await client.query('COMMIT');
+    return profile;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

@@ -13,18 +13,18 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
-  listHouseholdMembers,
-  inviteHouseholdMember,
-  acceptHouseholdInvite,
-  leaveHousehold,
-  cancelHouseholdLeave,
-  removeHouseholdMember,
+  listCollectiveMembers,
+  inviteCollectiveMember,
+  acceptCollectiveInvite,
+  leaveCollective,
+  cancelCollectiveLeave,
+  removeCollectiveMember,
   listMemberGrants,
   recordMemberGrant,
   revokeMemberGrant,
   syncMemberGrantsNow,
   listCachedMemberSpaces,
-  type HouseholdMember,
+  type CollectiveMember,
   type PodGrant,
   type CachedExternalSpace,
   type LeavePolicy,
@@ -60,7 +60,7 @@ function daysUntil(value: string | null, now: Date = new Date()): number | null 
   return Math.ceil((t - now.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-function statusBadge(status: HouseholdMember['status']): { label: string; tone: 'neutral' | 'warn' | 'danger' | 'ok' } {
+function statusBadge(status: CollectiveMember['status']): { label: string; tone: 'neutral' | 'warn' | 'danger' | 'ok' } {
   switch (status) {
     case 'invited':
       return { label: 'Invited', tone: 'neutral' };
@@ -73,17 +73,17 @@ function statusBadge(status: HouseholdMember['status']): { label: string; tone: 
   }
 }
 
-export default function HouseholdScreen() {
+export default function CollectiveScreen() {
   const router = useRouter();
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
+  const [members, setMembers] = useState<CollectiveMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [includeLeft, setIncludeLeft] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [memberOpen, setMemberOpen] = useState<HouseholdMember | null>(null);
+  const [memberOpen, setMemberOpen] = useState<CollectiveMember | null>(null);
 
   const load = useCallback(async () => {
-    const res = await listHouseholdMembers(includeLeft);
+    const res = await listCollectiveMembers(includeLeft);
     if (res.data) setMembers(res.data.members);
     setLoading(false);
   }, [includeLeft]);
@@ -241,7 +241,7 @@ function InviteModal({
       return;
     }
     setSaving(true);
-    const res = await inviteHouseholdMember({
+    const res = await inviteCollectiveMember({
       memberWebid: trimmedWebid,
       memberDisplayName: trimmedName,
       leavePolicyForEmergent: policy,
@@ -341,7 +341,7 @@ function MemberDetailModal({
   onClose,
   onChanged,
 }: {
-  member: HouseholdMember | null;
+  member: CollectiveMember | null;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -382,7 +382,7 @@ function MemberDetailModal({
 
   const handleAccept = async () => {
     setBusy(true);
-    const res = await acceptHouseholdInvite(member.id);
+    const res = await acceptCollectiveInvite(member.id);
     setBusy(false);
     if (res.error) {
       Alert.alert('Could not accept', res.error);
@@ -403,7 +403,7 @@ function MemberDetailModal({
           style: 'destructive',
           onPress: async () => {
             setBusy(true);
-            const res = await leaveHousehold(member.id);
+            const res = await leaveCollective(member.id);
             setBusy(false);
             if (res.error) {
               Alert.alert('Could not initiate leave', res.error);
@@ -419,7 +419,7 @@ function MemberDetailModal({
 
   const handleCancelLeave = async () => {
     setBusy(true);
-    const res = await cancelHouseholdLeave(member.id);
+    const res = await cancelCollectiveLeave(member.id);
     setBusy(false);
     if (res.error) {
       Alert.alert('Could not cancel', res.error);
@@ -440,7 +440,7 @@ function MemberDetailModal({
           style: 'destructive',
           onPress: async () => {
             setBusy(true);
-            const res = await removeHouseholdMember(member.id);
+            const res = await removeCollectiveMember(member.id);
             setBusy(false);
             if (res.error) {
               Alert.alert('Could not remove', res.error);

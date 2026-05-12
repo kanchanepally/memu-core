@@ -1,5 +1,5 @@
 import { google, calendar_v3 } from 'googleapis';
-import { pool } from '../../db/connection';
+import { db } from '../../db/tenant';
 import { startOfDay, endOfDay } from 'date-fns';
 
 const OAUTH2_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -44,7 +44,7 @@ export async function handleGoogleCallback(code: string, profileId: string): Pro
   const email = res.data.id || 'unknown@calendar.google.com';
 
   // Store credentials securely in profile_channels (upsert on profile/channel)
-  await pool.query(
+  await db.query(
     `INSERT INTO profile_channels (profile_id, channel, channel_identifier, credentials)
      VALUES ($1, 'google_calendar', $2, $3)
      ON CONFLICT (profile_id, channel) 
@@ -59,7 +59,7 @@ import { addDays } from 'date-fns';
 
 export async function fetchUpcomingEvents(profileId: string): Promise<calendar_v3.Schema$Event[]> {
   // 1. Get token from DB
-  const res = await pool.query(`SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
+  const res = await db.query(`SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
   
   // If calendar isn't connected, return empty array seamlessly
   if (res.rows.length === 0) return [];
@@ -102,7 +102,7 @@ export type InsertEventResult =
   | { ok: false; reason: 'not_connected' | 'insufficient_scope' | 'invalid_time' | 'api_error'; message: string };
 
 export async function insertCalendarEvent(profileId: string, input: InsertEventInput): Promise<InsertEventResult> {
-  const res = await pool.query(
+  const res = await db.query(
     `SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`,
     [profileId],
   );
@@ -151,7 +151,7 @@ export async function insertCalendarEvent(profileId: string, input: InsertEventI
 }
 
 export async function createGoogleCalendarEvent(profileId: string, summary: string, dateStr: string): Promise<boolean> {
-  const res = await pool.query(`SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
+  const res = await db.query(`SELECT credentials FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
   if (res.rows.length === 0) return false;
   
   const tokens = res.rows[0].credentials;

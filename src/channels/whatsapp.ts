@@ -3,7 +3,6 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { handleIncomingMessage } from '../intelligence/orchestrator';
 import qrcode from 'qrcode-terminal';
-import { pool } from '../db/connection';
 
 // Silent logger for Baileys to avoid polluting console with connection spam
 const logger = pino({ level: 'silent' });

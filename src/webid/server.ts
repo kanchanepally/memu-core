@@ -17,7 +17,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 // the API surface we touch (get/head/log) is stable across both shapes, so
 // we accept `any` here and rely on the route handlers' own typing.
 type AnyFastify = any;
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { getProfileByApiKey } from '../auth';
 import {
   serializeTurtle,
@@ -37,7 +37,7 @@ interface ProfileRow {
 }
 
 async function loadProfileBySlug(slug: string): Promise<ProfileRow | null> {
-  const res = await pool.query<ProfileRow>(
+  const res = await db.query<ProfileRow>(
     `SELECT id, display_name, webid_slug, role, email, updated_at
        FROM profiles
       WHERE webid_slug = $1
@@ -48,7 +48,7 @@ async function loadProfileBySlug(slug: string): Promise<ProfileRow | null> {
 }
 
 async function loadProfileById(id: string): Promise<ProfileRow | null> {
-  const res = await pool.query<ProfileRow>(
+  const res = await db.query<ProfileRow>(
     `SELECT id, display_name, webid_slug, role, email, updated_at
        FROM profiles
       WHERE id = $1

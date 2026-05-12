@@ -19,7 +19,7 @@
  */
 
 import crypto from 'crypto';
-import { pool } from '../db/connection';
+import { db, enterCollectiveContext } from '../db/tenant';
 import { dispatch } from '../skills/router';
 import { getCatalogue, renderCatalogueForPrompt, type CatalogueEntry } from '../spaces/catalogue';
 import { findSpaceByUri } from '../spaces/store';
@@ -48,7 +48,7 @@ const CARD_TYPE_BY_KIND: Record<FindingKind, string> = {
 };
 
 async function reflectionEnabled(familyId: string): Promise<boolean> {
-  const res = await pool.query<{ reflection_enabled: boolean }>(
+  const res = await db.query<{ reflection_enabled: boolean }>(
     `SELECT reflection_enabled FROM family_settings WHERE family_id = $1`,
     [familyId],
   );
@@ -57,10 +57,29 @@ async function reflectionEnabled(familyId: string): Promise<boolean> {
 }
 
 async function listFamilyIds(): Promise<string[]> {
-  const res = await pool.query<{ family_id: string }>(
-    `SELECT DISTINCT family_id FROM synthesis_pages`,
+  // Pre-Beta Stream 1 — synthesis_pages has RLS so a tenant-context-less
+  // query returns zero rows. Query collectives instead (Tier-C, no RLS)
+  // and return primary_admin_profile_id, which is what existing callers
+  // pass downstream as `familyId` in WHERE family_id = $1 clauses.
+  const res = await db.queryWithoutTenant<{ primary_admin_profile_id: string }>(
+    `SELECT primary_admin_profile_id FROM collectives WHERE status = 'active'`,
   );
-  return res.rows.map(r => r.family_id);
+  return res.rows.map(r => r.primary_admin_profile_id);
+}
+
+/**
+ * Pre-Beta Stream 1 — list (collective_id, primary_admin_profile_id)
+ * pairs for cron iteration. Each collective needs its own RLS context;
+ * the primary_admin_profile_id remains the value used as `family_id`
+ * in WHERE clauses inside per-family operations (the `family_id =
+ * primary admin profile_id` legacy convention is still in the columns,
+ * RLS just adds the collective_id filter).
+ */
+async function listHouseholdsForCron(): Promise<Array<{ collectiveId: string; familyId: string }>> {
+  const res = await db.queryWithoutTenant<{ id: string; primary_admin_profile_id: string }>(
+    `SELECT id, primary_admin_profile_id FROM collectives WHERE status = 'active'`,
+  );
+  return res.rows.map(r => ({ collectiveId: r.id, familyId: r.primary_admin_profile_id }));
 }
 
 /**
@@ -75,7 +94,7 @@ async function loadRecentActivity(familyId: string, cadence: Cadence): Promise<s
   };
   const window = windows[cadence];
 
-  const cards = await pool.query(
+  const cards = await db.query(
     `SELECT card_type, title, body, created_at
        FROM stream_cards
       WHERE family_id = $1
@@ -84,7 +103,7 @@ async function loadRecentActivity(familyId: string, cadence: Cadence): Promise<s
       LIMIT 50`,
     [familyId],
   );
-  const logs = await pool.query(
+  const logs = await db.query(
     `SELECT event, summary, created_at
        FROM spaces_log
       WHERE family_id = $1
@@ -126,13 +145,13 @@ async function persistFinding(
 
   const hash = findingHash(finding.kind, finding.title, finding.space_refs);
 
-  const existing = await pool.query(
+  const existing = await db.query(
     `SELECT stream_card_id FROM reflection_findings
       WHERE family_id = $1 AND finding_hash = $2`,
     [familyId, hash],
   );
   if (existing.rows.length > 0) {
-    await pool.query(
+    await db.query(
       `UPDATE reflection_findings SET last_seen_at = NOW()
         WHERE family_id = $1 AND finding_hash = $2`,
       [familyId, hash],
@@ -164,7 +183,7 @@ async function persistFinding(
         { label: 'Not relevant', type: 'dismiss' },
       ];
 
-  const cardRes = await pool.query<{ id: string }>(
+  const cardRes = await db.query<{ id: string }>(
     `INSERT INTO stream_cards (family_id, card_type, title, body, source, actions)
      VALUES ($1, $2, $3, $4, 'proactive', $5)
      RETURNING id`,
@@ -178,7 +197,7 @@ async function persistFinding(
   );
   const cardId = cardRes.rows[0].id;
 
-  await pool.query(
+  await db.query(
     `INSERT INTO reflection_findings (family_id, finding_hash, cadence, kind, stream_card_id)
      VALUES ($1, $2, $3, $4, $5)`,
     [familyId, hash, cadence, finding.kind, cardId],
@@ -259,18 +278,18 @@ export async function runStandardsCheck(familyId: string): Promise<{ checked: nu
     const title = `${standard.description} is overdue`;
     const body = describeLapse(standard);
     const hash = findingHash('unfinished_business', title, [standard.id]);
-    const existing = await pool.query(
+    const existing = await db.query(
       `SELECT 1 FROM reflection_findings WHERE family_id = $1 AND finding_hash = $2`,
       [familyId, hash],
     );
     if (existing.rows.length > 0) {
-      await pool.query(
+      await db.query(
         `UPDATE reflection_findings SET last_seen_at = NOW() WHERE family_id = $1 AND finding_hash = $2`,
         [familyId, hash],
       );
       continue;
     }
-    const cardRes = await pool.query<{ id: string }>(
+    const cardRes = await db.query<{ id: string }>(
       `INSERT INTO stream_cards (family_id, card_type, title, body, source, actions)
        VALUES ($1, 'care_standard_lapsed', $2, $3, 'proactive', $4)
        RETURNING id`,
@@ -284,7 +303,7 @@ export async function runStandardsCheck(familyId: string): Promise<{ checked: nu
         ]),
       ],
     );
-    await pool.query(
+    await db.query(
       `INSERT INTO reflection_findings (family_id, finding_hash, cadence, kind, stream_card_id)
        VALUES ($1, $2, 'daily', 'unfinished_business', $3)`,
       [familyId, hash, cardRes.rows[0].id],
@@ -396,11 +415,17 @@ export async function runPerMessageReflection(familyId: string, touched: Space):
 }
 
 export async function runReflectionForAllFamilies(cadence: Cadence): Promise<ReflectionResult[]> {
-  const families = await listFamilyIds();
+  const collectives = await listHouseholdsForCron();
   const results: ReflectionResult[] = [];
-  for (const familyId of families) {
+  for (const { collectiveId, familyId } of collectives) {
     try {
-      results.push(await runReflection(cadence, familyId));
+      // Pre-Beta Stream 1 — enter the collective context so RLS-gated
+      // queries inside runReflection actually return this collective's
+      // data. familyId stays as the legacy primary-admin-profile-id
+      // value used in WHERE family_id = $1 filters.
+      results.push(
+        await enterCollectiveContext(collectiveId, () => runReflection(cadence, familyId)),
+      );
     } catch (err) {
       console.error(`[REFLECTION] ${cadence} pass failed for family ${familyId}:`, err);
     }
@@ -445,11 +470,13 @@ export async function runDailyMaintenance(familyId: string): Promise<DailyMainte
 }
 
 export async function runDailyMaintenanceForAllFamilies(): Promise<DailyMaintenanceResult[]> {
-  const families = await listFamilyIds();
+  const collectives = await listHouseholdsForCron();
   const results: DailyMaintenanceResult[] = [];
-  for (const familyId of families) {
+  for (const { collectiveId, familyId } of collectives) {
     try {
-      results.push(await runDailyMaintenance(familyId));
+      results.push(
+        await enterCollectiveContext(collectiveId, () => runDailyMaintenance(familyId)),
+      );
     } catch (err) {
       console.error(`[MAINTENANCE] daily maintenance failed for family ${familyId}:`, err);
     }

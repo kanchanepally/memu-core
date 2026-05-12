@@ -19,12 +19,14 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  sendMessage, sendVision, sendDocument, getChatHistory,
+  sendMessageStreaming, sendVision, sendDocument, getChatHistory,
   type ChatMessageSpaceRef,
   type Visibility,
+  type StreamHandle,
 } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
+import ThinkingPill, { type PillStage } from '../../components/ThinkingPill';
 import { useToast } from '../../components/Toast';
 
 interface Message {
@@ -329,6 +331,28 @@ export default function ChatScreen() {
     }
   }, [sending, takePhoto, pickFromLibrary, pickDocument]);
 
+  // Streaming send (Fix 4 — status ticker).
+  //
+  // /api/message/stream emits SSE events as the pipeline runs. We drive a
+  // small state machine for the "thinking pill" so the user sees Memu's
+  // current step in real time — Twin guard → retrieval → routing → tool
+  // calls (web search, findSpaces, …) → synthesis → done. The pill morphs
+  // in place; the final reply lands when `done` arrives. Replaces the
+  // 30-90 second silent block of the old blocking POST.
+  const [pillStage, setPillStage] = useState<PillStage | null>(null);
+  const [pillTool, setPillTool] = useState<string | undefined>();
+  const [pillProvider, setPillProvider] = useState<string | undefined>();
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamHandleRef = useRef<StreamHandle | null>(null);
+
+  // Cancel any in-flight stream on unmount.
+  useEffect(() => {
+    return () => {
+      streamHandleRef.current?.cancel();
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    };
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || sending) return;
@@ -343,20 +367,81 @@ export default function ChatScreen() {
     setInput('');
     setSending(true);
 
-    const { data, error } = await sendMessage(text, layer);
-    setSending(false);
+    // Optimistic pill within 200ms — UX research is clear: first feedback
+    // on screen within ~200ms is what makes the experience feel responsive
+    // even when total latency is 30s+. We don't wait for the first SSE
+    // event to land before showing something.
+    setPillStage('thinking');
+    setPillTool(undefined);
+    setPillProvider(undefined);
 
-    if (error) {
-      toast.show(`Couldn't reach Memu — ${error}`, 'error');
-    }
+    // After 15s without a final reply, swap pill copy to the "slow" set
+    // ("Still on it — this one's worth getting right"). Replaces the
+    // "I gave up, came back later" failure mode in the original report.
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+    slowTimerRef.current = setTimeout(() => {
+      setPillStage(curr => (curr && curr !== 'thinking' ? curr : 'slow'));
+    }, 15000);
 
-    const memuMsg = {
-      id: `memu-${Date.now()}`,
-      text: error ? `Couldn't reach Memu: ${error}` : (data?.response || 'No response.'),
-      fromMemu: true,
-      timestamp: new Date(),
+    let finalised = false;
+    const finalise = (memuText: string, isError = false) => {
+      if (finalised) return;
+      finalised = true;
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
+      setPillStage(null);
+      setSending(false);
+      streamHandleRef.current = null;
+      if (isError) toast.show(`Couldn't reach Memu — ${memuText}`, 'error');
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `memu-${Date.now()}`,
+          text: memuText,
+          fromMemu: true,
+          timestamp: new Date(),
+        },
+      ]);
     };
-    setMessages(prev => [...prev, memuMsg]);
+
+    streamHandleRef.current = sendMessageStreaming(
+      text,
+      layer,
+      (event) => {
+        switch (event.name) {
+          case 'twin_check':
+            setPillStage('twin_check');
+            return;
+          case 'retrieving':
+            setPillStage('retrieving');
+            return;
+          case 'routing':
+            setPillStage('routing');
+            setPillProvider((event.data as { provider?: string }).provider);
+            return;
+          case 'tool_use':
+            setPillStage('tool_use');
+            setPillTool((event.data as { tool?: string }).tool);
+            return;
+          case 'synthesising':
+            setPillStage('synthesising');
+            setPillTool(undefined);
+            return;
+          case 'done': {
+            const response = (event.data as { response?: string }).response || 'No response.';
+            finalise(response, false);
+            return;
+          }
+          case 'error': {
+            const errMsg = (event.data as { error?: string }).error || 'Pipeline failed';
+            finalise(`Couldn't reach Memu: ${errMsg}`, true);
+            return;
+          }
+        }
+      },
+      (errMsg) => {
+        finalise(`Couldn't reach Memu: ${errMsg}`, true);
+      },
+    );
   }, [input, sending, layer, toast]);
 
   useEffect(() => {
@@ -540,10 +625,18 @@ export default function ChatScreen() {
             </View>
           ) : null}
           ListFooterComponent={sending ? (
-            <View style={styles.typingRow}>
-              <View style={styles.thinkingDot} />
-              <Text style={styles.typingText}>Memu is thinking…</Text>
-            </View>
+            pillStage ? (
+              <ThinkingPill
+                stage={pillStage}
+                tool={pillTool}
+                provider={pillProvider}
+              />
+            ) : (
+              <View style={styles.typingRow}>
+                <View style={styles.thinkingDot} />
+                <Text style={styles.typingText}>Memu is thinking…</Text>
+              </View>
+            )
           ) : null}
         />
 

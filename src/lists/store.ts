@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 export type ListType = 'shopping' | 'task' | 'custom';
 export type ListStatus = 'pending' | 'done';
@@ -35,7 +35,7 @@ export interface AddItemInput {
 }
 
 export async function addItem(input: AddItemInput): Promise<ListItem> {
-  const { rows } = await pool.query<ListItem>(
+  const { rows } = await db.query<ListItem>(
     `INSERT INTO list_items
        (family_id, list_type, list_name, item_text, note, source, source_message_id, source_stream_card_id, created_by, due_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -79,7 +79,7 @@ export async function listItems(filter: ListFilter): Promise<ListItem[]> {
   // Order: pending before done; within pending, due_at ascending (NULLS LAST
   // so dated items surface above un-dated). Within each group of equal
   // due_at, newest first — the user's most recent thinking on top.
-  const { rows } = await pool.query<ListItem>(
+  const { rows } = await db.query<ListItem>(
     `SELECT * FROM list_items
      WHERE ${clauses.join(' AND ')}
      ORDER BY status ASC, due_at ASC NULLS LAST, created_at DESC
@@ -90,7 +90,7 @@ export async function listItems(filter: ListFilter): Promise<ListItem[]> {
 }
 
 export async function completeItem(id: string, familyId: string): Promise<ListItem | null> {
-  const { rows } = await pool.query<ListItem>(
+  const { rows } = await db.query<ListItem>(
     `UPDATE list_items
      SET status = 'done', completed_at = NOW()
      WHERE id = $1 AND family_id = $2
@@ -101,7 +101,7 @@ export async function completeItem(id: string, familyId: string): Promise<ListIt
 }
 
 export async function reopenItem(id: string, familyId: string): Promise<ListItem | null> {
-  const { rows } = await pool.query<ListItem>(
+  const { rows } = await db.query<ListItem>(
     `UPDATE list_items
      SET status = 'pending', completed_at = NULL
      WHERE id = $1 AND family_id = $2
@@ -112,7 +112,7 @@ export async function reopenItem(id: string, familyId: string): Promise<ListItem
 }
 
 export async function deleteItem(id: string, familyId: string): Promise<boolean> {
-  const { rowCount } = await pool.query(
+  const { rowCount } = await db.query(
     `DELETE FROM list_items WHERE id = $1 AND family_id = $2`,
     [id, familyId],
   );
@@ -148,13 +148,13 @@ export async function updateItem(
     sets.push(`due_at = $${params.length}`);
   }
   if (sets.length === 0) {
-    const { rows } = await pool.query<ListItem>(
+    const { rows } = await db.query<ListItem>(
       `SELECT * FROM list_items WHERE id = $1 AND family_id = $2`,
       [id, familyId],
     );
     return rows[0] ?? null;
   }
-  const { rows } = await pool.query<ListItem>(
+  const { rows } = await db.query<ListItem>(
     `UPDATE list_items SET ${sets.join(', ')} WHERE id = $1 AND family_id = $2 RETURNING *`,
     params,
   );

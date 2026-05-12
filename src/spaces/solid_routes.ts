@@ -38,7 +38,7 @@ import { findSpaceBySlug, listSpaces, upsertSpace, deleteSpace } from './store';
 import { loadRoster } from './catalogue';
 import { extractBearerToken, verifyBearer, verifyDpopProof, BearerVerificationError } from '../oidc/bearer';
 import { resolveWebIdBaseUrl } from '../webid/webid';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 type AnyFastify = any;
 
@@ -67,7 +67,7 @@ async function resolveFamilyIdForCaller(callerProfileId: string): Promise<string
   // Conservative: in single-family mode, take the lowest-created admin
   // (the original primary). Falls back to the caller themselves if no
   // admin row exists yet (fresh install edge case).
-  const res = await pool.query<{ id: string }>(
+  const res = await db.query<{ id: string }>(
     `SELECT id FROM profiles
       WHERE role IN ('admin', 'adult')
       ORDER BY created_at ASC
@@ -77,14 +77,14 @@ async function resolveFamilyIdForCaller(callerProfileId: string): Promise<string
 }
 
 async function loadProfileLookupRows(): Promise<Array<{ id: string; webid_slug: string | null }>> {
-  const res = await pool.query<{ id: string; webid_slug: string | null }>(
+  const res = await db.query<{ id: string; webid_slug: string | null }>(
     `SELECT id, webid_slug FROM profiles`,
   );
   return res.rows;
 }
 
 async function loadProfileByWebIdSlug(slug: string): Promise<{ id: string; role: string } | null> {
-  const res = await pool.query<{ id: string; role: string }>(
+  const res = await db.query<{ id: string; role: string }>(
     `SELECT id, role FROM profiles WHERE webid_slug = $1 LIMIT 1`,
     [slug],
   );
@@ -201,7 +201,7 @@ async function authorizeWrite(
 ): Promise<AuthorizedWriter | null> {
   const caller = await authenticateOrReject(request, reply);
   if (!caller) return null;
-  const res = await pool.query<{ role: string }>(
+  const res = await db.query<{ role: string }>(
     `SELECT role FROM profiles WHERE id = $1 LIMIT 1`,
     [caller.profileId],
   );
@@ -317,7 +317,7 @@ export function registerSolidSpaceRoutes(server: AnyFastify): void {
   // and we honour that. If the Space exists, the caller must already be in
   // its allowed-readers (you cannot edit a Space you can't see). If it's
   // a new Space, default visibility is 'family' (so the rest of the
-  // household can see what you wrote) and the title defaults to the slug.
+  // collective can see what you wrote) and the title defaults to the slug.
   //
   // What this is NOT:
   //   - DPoP proof verification of method+url+body (3.3b/c follow-up).

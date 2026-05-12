@@ -7,7 +7,7 @@
  * `care_standard_lapsed` stream cards.
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { DEFAULT_STANDARDS, type DefaultStandard, type StandardScope } from './defaults';
 import type { SpaceDomain } from '../spaces/model';
 
@@ -60,7 +60,7 @@ async function loadRosterIds(familyId: string): Promise<{
   children: string[];
   all: string[];
 }> {
-  const res = await pool.query<{ id: string; role: string }>(
+  const res = await db.query<{ id: string; role: string }>(
     `SELECT id, role FROM profiles`,
   );
   // Today: single-family deployment, family_id = primary adult profile.
@@ -108,7 +108,7 @@ export async function seedDefaultStandards(familyId: string, defaults: DefaultSt
       const description = standard.scope === 'each_person' || standard.scope === 'each_adult' || standard.scope === 'each_child'
         ? `${standard.description} (${appliesTo[0] ?? 'family'})`
         : standard.description;
-      const res = await pool.query(
+      const res = await db.query(
         `INSERT INTO care_standards (family_id, domain, description, frequency_days, applies_to, custom, next_due)
          VALUES ($1, $2, $3, $4, $5, FALSE, NOW() + ($4 || ' days')::interval)
          ON CONFLICT (family_id, domain, description) WHERE custom = FALSE DO NOTHING
@@ -125,12 +125,12 @@ export async function listStandards(familyId: string, enabledOnly = false): Prom
   const sql = enabledOnly
     ? `SELECT * FROM care_standards WHERE family_id = $1 AND enabled = TRUE ORDER BY domain, description`
     : `SELECT * FROM care_standards WHERE family_id = $1 ORDER BY domain, description`;
-  const res = await pool.query<CareStandardRow>(sql, [familyId]);
+  const res = await db.query<CareStandardRow>(sql, [familyId]);
   return res.rows.map(rowToStandard);
 }
 
 export async function setStandardEnabled(id: string, enabled: boolean): Promise<void> {
-  await pool.query(
+  await db.query(
     `UPDATE care_standards SET enabled = $2, updated_at = NOW() WHERE id = $1`,
     [id, enabled],
   );
@@ -143,7 +143,7 @@ export async function createCustomStandard(args: {
   frequencyDays: number;
   appliesTo?: string[];
 }): Promise<CareStandard> {
-  const res = await pool.query<CareStandardRow>(
+  const res = await db.query<CareStandardRow>(
     `INSERT INTO care_standards (family_id, domain, description, frequency_days, applies_to, custom, next_due)
      VALUES ($1, $2, $3, $4, $5, TRUE, NOW() + ($4 || ' days')::interval)
      RETURNING *`,
@@ -153,7 +153,7 @@ export async function createCustomStandard(args: {
 }
 
 export async function deleteCustomStandard(id: string): Promise<void> {
-  await pool.query(
+  await db.query(
     `DELETE FROM care_standards WHERE id = $1 AND custom = TRUE`,
     [id],
   );
@@ -165,7 +165,7 @@ export async function deleteCustomStandard(id: string): Promise<void> {
  * hook and by the user manually ticking things off.
  */
 export async function markCompleted(id: string, when: Date = new Date()): Promise<void> {
-  await pool.query(
+  await db.query(
     `UPDATE care_standards
         SET last_completed = $2,
             next_due = $2 + (frequency_days || ' days')::interval,
@@ -183,7 +183,7 @@ export async function markCompleted(id: string, when: Date = new Date()): Promis
  * past next_due.
  */
 export async function evaluateStandards(familyId: string): Promise<CareStandard[]> {
-  await pool.query(
+  await db.query(
     `UPDATE care_standards
         SET status = CASE
           WHEN next_due IS NULL THEN 'on_track'

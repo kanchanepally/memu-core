@@ -18,7 +18,7 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import crypto from 'crypto';
 import matter from 'gray-matter';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import {
   buildSpaceUri,
   slugify,
@@ -72,7 +72,7 @@ async function ensureFamilyRepo(familyId: string): Promise<void> {
 async function resolveActor(actorProfileId: string | undefined): Promise<{ name: string; email: string }> {
   if (!actorProfileId) return { name: 'Memu', email: 'memu@localhost' };
   try {
-    const res = await pool.query<{ display_name: string; email: string | null }>(
+    const res = await db.query<{ display_name: string; email: string | null }>(
       `SELECT display_name, email FROM profiles WHERE id = $1 LIMIT 1`,
       [actorProfileId],
     );
@@ -215,7 +215,7 @@ export async function validateParentRelationship(
   if (selfUri && parentUri === selfUri) {
     return { ok: false, reason: 'parent_is_self', message: 'A Space cannot be its own parent.' };
   }
-  const res = await pool.query<{ family_id: string; parent_space_uri: string | null }>(
+  const res = await db.query<{ family_id: string; parent_space_uri: string | null }>(
     `SELECT family_id, parent_space_uri FROM synthesis_pages WHERE uri = $1 LIMIT 1`,
     [parentUri],
   );
@@ -243,11 +243,12 @@ export async function validateParentRelationship(
  */
 export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
   const slug = input.slug ?? slugify(input.name);
-  const client = await pool.connect();
-  let existingId: string | null = null;
-  let existingUri: string | null = null;
-  try {
-    await client.query('BEGIN');
+  // Pre-Beta Stream 1 — db.transaction picks up the active collective
+  // context. Caller must be inside enterCollectiveContext (typical:
+  // they're inside a Fastify request that went through requireCollective).
+  const space = await db.transaction(async (client) => {
+    let existingId: string | null = null;
+    let existingUri: string | null = null;
     const existing = await client.query<{ id: string; uri: string }>(
       `SELECT id, uri FROM synthesis_pages
         WHERE family_id = $1 AND category = $2 AND slug = $3
@@ -334,8 +335,6 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       ],
     );
 
-    await client.query('COMMIT');
-
     // Resolve effective parent for the in-memory Space we hand back —
     // either the just-written value (replace mode) or the pre-existing
     // value (preserve mode). For inserts (existingId === null), the
@@ -351,7 +350,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       effectiveParent = r.rows[0]?.parent_space_uri ?? null;
     }
 
-    const space: Space = {
+    const built: Space = {
       uri,
       id,
       familyId: input.familyId,
@@ -370,14 +369,15 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       parentSpaceUri: effectiveParent,
     };
 
-    await writeToDisk(space, existingId ? 'updated' : 'created', input.actorProfileId);
-    return space;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+    // Stash existingId on the returned object so the caller can decide
+    // whether the FS write event is "created" or "updated". (We can't
+    // call writeToDisk inside the transaction — FS ops aren't
+    // transactional and a rollback wouldn't undo them.)
+    return { space: built, wasCreate: existingId === null };
+  });
+
+  await writeToDisk(space.space, space.wasCreate ? 'created' : 'updated', input.actorProfileId);
+  return space.space;
 }
 
 function renderFrontmatter(space: Space): string {
@@ -484,7 +484,7 @@ const SPACE_ROW_COLUMNS = `id, family_id, uri, slug, category, title, body_markd
        source_references, tags, last_updated_at, parent_space_uri`;
 
 export async function findSpaceByUri(uri: string): Promise<Space | null> {
-  const res = await pool.query<SpaceRow>(
+  const res = await db.query<SpaceRow>(
     `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages WHERE uri = $1`,
     [uri],
   );
@@ -492,7 +492,7 @@ export async function findSpaceByUri(uri: string): Promise<Space | null> {
 }
 
 export async function findSpaceBySlug(familyId: string, category: SpaceCategory, slug: string): Promise<Space | null> {
-  const res = await pool.query<SpaceRow>(
+  const res = await db.query<SpaceRow>(
     `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages
       WHERE family_id = $1 AND category = $2 AND slug = $3`,
     [familyId, category, slug],
@@ -501,7 +501,7 @@ export async function findSpaceBySlug(familyId: string, category: SpaceCategory,
 }
 
 export async function listSpaces(familyId: string): Promise<Space[]> {
-  const res = await pool.query<SpaceRow>(
+  const res = await db.query<SpaceRow>(
     `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages WHERE family_id = $1
       ORDER BY last_updated_at DESC`,
     [familyId],
@@ -521,7 +521,7 @@ export async function countChildrenForParents(
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   if (parentUris.length === 0) return result;
-  const res = await pool.query<{ parent_space_uri: string; n: string }>(
+  const res = await db.query<{ parent_space_uri: string; n: string }>(
     `SELECT parent_space_uri, COUNT(*)::text AS n
        FROM synthesis_pages
       WHERE family_id = $1 AND parent_space_uri = ANY($2::text[])
@@ -538,7 +538,7 @@ export async function countChildrenForParents(
  * responsibility — store.ts is the data layer.
  */
 export async function listChildren(parentUri: string): Promise<Space[]> {
-  const res = await pool.query<SpaceRow>(
+  const res = await db.query<SpaceRow>(
     `SELECT ${SPACE_ROW_COLUMNS} FROM synthesis_pages
       WHERE parent_space_uri = $1
       ORDER BY last_updated_at DESC`,
@@ -559,23 +559,20 @@ export async function deleteSpace(
   slug: string,
   actorProfileId?: string,
 ): Promise<boolean> {
-  const client = await pool.connect();
-  let removedUri: string | null = null;
-  let removedTitle: string | null = null;
-  try {
-    await client.query('BEGIN');
+  // Pre-Beta Stream 1 — db.transaction picks up the active collective
+  // context (caller is inside enterCollectiveContext via requireCollective
+  // or an explicit cron entry). RLS gates the SELECT so a cross-collective
+  // (familyId, category, slug) tuple just returns no row.
+  const deleted = await db.transaction(async (client) => {
     const existing = await client.query<{ uri: string; title: string }>(
       `SELECT uri, title FROM synthesis_pages
         WHERE family_id = $1 AND category = $2 AND slug = $3
         LIMIT 1`,
       [familyId, category, slug],
     );
-    if (!existing.rows[0]) {
-      await client.query('ROLLBACK');
-      return false;
-    }
-    removedUri = existing.rows[0].uri;
-    removedTitle = existing.rows[0].title;
+    if (!existing.rows[0]) return null;
+    const removedUri = existing.rows[0].uri;
+    const removedTitle = existing.rows[0].title;
 
     // Orphan children before deleting the parent — sub-Spaces are
     // independent content; the parent relationship was contextual,
@@ -605,13 +602,10 @@ export async function deleteSpace(
        VALUES ($1, $2, 'deleted', $3, $4)`,
       [familyId, removedUri, `Deleted ${category} "${removedTitle}"`, actorProfileId ?? null],
     );
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+    return { removedUri, removedTitle };
+  });
+
+  if (!deleted) return false;
 
   // Best-effort filesystem cleanup. The DB is the source of truth; if
   // the file is missing the delete still succeeded.

@@ -16,7 +16,7 @@
  * leaves the database to reach an LLM, which is handled elsewhere.
  */
 
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 export type OnboardingStep = 'people' | 'rhythm' | 'focus' | 'preview' | 'channels';
 export type StepStatus = 'pending' | 'answered' | 'skipped';
@@ -126,7 +126,7 @@ export function isComplete(state: OnboardingState): boolean {
 // ---------------------------------------------------------------------------
 
 export async function getOnboardingState(profileId: string): Promise<OnboardingState> {
-  const res = await pool.query<{ onboarding_state: unknown }>(
+  const res = await db.query<{ onboarding_state: unknown }>(
     `SELECT onboarding_state FROM profiles WHERE id = $1 LIMIT 1`,
     [profileId],
   );
@@ -138,7 +138,7 @@ export async function saveOnboardingState(
   profileId: string,
   state: OnboardingState,
 ): Promise<void> {
-  await pool.query(
+  await db.query(
     `UPDATE profiles SET onboarding_state = $1::jsonb WHERE id = $2`,
     [JSON.stringify(state), profileId],
   );

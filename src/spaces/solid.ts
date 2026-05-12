@@ -205,7 +205,7 @@ export function buildAcpLookup(rows: Array<{ id: string; webid_slug: string | nu
  * a legitimate caller than to over-share.
  *
  * If `visibility` is already an explicit WebID list (URI form), pass
- * those through verbatim. That path supports cross-household sharing
+ * those through verbatim. That path supports cross-collective sharing
  * (Story 3.4).
  */
 export function deriveAllowedReaders(

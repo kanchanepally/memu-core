@@ -61,7 +61,7 @@ State transitions are enforced by `canTransition()` in `src/households/membershi
 
 ### What happens when a leave is finalised
 
-When the daily cron at `30 4 * * *` Europe/London (`src/index.ts`, "Daily household sweep") finds a `leaving` member whose `leave_grace_until` has passed:
+When the daily cron at `30 4 * * *` Europe/London (`src/index.ts`, "Daily collective sweep") finds a `leaving` member whose `leave_grace_until` has passed:
 
 1. `finaliseLeave(memberId)` runs in a transaction:
    - Marks the member `left`.
@@ -94,7 +94,7 @@ This is the scripted scenario the Memu team runs against two real deployments be
      "leavePolicyForEmergent": "retain_attributed",
      "gracePeriodDays": 30 }
    ```
-   Expect: `200 { id, status: "invited" }`. New row in `household_members`.
+   Expect: `200 { id, status: "invited" }`. New row in `collective_members`.
 
 2. **Accept (Sam, calling A).**
    ```
@@ -148,7 +148,7 @@ This is the scripted scenario the Memu team runs against two real deployments be
     ```
     Expect: `status='left'` immediately. `leave_finalised_at` set. All `pod_grants` rows now `revoked`. `external_space_cache` empty for this member. Querying A's Claude about Sam's morning routine now returns "no information" rather than the cached content. (Verifies cascade cleanup on instant-leave.)
 
-11. **Rejoin.** Repeat steps 1–4. Expect a *new* `household_members` row with a fresh id; the previous `left` row is preserved as audit. New grants record cleanly. Sync works. The Twin still has Sam's `Person-N` registered from before, so historic synthesis pages remain coherent.
+11. **Rejoin.** Repeat steps 1–4. Expect a *new* `collective_members` row with a fresh id; the previous `left` row is preserved as audit. New grants record cleanly. Sync works. The Twin still has Sam's `Person-N` registered from before, so historic synthesis pages remain coherent.
 
 12. **Force-remove from admin (negative path).** With Sam in `active` state:
     ```

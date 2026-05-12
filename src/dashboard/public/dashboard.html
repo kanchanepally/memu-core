@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-06-pwa-tdz-fix">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-thinking-pill">
 </head>
 <body>
 <!-- Auth gate -->
@@ -71,23 +71,14 @@ async function api(path, opts = {}) {
         </svg>
         <span class="sidebar-logo-text">Memu</span>
     </a>
+    <!-- Top region: primary + secondary nav. Fixed natural height. Conversations
+         do NOT live here any more — they had been pushing Settings off-screen
+         once 20+ threads accumulated. They now live in the bottom region. -->
     <nav class="sidebar-nav">
         <button class="sidebar-nav-item active" id="tab-chat" onclick="switchTab('chat')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
             <span>Chat</span>
         </button>
-        <!-- Conversations list — nested under Chat nav item. Only rendered
-             when Chat is the active section. switchTab() toggles its
-             visibility. Populated by renderConversationsList(). -->
-        <div class="sidebar-chat-children sidebar-chat-children-open" id="sidebar-chat-children">
-            <button class="sidebar-new-chat-btn" onclick="startNewConversation()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
-                <span>New chat</span>
-            </button>
-            <div id="sidebar-conversations" class="sidebar-conversations-list">
-                <div class="sidebar-conversations-empty">No conversations yet.</div>
-            </div>
-        </div>
         <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
             <span>Today</span>
@@ -120,6 +111,23 @@ async function api(path, opts = {}) {
             <span>Settings</span>
         </button>
     </nav>
+
+    <!-- Bottom region: conversations. Section label + pinned New chat button,
+         then a flex: 1 scroll container so the list takes the remaining
+         sidebar height and scrolls on its own. Visible regardless of which
+         tab is currently active — conversation history is always reachable. -->
+    <div class="sidebar-conversations-region" id="sidebar-chat-children">
+        <div class="sidebar-conversations-head">
+            <span class="sidebar-conversations-label">Conversations</span>
+            <button class="sidebar-new-chat-btn" onclick="startNewConversation()" title="Start new chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 5v14M5 12h14"/></svg>
+                <span>New</span>
+            </button>
+        </div>
+        <div id="sidebar-conversations" class="sidebar-conversations-list">
+            <div class="sidebar-conversations-empty">No conversations yet.</div>
+        </div>
+    </div>
 </aside>
 <main class="app-main">
 
@@ -166,6 +174,30 @@ async function api(path, opts = {}) {
     <section class="today-section">
         <div class="today-section-label">Today's schedule</div>
         <div id="calendar-section" class="calendar-strip"></div>
+    </section>
+
+    <!-- News feed — Google-Discover-shaped, populated by loadNewsFeed()
+         calling /api/news. Sources + location-driven regional matching are
+         driven by the user's brief preferences. Refresh icon top-right;
+         "More news" expand at the bottom. Tap a card → article in a new
+         tab. Empty / error / loading states all rendered inline. -->
+    <section class="today-section">
+        <div class="news-section-head">
+            <div>
+                <div class="today-section-label">News</div>
+                <div class="news-refreshed-at" id="news-refreshed-at"></div>
+            </div>
+            <button class="news-refresh-btn" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+            </button>
+        </div>
+        <div id="news-feed" class="news-feed">
+            <div class="news-loading">Pulling today's headlines…</div>
+        </div>
+        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()">
+            <span id="news-more-label">More news</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" id="news-more-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
     </section>
 
     <!-- Stream — cards from briefing / extraction / reflection. Section
@@ -847,10 +879,14 @@ function switchTab(tab) {
         document.getElementById('spaces-list-view')?.classList.remove('hidden');
         document.getElementById('spaces-detail-view')?.classList.add('hidden');
     }
-    // Sidebar conversations panel — visible only when Chat is the active
-    // section. The conversations list lives nested under the Chat nav item;
-    // collapses when any other section is active so the sidebar stays
-    // compact for Today / Spaces / Lists / etc.
+    // Sidebar conversations region — now always visible regardless of which
+    // section is active (Fix 2 — 2026-05-12). Previously nested under Chat
+    // and toggled by tab, which meant: (a) you couldn't reach a past chat
+    // from Today / Spaces / etc without first clicking Chat, and (b) when
+    // visible, the conversation list pushed Settings off-screen. Now it
+    // lives in its own flex: 1 region at the bottom of the sidebar with
+    // an independent scroll context. The class toggle is kept as a no-op
+    // for back-compat with any stale page state that might reference it.
     const chatChildren = document.getElementById('sidebar-chat-children');
     if (chatChildren) chatChildren.classList.toggle('sidebar-chat-children-open', tab === 'chat');
     // Update topbar title
@@ -866,7 +902,7 @@ function switchTab(tab) {
     // Auto-close sidebar on mobile after a tab tap so the canvas is visible
     if (isMobileViewport()) closeSidebar();
     // Load data on tab switch
-    if (tab === 'today') { loadBrief(); loadSynthesis(); }
+    if (tab === 'today') { loadBrief(); loadSynthesis(); loadNewsFeed(); }
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
     if (tab === 'lists') loadLists();
@@ -929,6 +965,114 @@ async function loadSynthesis() {
         }
     } catch (err) {
         bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
+    }
+}
+
+// News feed — Google-Discover-shaped block on Today. State held in a
+// small `newsState` blob so refresh + expand toggle share it.
+let newsState = { expanded: false, loading: false };
+
+async function loadNewsFeed() {
+    if (newsState.loading) return;
+    newsState.loading = true;
+    const feedEl = document.getElementById('news-feed');
+    const moreBtn = document.getElementById('news-more-btn');
+    const refreshedEl = document.getElementById('news-refreshed-at');
+    if (!feedEl) { newsState.loading = false; return; }
+
+    // Only show the "loading" placeholder when the feed is empty — on a
+    // refresh of an already-populated feed we leave the existing cards in
+    // place to avoid a jarring flash.
+    if (!feedEl.querySelector('.news-card')) {
+        feedEl.innerHTML = '<div class="news-loading">Pulling today\'s headlines…</div>';
+    }
+
+    try {
+        const perSource = newsState.expanded ? 8 : 3;
+        const res = await api(`/api/news?perSourceMax=${perSource}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const items = data.items || [];
+        if (items.length === 0) {
+            feedEl.innerHTML = '<div class="news-empty">No news right now. Pick more sources in <a href="#" onclick="switchTab(\'settings\');return false;">Settings → Your morning brief</a>.</div>';
+            if (moreBtn) moreBtn.classList.add('hidden');
+        } else {
+            feedEl.innerHTML = items.map(renderNewsCard).join('');
+            if (moreBtn) moreBtn.classList.remove('hidden');
+        }
+        if (refreshedEl && data.fetchedAt) {
+            refreshedEl.textContent = 'Refreshed ' + formatRelative(data.fetchedAt);
+        }
+    } catch (err) {
+        feedEl.innerHTML = '<div class="news-error" onclick="loadNewsFeed()">Couldn\'t load news. Tap to retry.</div>';
+        if (moreBtn) moreBtn.classList.add('hidden');
+    } finally {
+        newsState.loading = false;
+    }
+}
+
+function renderNewsCard(item) {
+    const tint = newsSourceTint(item.sourceId);
+    const thumb = item.thumbnailUrl
+        ? `<img class="news-card-thumb" src="${esc(item.thumbnailUrl)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="news-card-fallback" style="background:${tint};display:none;">${esc(item.sourceLabel.charAt(0).toUpperCase())}</span>`
+        : `<span class="news-card-fallback" style="background:${tint};">${esc(item.sourceLabel.charAt(0).toUpperCase())}</span>`;
+    const time = item.publishedAt ? ` · ${formatRelative(item.publishedAt)}` : '';
+    return `<a class="news-card" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">
+        <div class="news-card-thumb-wrap">${thumb}</div>
+        <div class="news-card-copy">
+            <div class="news-card-title">${esc(item.title)}</div>
+            <div class="news-card-meta">${esc(item.sourceLabel)}${time}</div>
+        </div>
+    </a>`;
+}
+
+function newsSourceTint(sourceId) {
+    switch (sourceId) {
+        case 'bbc-news': return '#B91C1C';
+        case 'bbc-tech': return '#7C2D12';
+        case 'guardian-uk': return '#1E3A8A';
+        case 'hacker-news': return '#EA580C';
+        case 'devon-live': return '#166534';
+        case 'plymouth-live': return '#0E7490';
+        default: return '#645A7A';
+    }
+}
+
+function refreshNewsFeed() {
+    // Pull-style refresh — re-fetch even if already populated.
+    const btn = document.getElementById('news-refresh-btn');
+    if (btn) btn.classList.add('news-refresh-spinning');
+    loadNewsFeed().finally(() => {
+        if (btn) btn.classList.remove('news-refresh-spinning');
+    });
+}
+
+function toggleNewsFeedExpanded() {
+    newsState.expanded = !newsState.expanded;
+    const label = document.getElementById('news-more-label');
+    const chev = document.getElementById('news-more-chevron');
+    if (label) label.textContent = newsState.expanded ? 'Show fewer' : 'More news';
+    if (chev) chev.innerHTML = newsState.expanded
+        ? '<polyline points="6 15 12 9 18 15"/>'
+        : '<polyline points="6 9 12 15 18 9"/>';
+    loadNewsFeed();
+}
+
+function formatRelative(iso) {
+    try {
+        const d = new Date(iso);
+        const diffMs = Date.now() - d.getTime();
+        if (diffMs < 0) return 'just now';
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'just now';
+        if (diffMin < 60) return diffMin + 'm ago';
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return diffHr + 'h ago';
+        const diffDay = Math.floor(diffHr / 24);
+        if (diffDay < 7) return diffDay + 'd ago';
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    } catch {
+        return '';
     }
 }
 
@@ -1539,40 +1683,189 @@ async function sendMessage() {
     chatSend.disabled = true;
     chatSending = true;
 
-    // Typing indicator
-    const typing = document.createElement('div');
-    typing.className = 'typing-indicator';
-    typing.id = 'typing';
-    typing.textContent = 'Memu is thinking...';
-    chatMessages.appendChild(typing);
+    // Thinking pill (Fix 4 — status ticker). Replaces the static
+    // "Memu is thinking…" indicator with a live pill that morphs as the
+    // SSE stream emits pipeline events. We surface what Memu is doing in
+    // real time so the user doesn't sit through 30-90s of silence on a
+    // web_search turn (which used to look like "Network error").
+    const pill = document.createElement('div');
+    pill.className = 'thinking-pill';
+    pill.id = 'thinking-pill';
+    pill.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="thinking-pill-text">Thinking…</span>`;
+    chatMessages.appendChild(pill);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    try {
-        const res = await api('/api/message', {
-            method: 'POST',
-            body: JSON.stringify({ content: text }),
-        });
-        if (!res.ok) {
-            console.error('[chat] /api/message returned non-OK', res.status, await res.text().catch(() => ''));
-            document.getElementById('typing')?.remove();
-            addChatMessage(`Memu replied with ${res.status}. Check the server.`, false);
-            return;
+    // 15s slow-warning timer.
+    let slowTimer = setTimeout(() => {
+        const node = document.getElementById('thinking-pill');
+        if (node) {
+            const txt = node.querySelector('.thinking-pill-text');
+            if (txt) txt.textContent = "Still on it — this one's worth getting right";
         }
-        const data = await res.json();
-        document.getElementById('typing')?.remove();
-        addChatMessage(data.response || 'No response received.', false);
-    } catch (err) {
-        console.error('[chat] /api/message failed', err);
-        document.getElementById('typing')?.remove();
-        addChatMessage('Something went wrong. Check your connection.', false);
-    } finally {
+    }, 15000);
+
+    let finalised = false;
+    const finalise = (memuText, isError) => {
+        if (finalised) return;
+        finalised = true;
+        clearTimeout(slowTimer);
+        document.getElementById('thinking-pill')?.remove();
+        addChatMessage(memuText, false);
         chatSending = false;
         chatSend.disabled = !chatInput.value.trim();
         chatInput.focus();
-        // Refresh the conversations panel so a brand-new thread appears,
-        // and an existing thread floats to the top with its new last-active
-        // timestamp. Fire-and-forget; UI doesn't block on this.
         loadConversations().catch(() => {});
+    };
+
+    try {
+        await streamPwaChat(text, (event) => {
+            const node = document.getElementById('thinking-pill');
+            if (!node) return;
+            const txt = node.querySelector('.thinking-pill-text');
+            const iconEl = node.querySelector('svg');
+            const apply = (label, icon) => {
+                if (txt) txt.textContent = label;
+                if (iconEl && icon) iconEl.innerHTML = icon;
+            };
+            switch (event.name) {
+                case 'twin_check':
+                    apply('Anonymising before I send this off', PILL_ICONS.shield);
+                    break;
+                case 'retrieving':
+                    apply('Reading your Spaces', PILL_ICONS.folder);
+                    break;
+                case 'routing': {
+                    const provider = event.data?.provider || 'the model';
+                    const friendly = pwaProviderLabel(provider);
+                    apply(`Through ${friendly}, UK side`, PILL_ICONS.route);
+                    break;
+                }
+                case 'tool_use': {
+                    const tool = event.data?.tool || 'a tool';
+                    apply(pwaToolLabel(tool), PILL_ICONS[pwaToolIcon(tool)] || PILL_ICONS.cog);
+                    break;
+                }
+                case 'synthesising':
+                    apply('Pulling it together', PILL_ICONS.pen);
+                    break;
+                case 'done':
+                    finalise(event.data?.response || 'No response received.', false);
+                    break;
+                case 'error':
+                    finalise(`Couldn't reach Memu: ${event.data?.error || 'unknown error'}`, true);
+                    break;
+            }
+        }, (errMsg) => {
+            finalise(`Couldn't reach Memu: ${errMsg}`, true);
+        });
+    } catch (err) {
+        console.error('[chat] stream failed', err);
+        finalise('Something went wrong. Check your connection.', true);
+    }
+}
+
+// SSE pill catalogue — small inline SVGs as innerHTML strings so we can
+// swap them per stage without re-rendering the wrapping pill node.
+const PILL_ICONS = {
+    shield: '<path d="M12 2l9 4v6c0 5-3.8 9.7-9 11-5.2-1.3-9-6-9-11V6l9-4z"/><path d="M9 12l2 2 4-4"/>',
+    folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+    route: '<polyline points="3 11 12 4 21 11"/><path d="M5 10v10h14V10"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+    list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    document: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    calendar: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    cog: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+};
+
+function pwaProviderLabel(provider) {
+    switch (provider) {
+        case 'anthropic': return 'Claude';
+        case 'gemini': return 'Gemini Flash';
+        case 'deepseek': return 'DeepSeek';
+        case 'ollama': return 'a local model';
+        default: return provider || 'the model';
+    }
+}
+
+function pwaToolLabel(tool) {
+    switch (tool) {
+        case 'webSearch':
+        case 'web_search': return 'Cross-checking the web';
+        case 'findSpaces': return 'Searching your Spaces';
+        case 'addToList': return 'Adding to your list';
+        case 'createSpace': return 'Creating a new Space';
+        case 'updateSpace': return 'Updating your Space';
+        case 'addCalendarEvent': return 'Adding to your calendar';
+        default: return `Working with ${tool}`;
+    }
+}
+
+function pwaToolIcon(tool) {
+    switch (tool) {
+        case 'webSearch':
+        case 'web_search': return 'search';
+        case 'findSpaces': return 'folder';
+        case 'addToList': return 'list';
+        case 'createSpace':
+        case 'updateSpace': return 'document';
+        case 'addCalendarEvent': return 'calendar';
+        default: return 'cog';
+    }
+}
+
+// Stream SSE from /api/message/stream via fetch + ReadableStream. Each
+// completed frame (separated by a blank line) is parsed and fed to onEvent.
+// Uses the same `auth` global as the api() helper so credentials are shared.
+async function streamPwaChat(content, onEvent, onError) {
+    let res;
+    try {
+        res = await fetch(auth.serverUrl + '/api/message/stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + auth.apiKey,
+            },
+            body: JSON.stringify({ content }),
+        });
+    } catch (err) {
+        onError(err.message || 'Network error');
+        return;
+    }
+    if (!res.ok || !res.body) {
+        onError(`Server returned ${res.status}`);
+        return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    while (true) {
+        let chunk;
+        try {
+            chunk = await reader.read();
+        } catch (err) {
+            onError('Stream interrupted');
+            return;
+        }
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        // SSE frames separated by blank line. Process complete frames and
+        // keep the trailing partial in the buffer.
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() || '';
+        for (const frame of frames) {
+            if (!frame.trim()) continue;
+            let eventName = 'message';
+            const dataLines = [];
+            for (const line of frame.split('\n')) {
+                if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+            }
+            if (dataLines.length === 0) continue;
+            let data;
+            try { data = JSON.parse(dataLines.join('\n')); } catch { continue; }
+            onEvent({ name: eventName, data });
+        }
     }
 }
 

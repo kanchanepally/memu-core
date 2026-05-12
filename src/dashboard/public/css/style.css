@@ -807,46 +807,222 @@ textarea.input {
    Chat
    ========================================================================== */
 
-/* Conversations list nested under the Chat sidebar nav item. Replaces the
-   prior three-column shell (sidebar + chat-history-column + canvas) with
-   a strict two-column layout: sidebar (carrying the conversations when
-   chat is the active section) + canvas. Hidden when any other section
-   is active. */
-.sidebar-chat-children {
-  display: none;
-  flex-direction: column;
-  margin: var(--space-xs) 0 var(--space-sm) 22px;
-  padding-left: var(--space-sm);
-  border-left: 1px solid var(--border);
-  gap: 2px;
-}
-.sidebar-chat-children-open {
+/* Conversations region — bottom of the sidebar, beneath nav + Settings.
+   Sits in its own flex: 1 container so the conversation list takes the
+   remaining vertical space and scrolls independently. Always visible
+   (regardless of which tab is active) so history is one click away from
+   any surface. */
+.sidebar-conversations-region {
   display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;             /* critical: lets the inner list shrink + scroll */
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
 }
-.sidebar-new-chat-btn {
+.sidebar-conversations-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  padding: 4px var(--space-sm) 6px;
+}
+.sidebar-conversations-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.sidebar-new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill, 999px);
   color: var(--color-accent);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  text-align: left;
   cursor: pointer;
 }
 .sidebar-new-chat-btn:hover {
   background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
 }
 .sidebar-conversations-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 2px 4px var(--space-md) 0;
+}
+/* Back-compat aliases — older JS may still reference the legacy class names
+   (sidebar-chat-children + sidebar-chat-children-open). The HTML now uses
+   sidebar-conversations-region directly, but the old IDs are preserved so
+   switchTab()'s show/hide logic continues to work. The region is always
+   visible regardless of which class is applied. */
+.sidebar-chat-children { display: flex; }
+.sidebar-chat-children-open { display: flex; }
+
+/* ─── News feed (Today + PWA, Fix 3 2026-05-12) ──────────────────────────── */
+
+.news-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+.news-refreshed-at {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.news-refresh-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
+  color: var(--color-accent);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+.news-refresh-btn:hover { background: rgba(80, 84, 181, 0.12); }
+.news-refresh-spinning svg { animation: news-spin 0.8s linear infinite; }
+@keyframes news-spin {
+  to { transform: rotate(360deg); }
+}
+
+.news-feed {
   display: flex;
   flex-direction: column;
-  max-height: 50vh;
-  overflow-y: auto;
-  padding-right: 4px;
+  gap: 4px;
+}
+.news-loading,
+.news-empty,
+.news-error {
+  padding: 16px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: left;
+  font-style: italic;
+}
+.news-empty a { color: var(--color-accent); font-weight: 500; }
+.news-error { cursor: pointer; }
+.news-error:hover { color: var(--text-secondary); }
+
+.news-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.12s ease;
+}
+.news-card:hover {
+  background: var(--color-surface-hover, rgba(80, 84, 181, 0.05));
+}
+.news-card-thumb-wrap {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
+  position: relative;
+}
+.news-card-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.news-card-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-family: var(--font-headline);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+.news-card-copy {
+  flex: 1;
+  min-width: 0;
+}
+.news-card-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.news-card-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.news-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 8px auto 0;
+  padding: 8px 16px;
+  background: transparent;
+  border: 0;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-pill, 999px);
+  transition: background 0.12s ease;
+}
+.news-more-btn:hover {
+  background: var(--color-surface-hover, rgba(80, 84, 181, 0.06));
+}
+
+/* ─── Thinking pill (Fix 4 — status ticker, 2026-05-12) ────────────────── */
+
+.thinking-pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin: 6px 0 6px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 90, 122, 0.25);
+  background: rgba(100, 90, 122, 0.08);
+  color: var(--indigo-tertiary, #645A7A);
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 500;
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+.thinking-pill svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+.thinking-pill-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
 }
 .sidebar-conversation-row {
   display: flex;
@@ -1640,7 +1816,10 @@ textarea.input {
   width: 240px;
   flex-shrink: 0;
   height: 100vh;
-  overflow-y: auto;
+  /* The sidebar itself no longer scrolls — the conversations-region inside
+     it owns the scroll context. This keeps the primary nav + Settings
+     anchored regardless of how many threads accumulate. */
+  overflow: hidden;
   position: sticky;
   top: 0;
   transition: width 0.25s ease, padding 0.25s ease;

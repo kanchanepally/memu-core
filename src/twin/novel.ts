@@ -1,4 +1,4 @@
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 import { dispatch } from '../skills/router';
 import { resetEntityNameCache } from './guard';
 
@@ -99,7 +99,7 @@ function parseSkillOutput(raw: string): SkillHit[] {
 async function allocateLabel(entityType: string): Promise<string> {
   const prefix = ENTITY_TYPE_TO_LABEL_PREFIX[entityType] ?? 'Entity';
   // Count existing rows with this entity_type to pick the next number.
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     'SELECT COUNT(*)::int AS n FROM entity_registry WHERE entity_type = $1',
     [entityType],
   );
@@ -153,7 +153,7 @@ export async function detectAndRegisterNovelEntities(rawText: string): Promise<N
     const entityType = KIND_TO_ENTITY_TYPE[hit.kind];
 
     // Skip if this exact real_name is already in the registry (case-insensitive).
-    const existing = await pool.query(
+    const existing = await db.query(
       'SELECT id FROM entity_registry WHERE LOWER(real_name) = LOWER($1) LIMIT 1',
       [realName],
     );
@@ -161,7 +161,7 @@ export async function detectAndRegisterNovelEntities(rawText: string): Promise<N
 
     const label = await allocateLabel(entityType);
     try {
-      const inserted = await pool.query(
+      const inserted = await db.query(
         `INSERT INTO entity_registry (entity_type, real_name, anonymous_label, detected_by, confirmed)
          VALUES ($1, $2, $3, 'auto_ner', FALSE)
          RETURNING id, entity_type, real_name, anonymous_label`,

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { pool } from '../db/connection';
+import { db } from '../db/tenant';
 
 export type BYOKProvider = 'anthropic' | 'gemini' | 'openai' | 'deepseek';
 
@@ -79,7 +79,7 @@ export async function setProviderKey(
   const enc = encryptKey(plaintext.trim());
   const hint = keyHint(plaintext);
 
-  await pool.query(
+  await db.query(
     `INSERT INTO profile_provider_keys (profile_id, provider, ciphertext, iv, auth_tag, key_hint, enabled)
      VALUES ($1, $2, $3, $4, $5, $6, TRUE)
      ON CONFLICT (profile_id, provider) DO UPDATE SET
@@ -94,7 +94,7 @@ export async function setProviderKey(
 }
 
 export async function revokeProviderKey(profileId: string, provider: BYOKProvider): Promise<void> {
-  await pool.query(
+  await db.query(
     `DELETE FROM profile_provider_keys WHERE profile_id = $1 AND provider = $2`,
     [profileId, provider],
   );
@@ -105,7 +105,7 @@ export async function setProviderKeyEnabled(
   provider: BYOKProvider,
   enabled: boolean,
 ): Promise<void> {
-  await pool.query(
+  await db.query(
     `UPDATE profile_provider_keys
        SET enabled = $3, updated_at = NOW()
        WHERE profile_id = $1 AND provider = $2`,
@@ -122,7 +122,7 @@ export interface BYOKStatus {
 }
 
 export async function listProviderKeyStatus(profileId: string): Promise<BYOKStatus[]> {
-  const res = await pool.query(
+  const res = await db.query(
     `SELECT provider, enabled, key_hint, updated_at
        FROM profile_provider_keys
        WHERE profile_id = $1`,
@@ -138,7 +138,7 @@ export async function listProviderKeyStatus(profileId: string): Promise<BYOKStat
 }
 
 async function getProfileRole(profileId: string): Promise<string | null> {
-  const res = await pool.query(`SELECT role FROM profiles WHERE id = $1`, [profileId]);
+  const res = await db.query(`SELECT role FROM profiles WHERE id = $1`, [profileId]);
   return res.rows[0]?.role ?? null;
 }
 
@@ -152,7 +152,7 @@ export async function resolveProviderKey(
 ): Promise<{ apiKey: string; keyIdentifier: string } | null> {
   if (!process.env.MEMU_BYOK_ENCRYPTION_KEY) return null;
   try {
-    const res = await pool.query(
+    const res = await db.query(
       `SELECT ciphertext, iv, auth_tag, key_hint, enabled
          FROM profile_provider_keys
          WHERE profile_id = $1 AND provider = $2`,
