@@ -16,6 +16,8 @@ import { getTokensForProfile, sendPush } from './channels/mobile';
 import { getBriefPreferences, updateBriefPreferences } from './preferences/brief';
 import { geocodePlace, listAvailableNewsSources } from './intelligence/ambient';
 import { fetchNewsFeed } from './intelligence/news';
+import { pickPrompt, getPromptById } from './intelligence/captureNudges';
+import { extractAndStoreFacts } from './intelligence/autolearn';
 import {
   getOnboardingState, recordStep, markComplete,
   type OnboardingStep, ONBOARDING_STEP_ORDER, nextPendingStep, isComplete,
@@ -1263,6 +1265,58 @@ server.get('/api/news', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to load news feed' });
+  }
+});
+
+// Capture nudge — fetch the current prompt for a profile (used when the
+// /capture/quick screen opens). Caller can pass ?promptId= to fetch a
+// specific prompt from the catalogue (e.g. when the user tapped a push
+// that carried promptId in its data payload); otherwise we pick whatever
+// prompt the current slot would surface.
+server.get('/api/capture/prompt', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const query = (request.query || {}) as { promptId?: string };
+    const prompt = query.promptId
+      ? getPromptById(query.promptId) || pickPrompt(profileId)
+      : pickPrompt(profileId);
+    return { prompt };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch prompt' });
+  }
+});
+
+// Capture answer — routes the user's response through the autolearn
+// pipeline so any durable facts get extracted and written to the right
+// Space. This is what closes the agency loop: a daytime push lands, the
+// user answers in one tap, the answer becomes structured family memory.
+server.post('/api/capture', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const body = (request.body || {}) as { promptId?: string; question?: string; answer?: string };
+    const answer = (body.answer || '').trim();
+    if (!answer) return reply.code(400).send({ error: 'Answer is required' });
+    if (answer.length > 5000) return reply.code(413).send({ error: 'Answer too long (max 5000 chars)' });
+
+    const promptText = body.question
+      || (body.promptId ? (getPromptById(body.promptId)?.question || 'Capture') : 'Capture');
+
+    // Feed the prompt + answer pair into autolearn. Same shape as a
+    // conversation turn — autolearn will extract observations, route
+    // high-confidence ones to the matching Space, and seed embedding
+    // recall for everything ≥0.5. Fire-and-forget per autolearn's own
+    // pattern; we don't block on the LLM call.
+    extractAndStoreFacts(profileId, promptText, answer).catch(err => {
+      server.log.error({ err, profileId }, '[CAPTURE] autolearn failed');
+    });
+
+    return { ok: true, acknowledgement: 'Got it.' };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to store capture' });
   }
 });
 
@@ -3178,6 +3232,49 @@ const start = async () => {
       const summary = await gcAllFamilyRepos();
       server.log.info({ summary }, 'Spaces git gc complete');
     }, { timezone: 'Europe/London' });
+
+    // Daytime capture nudges (Fix 5 — 2026-05-12). Two slots per day:
+    // 11:00 morning, 16:00 afternoon. For each adult/admin with at least
+    // one registered push token, pick one rotating prompt and send. The
+    // notification deep-links to /capture/quick on tap where the user can
+    // answer in one tap → autolearn routes the answer to the right Space.
+    // Weekends OFF by default — Hareesh's life doesn't need a Memu prompt
+    // at 11am Saturday morning; flip MEMU_CAPTURE_NUDGES_WEEKENDS=1 if a
+    // future user prefers seven-day rhythm.
+    const scheduleCaptureNudge = async (whenHour: number) => {
+      const day = new Date().getDay(); // 0=Sun … 6=Sat
+      const isWeekend = day === 0 || day === 6;
+      if (isWeekend && process.env.MEMU_CAPTURE_NUDGES_WEEKENDS !== '1') {
+        server.log.info(`[CAPTURE NUDGE ${whenHour}h] skipped — weekend`);
+        return;
+      }
+      const recipients = await db.queryAsBootstrap<{ id: string; display_name: string; collective_id: string }>(
+        `SELECT p.id, p.display_name, p.collective_id
+           FROM profiles p
+           JOIN push_tokens t ON t.profile_id = p.id
+          WHERE p.role IN ('adult', 'admin')
+          GROUP BY p.id, p.display_name, p.collective_id`,
+      );
+      for (const row of recipients.rows) {
+        try {
+          const prompt = pickPrompt(row.id);
+          await enterCollectiveContext(row.collective_id, async () => {
+            const tokens = await getTokensForProfile(row.id);
+            if (tokens.length === 0) return;
+            await sendPush(tokens, {
+              title: 'Quick capture',
+              body: prompt.notification,
+              data: { screen: 'capture', promptId: prompt.id, kind: 'capture_nudge' },
+            });
+          });
+          server.log.info(`[CAPTURE NUDGE ${whenHour}h] sent "${prompt.id}" to ${row.display_name}`);
+        } catch (err) {
+          server.log.error({ err, profileId: row.id }, 'Capture nudge failed');
+        }
+      }
+    };
+    cron.schedule('0 11 * * *', () => { scheduleCaptureNudge(11).catch(err => server.log.error(err)); }, { timezone: 'Europe/London' });
+    cron.schedule('0 16 * * *', () => { scheduleCaptureNudge(16).catch(err => server.log.error(err)); }, { timezone: 'Europe/London' });
 
     // Story 3.4 — daily 04:30 sweep: (1) finalise any collective_members whose
     // leave grace period has elapsed (also drops their external Space cache),

@@ -96,13 +96,24 @@ export default function RootLayout() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const route = (data: { screen?: string } | undefined) => {
+    const route = (data: { screen?: string; promptId?: string } | undefined) => {
       // Push notifications still carry `screen: 'today'` for back-compat
       // — the briefing now appears AS a chat message, so the right
       // landing target for the morning push is /chat (where the briefing
       // is the first thing the user sees in the latest thread).
       if (data?.screen === 'today' || data?.screen === 'chat') {
         router.push('/(tabs)/chat');
+        return;
+      }
+      // Daytime capture nudge (Fix 5) — push carries `screen: 'capture'`
+      // + optional `promptId`. Deep-link straight to the quick-capture
+      // modal with the prompt pre-fetched.
+      if (data?.screen === 'capture') {
+        const url = data.promptId
+          ? `/capture/quick?promptId=${encodeURIComponent(data.promptId)}`
+          : '/capture/quick';
+        router.push(url as any);
+        return;
       }
     };
 
@@ -167,6 +178,14 @@ export default function RootLayout() {
           name="brief-settings"
           options={{
             title: 'Your morning brief',
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="capture/quick"
+          options={{
+            title: 'Quick capture',
             headerShown: false,
             presentation: 'modal',
           }}

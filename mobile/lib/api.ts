@@ -512,6 +512,27 @@ export function sendMessageStreaming(
   };
 }
 
+// ─── Capture nudges (Fix 5 — daytime prompts) ───────────────────────────────
+
+export interface CapturePrompt {
+  id: string;
+  notification: string;
+  question: string;
+  hint: string;
+}
+
+export async function getCapturePrompt(promptId?: string) {
+  const query = promptId ? `?promptId=${encodeURIComponent(promptId)}` : '';
+  return request<{ prompt: CapturePrompt }>(`/api/capture/prompt${query}`);
+}
+
+export async function submitCapture(payload: { promptId?: string; question?: string; answer: string }) {
+  return request<{ ok: boolean; acknowledgement: string }>('/api/capture', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // Split an SSE chunk into event objects. SSE frames are separated by a
 // blank line; each frame has an optional `event:` line and one or more
 // `data:` lines. We support both single-line and multi-line data.
