@@ -359,6 +359,47 @@ export async function sendTestPush() {
   });
 }
 
+// Brief preferences — per-profile customisation of the morning briefing.
+// Backed by profiles.brief_preferences JSONB (migration 030).
+export interface BriefLocation {
+  lat: number;
+  lon: number;
+  placeName: string;
+}
+
+export interface BriefPreferences {
+  location?: BriefLocation;
+  newsSources: string[];
+  topics: string[];
+  thinkingPromptEnabled: boolean;
+}
+
+export interface NewsSourceOption {
+  id: string;
+  label: string;
+}
+
+export async function getBriefPreferences() {
+  return request<{ preferences: BriefPreferences; availableSources: NewsSourceOption[] }>(
+    '/api/preferences/brief',
+  );
+}
+
+export interface BriefPreferencesPatch {
+  placeName?: string;
+  location?: BriefLocation;
+  newsSources?: string[];
+  topics?: string[];
+  thinkingPromptEnabled?: boolean;
+}
+
+export async function updateBriefPreferences(patch: BriefPreferencesPatch) {
+  return request<{ preferences: BriefPreferences }>('/api/preferences/brief', {
+    method: 'POST',
+    body: JSON.stringify(patch),
+  });
+}
+
 // Onboarding — conversational seed-context flow.
 //
 // Mobile screens (people, rhythm, focus, preview, channels) call these to

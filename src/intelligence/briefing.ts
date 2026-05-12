@@ -8,6 +8,7 @@ import { listDomainStates, renderDomainHealthHeader } from '../domains/health';
 import { processSynthesisUpdate } from './synthesis';
 import { interactiveQueryTools } from './tools';
 import { fetchWeatherLine, fetchNewsBrief } from './ambient';
+import { getBriefPreferences } from '../preferences/brief';
 
 const MAX_BRIEFING_PARAGRAPHS = 4;
 const COLLISION_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -213,9 +214,15 @@ export async function runUnifiedBriefing(
     // pipeline invariant is "every template var is anonymised", so we
     // run them through anyway and rely on novel-entity detection to no-op
     // on already-anonymous content.
+    // Per-profile preferences: location for weather, source IDs for news.
+    // Falls back to env defaults / BBC if the user has never customised.
+    const prefs = await getBriefPreferences(profileId);
     const [weatherLine, newsBrief] = await Promise.all([
-      fetchWeatherLine(),
-      fetchNewsBrief(),
+      fetchWeatherLine(prefs.location ?? {}),
+      fetchNewsBrief({
+        sourceIds: prefs.newsSources,
+        placeName: prefs.location?.placeName,
+      }),
     ]);
 
     // 4. Domain health header — at-a-glance sphere status.
@@ -372,22 +379,40 @@ export async function runUnifiedBriefing(
       ? await deepTranslateToReal(parsed.suggested_actions)
       : [];
 
-    await db.query(
-      `INSERT INTO stream_cards (id, family_id, title, body, card_type, source, status, actions)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        `card-briefing-${Date.now()}`,
-        profileId,
-        'Chief of Staff Briefing',
-        realBriefing,
-        'briefing',
-        'briefing',
-        'active',
-        JSON.stringify(realActions),
-      ],
+    // Idempotency: one briefing card per (family_id, UTC date). A second
+    // insert in the same day (cron + manual run-now collision, or two cron
+    // ticks after a server restart) produced the duplicate cards visible
+    // in the 2026-05-12 screenshot. Application-level check first, with
+    // migration 030's partial unique index `uniq_briefing_card_per_family_per_day`
+    // as the DB-level safety net.
+    const existing = await db.query<{ id: string }>(
+      `SELECT id FROM stream_cards
+        WHERE family_id = $1
+          AND card_type = 'briefing'
+          AND (created_at AT TIME ZONE 'UTC')::date = (NOW() AT TIME ZONE 'UTC')::date
+        LIMIT 1`,
+      [profileId],
     );
 
-    console.log(`[BRIEFING] Persisted briefing card with ${realActions.length} suggested action(s).`);
+    if (existing.rows.length > 0) {
+      console.log(`[BRIEFING] Briefing card already exists for ${profileId} today; idempotent skip.`);
+    } else {
+      await db.query(
+        `INSERT INTO stream_cards (id, family_id, title, body, card_type, source, status, actions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          `card-briefing-${Date.now()}`,
+          profileId,
+          'Chief of Staff Briefing',
+          realBriefing,
+          'briefing',
+          'briefing',
+          'active',
+          JSON.stringify(realActions),
+        ],
+      );
+      console.log(`[BRIEFING] Persisted briefing card with ${realActions.length} suggested action(s).`);
+    }
     // See comment above — cache regardless of channel so push and app share.
     synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
     return realBriefing;

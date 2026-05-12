@@ -13,6 +13,8 @@ import { processDocumentIngestion } from './intelligence/documentIngestion';
 import { fetchUpcomingEvents, getGoogleAuthUrl, handleGoogleCallback, createGoogleCalendarEvent, insertCalendarEvent } from './channels/calendar/google';
 import { generateBriefingText, generateProactiveSynthesis, pushMorningBriefingToMobile } from './intelligence/briefing';
 import { getTokensForProfile, sendPush } from './channels/mobile';
+import { getBriefPreferences, updateBriefPreferences } from './preferences/brief';
+import { geocodePlace, listAvailableNewsSources } from './intelligence/ambient';
 import {
   getOnboardingState, recordStep, markComplete,
   type OnboardingStep, ONBOARDING_STEP_ORDER, nextPendingStep, isComplete,
@@ -1121,6 +1123,74 @@ server.post('/api/push/test', async (request, reply) => {
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Test push failed' });
+  }
+});
+
+// Brief preferences — per-profile customisation of the morning briefing.
+// Location is geocoded server-side from a free-text place name (e.g.
+// "Ivybridge") so the client doesn't need to know how to resolve lat/lon.
+// Sending `placeName` triggers a geocode; sending `location` directly
+// (e.g. from a phone GPS read) skips it. Sending neither leaves the
+// existing location untouched.
+server.get('/api/preferences/brief', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const prefs = await getBriefPreferences(profileId);
+    return { preferences: prefs, availableSources: listAvailableNewsSources().map(s => ({ id: s.id, label: s.label })) };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to load brief preferences' });
+  }
+});
+
+server.post('/api/preferences/brief', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+    const body = (request.body || {}) as {
+      placeName?: string;
+      location?: { lat: number; lon: number; placeName: string };
+      newsSources?: string[];
+      topics?: string[];
+      thinkingPromptEnabled?: boolean;
+    };
+
+    const patch: Parameters<typeof updateBriefPreferences>[1] = {};
+
+    // Resolve a free-text placeName to lat/lon via Open-Meteo geocoding.
+    // The client can either send `placeName` (let the server geocode) or
+    // send `location` directly (e.g. from a phone GPS reading where the
+    // client already has coordinates and just reverse-geocoded the label).
+    if (body.location && typeof body.location.lat === 'number' && typeof body.location.lon === 'number' && typeof body.location.placeName === 'string') {
+      patch.location = {
+        lat: body.location.lat,
+        lon: body.location.lon,
+        placeName: body.location.placeName.trim(),
+      };
+    } else if (typeof body.placeName === 'string' && body.placeName.trim().length > 0) {
+      const geocoded = await geocodePlace(body.placeName);
+      if (!geocoded) {
+        return reply.code(400).send({
+          error: `Couldn't find "${body.placeName}". Try a different spelling or include the country.`,
+        });
+      }
+      patch.location = {
+        lat: geocoded.lat,
+        lon: geocoded.lon,
+        placeName: geocoded.placeName,
+      };
+    }
+
+    if (Array.isArray(body.newsSources)) patch.newsSources = body.newsSources;
+    if (Array.isArray(body.topics)) patch.topics = body.topics;
+    if (typeof body.thinkingPromptEnabled === 'boolean') patch.thinkingPromptEnabled = body.thinkingPromptEnabled;
+
+    const updated = await updateBriefPreferences(profileId, patch);
+    return { preferences: updated };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to update brief preferences' });
   }
 });
 

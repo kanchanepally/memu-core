@@ -163,6 +163,14 @@ export default function RootLayout() {
             presentation: 'modal',
           }}
         />
+        <Stack.Screen
+          name="brief-settings"
+          options={{
+            title: 'Your morning brief',
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
       </Stack>
       </ToastProvider>
     </ErrorBoundary>

@@ -77,10 +77,16 @@ interface OpenMeteoResponse {
   };
 }
 
-export async function fetchWeatherLine(): Promise<string> {
-  const lat = envFloat('MEMU_WEATHER_LAT', DEFAULT_LAT);
-  const lon = envFloat('MEMU_WEATHER_LON', DEFAULT_LON);
-  const place = process.env.MEMU_WEATHER_PLACE || DEFAULT_PLACE;
+export interface WeatherOptions {
+  lat?: number;
+  lon?: number;
+  placeName?: string;
+}
+
+export async function fetchWeatherLine(opts: WeatherOptions = {}): Promise<string> {
+  const lat = opts.lat ?? envFloat('MEMU_WEATHER_LAT', DEFAULT_LAT);
+  const lon = opts.lon ?? envFloat('MEMU_WEATHER_LON', DEFAULT_LON);
+  const place = opts.placeName || process.env.MEMU_WEATHER_PLACE || DEFAULT_PLACE;
   const cacheKey = `${lat},${lon},${localDayKey()}`;
 
   const cached = weatherCache.get(cacheKey);
@@ -157,39 +163,221 @@ export function parseRssTitles(xml: string, max: number): string[] {
   return titles;
 }
 
-const DEFAULT_RSS_URL = 'https://feeds.bbci.co.uk/news/rss.xml';
+// News-source catalogue. Each source has an id (the value the user toggles
+// in Settings), a human-readable label, and either an `rssUrl` for the RSS
+// path OR a custom `fetcher` for non-RSS sources (e.g. Hacker News' Firebase
+// JSON endpoint). `regionalMatch` is a function that returns true if the
+// source is the right match for a given UK place name — when the user
+// selects the generic "regional" source id, we pick the actual feed by
+// matching their place against this list.
+export interface NewsSource {
+  id: string;
+  label: string;
+  rssUrl?: string;
+  fetcher?: (max: number) => Promise<string[]>;
+  regionalMatch?: (placeName: string) => boolean;
+}
 
-export async function fetchNewsBrief(): Promise<string> {
-  const url = process.env.MEMU_NEWS_RSS_URL || DEFAULT_RSS_URL;
-  const cacheKey = `${url}|${localDayKey()}`;
+const NEWS_SOURCES: Record<string, NewsSource> = {
+  'bbc-news': {
+    id: 'bbc-news',
+    label: 'BBC News',
+    rssUrl: 'https://feeds.bbci.co.uk/news/rss.xml',
+  },
+  'bbc-tech': {
+    id: 'bbc-tech',
+    label: 'BBC Technology',
+    rssUrl: 'https://feeds.bbci.co.uk/news/technology/rss.xml',
+  },
+  'guardian-uk': {
+    id: 'guardian-uk',
+    label: 'The Guardian (UK)',
+    rssUrl: 'https://www.theguardian.com/uk/rss',
+  },
+  'hacker-news': {
+    id: 'hacker-news',
+    label: 'Hacker News',
+    fetcher: fetchHackerNewsTitles,
+  },
+  'devon-live': {
+    id: 'devon-live',
+    label: 'Devon Live',
+    rssUrl: 'https://www.devonlive.com/?service=rss',
+    regionalMatch: (place: string) => {
+      const p = place.toLowerCase();
+      // South Hams + Plymouth + Exeter + surrounding villages all read Devon Live.
+      return /\b(devon|ivybridge|plymouth|exeter|totnes|dartmoor|tavistock|okehampton|south hams|teignbridge|torbay|barnstaple|tiverton)\b/.test(p);
+    },
+  },
+  'plymouth-live': {
+    id: 'plymouth-live',
+    label: 'Plymouth Live',
+    rssUrl: 'https://www.plymouthherald.co.uk/?service=rss',
+    regionalMatch: (place: string) => /\b(plymouth|plympton|plymstock|saltash)\b/.test(place.toLowerCase()),
+  },
+};
 
-  const cached = newsCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return cached.value;
+const DEFAULT_SOURCE_IDS = ['bbc-news', 'guardian-uk', 'hacker-news'];
 
+export function listAvailableNewsSources(): NewsSource[] {
+  return Object.values(NEWS_SOURCES);
+}
+
+// Resolve user-selected source ids into concrete NewsSource instances. The
+// special id 'regional' resolves to whichever regional source matches the
+// user's place name — Devon Live for Ivybridge, Plymouth Live for Plymouth,
+// etc. When no regional source matches, 'regional' is silently dropped.
+export function resolveNewsSources(sourceIds: string[], placeName?: string): NewsSource[] {
+  const resolved: NewsSource[] = [];
+  const seen = new Set<string>();
+  for (const id of sourceIds) {
+    if (id === 'regional' && placeName) {
+      const regional = Object.values(NEWS_SOURCES).find(s =>
+        s.regionalMatch && s.regionalMatch(placeName),
+      );
+      if (regional && !seen.has(regional.id)) {
+        resolved.push(regional);
+        seen.add(regional.id);
+      }
+      continue;
+    }
+    const src = NEWS_SOURCES[id];
+    if (src && !seen.has(src.id)) {
+      resolved.push(src);
+      seen.add(src.id);
+    }
+  }
+  return resolved;
+}
+
+// Hacker News doesn't expose RSS in the same shape; Algolia's HN search API
+// returns front-page stories cleanly. Top 30, take the requested max.
+async function fetchHackerNewsTitles(max: number): Promise<string[]> {
   try {
+    const url = 'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const xml = await res.text();
-    const titles = parseRssTitles(xml, 5);
-    if (titles.length === 0) throw new Error('no headlines parsed');
-
-    const lines = titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
-    const brief = `Top headlines (BBC):\n${lines}`;
-    newsCache.set(cacheKey, { value: brief, expiresAt: nextLocalMidnight() });
-    return brief;
+    const data = (await res.json()) as { hits?: Array<{ title?: string }> };
+    const titles = (data.hits || [])
+      .map(h => (h.title || '').trim())
+      .filter(t => t.length > 0 && t.length < 200)
+      .slice(0, max);
+    return titles;
   } catch (err) {
-    console.error('[AMBIENT] news fetch failed:', err instanceof Error ? err.message : err);
-    return 'News unavailable.';
+    console.error('[AMBIENT] HN fetch failed:', err instanceof Error ? err.message : err);
+    return [];
   }
+}
+
+async function fetchSourceTitles(source: NewsSource, max: number): Promise<string[]> {
+  if (source.fetcher) return source.fetcher(max);
+  if (!source.rssUrl) return [];
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(source.rssUrl, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const xml = await res.text();
+    return parseRssTitles(xml, max);
+  } catch (err) {
+    console.error(`[AMBIENT] news fetch failed (${source.id}):`, err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+export interface NewsBriefOptions {
+  sourceIds?: string[];   // selected by the user; falls back to DEFAULT_SOURCE_IDS
+  placeName?: string;     // used to resolve the 'regional' meta-source
+  perSourceMax?: number;  // headlines per source — default 3
+}
+
+export async function fetchNewsBrief(opts: NewsBriefOptions = {}): Promise<string> {
+  const sourceIds = opts.sourceIds && opts.sourceIds.length > 0 ? opts.sourceIds : DEFAULT_SOURCE_IDS;
+  const sources = resolveNewsSources(sourceIds, opts.placeName);
+  const perSourceMax = opts.perSourceMax ?? 3;
+
+  if (sources.length === 0) return 'News unavailable.';
+
+  const cacheKey = `${sources.map(s => s.id).join(',')}|${perSourceMax}|${localDayKey()}`;
+  const cached = newsCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.value;
+
+  const results = await Promise.all(sources.map(async s => ({
+    source: s,
+    titles: await fetchSourceTitles(s, perSourceMax),
+  })));
+
+  const blocks: string[] = [];
+  let total = 0;
+  for (const r of results) {
+    if (r.titles.length === 0) continue;
+    blocks.push(`${r.source.label}:\n${r.titles.map((t, i) => `${i + 1}. ${t}`).join('\n')}`);
+    total += r.titles.length;
+  }
+  if (total === 0) return 'News unavailable.';
+
+  const brief = blocks.join('\n\n');
+  newsCache.set(cacheKey, { value: brief, expiresAt: nextLocalMidnight() });
+  return brief;
 }
 
 function nextLocalMidnight(): number {
   const d = new Date();
   d.setHours(24, 0, 0, 0);
   return d.getTime();
+}
+
+// Geocode a place name → lat/lon via Open-Meteo's keyless geocoding API.
+// Returns null on miss; the caller falls back to whatever default they had.
+//
+// We intentionally pick the FIRST hit and the user can correct it from
+// Settings if Open-Meteo returns the wrong "Plymouth". A future polish lets
+// the user pick from the top-3 hits during onboarding.
+export interface GeocodeResult {
+  lat: number;
+  lon: number;
+  placeName: string;
+  country: string;
+  admin1?: string; // county / state — useful for the regional-source matcher
+}
+
+export async function geocodePlace(query: string): Promise<GeocodeResult | null> {
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+    url.searchParams.set('name', trimmed);
+    url.searchParams.set('count', '1');
+    url.searchParams.set('language', 'en');
+    url.searchParams.set('format', 'json');
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(url.toString(), { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = (await res.json()) as {
+      results?: Array<{ latitude: number; longitude: number; name: string; country: string; admin1?: string }>;
+    };
+    const hit = data.results?.[0];
+    if (!hit) return null;
+    return {
+      lat: hit.latitude,
+      lon: hit.longitude,
+      placeName: hit.name,
+      country: hit.country,
+      admin1: hit.admin1,
+    };
+  } catch (err) {
+    console.error('[AMBIENT] geocode failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 // Internal export so tests can clear caches between assertions.

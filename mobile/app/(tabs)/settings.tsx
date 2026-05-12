@@ -504,6 +504,12 @@ export default function SettingsScreen() {
             onPress={openBriefingEditor}
           />
           <Row
+            icon="newspaper-outline"
+            title="Your morning brief"
+            subtitle="Location, news sources, topics, thinking prompt"
+            onPress={() => router.push('/brief-settings' as any)}
+          />
+          <Row
             icon="notifications-outline"
             title="Notifications"
             subtitle={
