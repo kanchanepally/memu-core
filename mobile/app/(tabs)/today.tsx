@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import {
-  getTodayBrief, getSynthesis, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
+  getTodayBrief, resolveCard, dismissCard, editCard, addToCalendar, cardToShopping,
   executeAddToListAction, executeAddCalendarEventAction, executeUpdateSpaceAction, ackReplyDraftAction,
   completeCareStandard,
   getOnboardingState,
@@ -22,7 +22,10 @@ import { loadAuthState } from '../../lib/auth';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
-import AIInsightCard from '../../components/AIInsightCard';
+// AIInsightCard retired from Dashboard — briefings live in chat now.
+// The component is still used by other surfaces (briefing bubble in chat
+// uses its styling); the import here goes with the hero render that was
+// removed.
 import PushStatusBanner from '../../components/PushStatusBanner';
 import NewsFeed from '../../components/NewsFeed';
 import StreamCard from '../../components/StreamCard';
@@ -62,7 +65,9 @@ export default function TodayScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
-  const [synthesis, setSynthesis] = useState<string | null>(null);
+  // synthesis state retired with the briefing-hero removal — Dashboard
+  // no longer pulls the briefing via /api/dashboard/synthesis. The
+  // chat surface is the canonical place for the morning brief.
 
   // Push status — surfaced as a banner above the hero so the user can verify
   // notification delivery in two taps rather than four-deep in Settings.
@@ -111,36 +116,29 @@ export default function TodayScreen() {
     setLoading(false);
   }, []);
 
-  const loadSynthesis = useCallback(async () => {
-    const { data } = await getSynthesis();
-    if (data?.synthesis) setSynthesis(data.synthesis);
-  }, []);
-
   // Refresh whenever the tab is focused
   useFocusEffect(
     useCallback(() => {
       loadBrief();
-      loadSynthesis();
       loadOnboardingBanner();
       loadPushStatus();
-    }, [loadBrief, loadSynthesis, loadOnboardingBanner, loadPushStatus])
+    }, [loadBrief, loadOnboardingBanner, loadPushStatus])
   );
 
   useEffect(() => {
     loadBrief();
-    loadSynthesis();
     loadOnboardingBanner();
     loadPushStatus();
     loadAuthState().then(auth => {
       if (auth.displayName) setDisplayName(auth.displayName);
     });
-  }, [loadBrief, loadSynthesis, loadOnboardingBanner, loadPushStatus]);
+  }, [loadBrief, loadOnboardingBanner, loadPushStatus]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadBrief(), loadSynthesis()]);
+    await loadBrief();
     setRefreshing(false);
-  }, [loadBrief, loadSynthesis]);
+  }, [loadBrief]);
 
   // Edit modal state
   const [editingCard, setEditingCard] = useState<StreamCardData | null>(null);
@@ -357,46 +355,51 @@ export default function TodayScreen() {
             the moment Today opens. */}
         <PushStatusBanner tokens={pushTokens} onTokensChange={setPushTokens} />
 
-        {/* Hero: AI synthesis. The backend gates Sonnet behind a data-availability
-            check (briefing.ts isFullyEmpty), so `synthesis` arrives as null
-            when there is nothing meaningful to synthesise. We render an honest
-            empty-state in that case rather than a generic "all caught up"
-            platitude — when Memu has no calendar, no cards, and no inbox, the
-            truthful answer is "I don't know what to tell you yet." */}
+        {/* Phase A.3/A.4 follow-up — Dashboard no longer renders the briefing
+            as a hero. Briefings live in chat (one source of truth, per the
+            Layer Zero brief). Dashboard becomes the at-a-glance overview:
+            greeting + date, schedule, news, stream, shopping. A compact
+            pointer routes the user to chat for the full brief.
+
+            Side effect of removing this hero: /api/dashboard/synthesis is no
+            longer called on every Today open, which closes BUG-06 (the
+            cost-on-render anti-pattern that burned ~£0.40/day on Sonnet
+            calls fired by useFocusEffect). Empty-state nudge stays so
+            first-use users still see "tell me what's going on" guidance. */}
         <View style={styles.heroSlot}>
           {(() => {
-            const isFullyEmpty = !synthesis
-              && events.length === 0
-              && cards.length === 0
-              && shoppingCount === 0;
-
-            const title = synthesis
-              ? synthesis
-              : isFullyEmpty
-                ? "I don't have anything to brief you on yet."
-                : "You're all caught up for today.";
-
-            const body = error
-              ? "Can't reach your home server. Pull to retry."
-              : isFullyEmpty
-                ? !calendarConnected
-                  ? 'Connect your calendar, or tell me what’s happening this week — I’ll build from there.'
-                  : 'Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.'
-                : cards.length > 0
-                  ? `${cards.length} item${cards.length === 1 ? '' : 's'} await your attention below.`
-                  : 'Your stream is quiet. Memu is listening in the background.';
+            const isFullyEmpty = events.length === 0 && cards.length === 0 && shoppingCount === 0;
+            const emptyStateMessage = !calendarConnected
+              ? 'Connect your calendar, or tell me what’s happening this week — I’ll build from there.'
+              : 'Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.';
 
             return (
-              <AIInsightCard
-                label="Today's brief"
-                icon="sparkles"
-                greeting={todayHeader.greeting}
-                dateLabel={todayHeader.dateLabel}
-                title={title}
-                body={body}
-                ctaLabel={cards.length > 0 ? 'Review stream' : undefined}
-                onCta={cards.length > 0 ? undefined : undefined}
-              />
+              <Pressable
+                onPress={() => router.push('/(tabs)/chat' as any)}
+                style={styles.briefPointer}
+                accessibilityRole="link"
+                accessibilityLabel={isFullyEmpty ? 'Start chatting with Memu' : "Open today's brief in chat"}
+              >
+                <View style={styles.briefPointerHeader}>
+                  <Text style={styles.briefPointerGreeting}>{todayHeader.greeting}</Text>
+                  <Text style={styles.briefPointerDate}>{todayHeader.dateLabel}</Text>
+                </View>
+                {error ? (
+                  <Text style={styles.briefPointerBody}>
+                    Can't reach your home server. Pull to retry.
+                  </Text>
+                ) : isFullyEmpty ? (
+                  <Text style={styles.briefPointerBody}>{emptyStateMessage}</Text>
+                ) : (
+                  <View style={styles.briefPointerCta}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+                    <Text style={styles.briefPointerCtaText}>
+                      Today's brief is in your chat
+                    </Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+                  </View>
+                )}
+              </Pressable>
             );
           })()}
         </View>
@@ -593,8 +596,48 @@ const styles = StyleSheet.create({
 
   heroSlot: {
     paddingHorizontal: spacing.md,
-    marginTop: spacing.xl,
-    marginBottom: spacing.xl,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  // Compact "today's brief" pointer replacing the full AIInsightCard
+  // hero. Briefings live in chat; this card is just the doorway.
+  briefPointer: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  briefPointerHeader: {
+    gap: 2,
+  },
+  briefPointerGreeting: {
+    fontSize: typography.sizes.xl,
+    fontFamily: typography.families.headline,
+    color: colors.onSurface,
+    letterSpacing: typography.tracking.tight,
+  },
+  briefPointerDate: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+  },
+  briefPointerBody: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 22,
+    marginTop: spacing.xs,
+  },
+  briefPointerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+  },
+  briefPointerCtaText: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
   },
 
   onboardingBanner: {

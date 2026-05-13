@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-error-bubble">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-brief-pointer">
 </head>
 <body>
 <!-- Auth gate -->
@@ -158,18 +158,20 @@ async function api(path, opts = {}) {
      the page. Lists belong in the Lists tab; this tab summarises. -->
 <div id="view-today" class="today-canvas hidden">
 
-    <!-- Hero — AI insight (synthesis or honest empty-state). Filled by
-         loadSynthesis() which calls /api/dashboard/synthesis. The backend
-         empty-state gate (briefing.ts isFullyEmpty) returns null when
-         there's nothing to brief on; we render the honest fallback. -->
-    <article class="today-insight">
-        <header class="today-insight-header">
-            <span class="today-insight-eyebrow">Today's brief</span>
-            <span class="today-insight-greeting" id="greeting"></span>
-            <span class="today-insight-date" id="date-text"></span>
+    <!-- Phase A.3/A.4 follow-up — briefing-hero retired. Briefings live
+         in chat (one source of truth). Dashboard becomes the at-a-glance
+         overview; this card is just the doorway to the canonical place.
+         Side effect: /api/dashboard/synthesis no longer fires per tab
+         load, closing BUG-06 (cost-on-render Sonnet burn). -->
+    <article class="today-brief-pointer" id="today-brief-pointer" onclick="switchTab('chat')" role="link" tabindex="0">
+        <header class="today-brief-pointer-header">
+            <span class="today-brief-pointer-greeting" id="greeting"></span>
+            <span class="today-brief-pointer-date" id="date-text"></span>
         </header>
-        <div class="today-insight-body" id="today-insight-body">
-            <p class="today-insight-loading">Catching up…</p>
+        <div class="today-brief-pointer-cta" id="today-brief-pointer-cta">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <span>Today's brief is in your chat</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
     </article>
 
@@ -908,7 +910,9 @@ function switchTab(tab) {
     // Auto-close sidebar on mobile after a tab tap so the canvas is visible
     if (isMobileViewport()) closeSidebar();
     // Load data on tab switch
-    if (tab === 'today') { loadBrief(); loadSynthesis(); loadNewsFeed(); }
+    // 'today' is now Dashboard. The briefing hero retired — chat is the
+    // canonical surface — so we no longer call loadSynthesis() here.
+    if (tab === 'today') { loadBrief(); loadNewsFeed(); }
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
     if (tab === 'lists') loadLists();
@@ -948,31 +952,10 @@ function getSourceColor(source) {
 document.getElementById('greeting').textContent = getGreeting();
 document.getElementById('date-text').textContent = formatDate();
 
-// Synthesis hero — fetches from /api/dashboard/synthesis (15-min cached
-// server-side). Renders the briefing markdown if present, or the honest
-// empty-state copy if the backend's data-availability gate returned null.
-// Critical: never falls back to "you're all caught up" — that's the
-// confabulation pattern the audit flagged.
-async function loadSynthesis() {
-    const bodyEl = document.getElementById('today-insight-body');
-    if (!bodyEl) return;
-    try {
-        const res = await api('/api/dashboard/synthesis');
-        if (!res.ok) {
-            bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
-            return;
-        }
-        const data = await res.json();
-        if (data && data.synthesis) {
-            bodyEl.innerHTML = renderMarkdown(data.synthesis);
-        } else {
-            // Empty-state honest copy — matches mobile (tabs)/index.tsx
-            bodyEl.innerHTML = '<p>I don’t have anything to brief you on yet. Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.</p>';
-        }
-    } catch (err) {
-        bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
-    }
-}
+// loadSynthesis() retired with the briefing-hero removal — Dashboard
+// no longer renders the briefing as a hero. Chat is the canonical
+// surface for the morning brief. The /api/dashboard/synthesis endpoint
+// is no longer called per tab load (closes BUG-06 cost-on-render).
 
 // News feed — Google-Discover-shaped block on Today. State held in a
 // small `newsState` blob so refresh + expand toggle share it.
@@ -4023,10 +4006,11 @@ function renderSelectedDay() {
     // sidebar conversations expansion, AND fires loadChatHistory().
     switchTab('chat');
 
-    // Pre-warm Today data so the briefing card renders instantly when the
-    // user clicks Today in the sidebar. Fire-and-forget; no UI dependency.
+    // Pre-warm Dashboard data so the calendar strip + stream feed render
+    // instantly when the user clicks Dashboard in the sidebar.
+    // Fire-and-forget; no UI dependency. (loadSynthesis() retired —
+    // briefings live in chat now.)
     loadBrief();
-    loadSynthesis();
 })();
 </script>
 </body>

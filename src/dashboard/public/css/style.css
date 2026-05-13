@@ -528,67 +528,49 @@ textarea.input {
   gap: var(--space-lg);
 }
 
-/* Hero — AI insight card. Mirrors the mobile AIInsightCard with the soft
-   tertiary radial glow in the top-right (the "AI element" colour from
-   Indigo Sanctuary). Carries the synthesis or the honest empty-state. */
-.today-insight {
-  position: relative;
+/* Phase A.3/A.4 follow-up — `.today-insight*` retired. The briefing-hero
+   no longer duplicates the chat briefing on Dashboard. The compact
+   `.today-brief-pointer` below replaces it: greeting + date + a
+   one-line CTA that routes the user to chat for the canonical brief. */
+.today-brief-pointer {
   background: var(--surface-lowest);
   border-radius: var(--radius-lg);
-  padding: var(--space-xl);
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
-}
-.today-insight::before {
-  content: '';
-  position: absolute;
-  top: -80px;
-  right: -80px;
-  width: 200px;
-  height: 200px;
-  border-radius: 100px;
-  background: var(--indigo-tertiary-container);
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-.today-insight-header {
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-low, 0 1px 3px rgba(0,0,0,0.06));
+  cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: var(--space-md);
-  position: relative;
+  gap: var(--space-sm);
+  transition: background-color 0.15s ease;
 }
-.today-insight-eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: var(--indigo-tertiary);
+.today-brief-pointer:hover {
+  background: var(--surface-container-low, var(--surface-lowest));
 }
-.today-insight-greeting {
+.today-brief-pointer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.today-brief-pointer-greeting {
   font-family: var(--font-headline, 'Manrope', sans-serif);
-  font-size: 24px;
-  font-weight: 800;
+  font-size: 22px;
+  font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--text-primary);
   line-height: 1.2;
 }
-.today-insight-date {
+.today-brief-pointer-date {
   font-size: 13px;
   color: var(--text-secondary);
 }
-.today-insight-body {
-  position: relative;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-primary);
-}
-.today-insight-body p { margin: 0 0 var(--space-sm) 0; }
-.today-insight-body p:last-child { margin-bottom: 0; }
-.today-insight-loading {
-  color: var(--text-muted);
-  font-style: italic;
+.today-brief-pointer-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-accent, #5054B5);
+  margin-top: 2px;
 }
 
 /* Section labels — uppercase eyebrow above each block */
