@@ -15,7 +15,7 @@ import { formatToolSummaryFooter } from './toolSummary';
 import { scrapeUrlContent } from './browser';
 import { db, enterCollectiveContext } from '../db/tenant';
 import { processSynthesisUpdate } from './synthesis';
-import { retrieveForQuery, buildContextBlock } from '../spaces/retrieval';
+import { retrieveForQuery, buildContextBlock, deriveRetrievalState } from '../spaces/retrieval';
 import { recordRetrievalProvenance } from '../spaces/provenance';
 
 const HISTORY_LIMIT = 10; // Last N message pairs for multi-turn conversation
@@ -302,24 +302,20 @@ export async function processIntelligencePipeline(
   const toolFooter = formatToolSummaryFooter(dispatchResult.toolCalls);
   const realResponse = toolFooter ? `${realResponseBase}${toolFooter}` : realResponseBase;
 
-  // 5d. Empty-Context Honesty Gate (Slice 3)
-  // The honesty guarantee lives in skills/interactive_query/SKILL.md Rule 11
-  // — Claude is told not to confabulate from training weights when the context
-  // block is empty. We log when that condition holds so the privacy ledger /
-  // future UI can surface it, but we do NOT inject a user-facing marker:
-  //   (a) no consumer existed for it (it would render literally in chat), and
-  //   (b) Slice 2's fallback (onboarding answers + 2 person/routine spaces)
-  //       counts as context, so the gate must respect that or it contradicts
-  //       the very fallback it's meant to coexist with.
-  const hasFallback =
-    (retrieval.fallbackSpaces?.length ?? 0) > 0 || !!retrieval.fallbackOnboardingText;
-  const isEmptyContext =
-    retrieval.spaces.length === 0 &&
-    retrieval.embeddingContexts.length === 0 &&
-    !hasFallback;
+  // 5d. Empty-Context Honesty Gate — BUG-15 (2026-05-13).
+  // The honesty guarantee is now structural at the prompt level: when retrieval
+  // is empty, `buildContextBlock` emits an explicit `=== RETRIEVAL: EMPTY ===`
+  // marker that Rule 11 of interactive_query/SKILL.md keys off. The marker is
+  // load-bearing — Claude sees a concrete signal, not an absent prompt segment.
+  //
+  // We compute the state once (single source of truth in `deriveRetrievalState`)
+  // and log it so the privacy ledger / UI badge can filter by it. No separate
+  // empty-detection logic is allowed to grow elsewhere — if you find yourself
+  // checking `spaces.length === 0` outside this module, you're drifting.
+  const retrievalState = deriveRetrievalState(retrieval);
   const noToolsCalled = !dispatchResult.toolCalls || dispatchResult.toolCalls.length === 0;
-  if (isEmptyContext && noToolsCalled) {
-    console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (no spaces, no embeddings, no fallback, no tools).`);
+  if (retrievalState === 'empty' && noToolsCalled) {
+    console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (state=empty, no tools fired). Marker injected, Rule 11 applies.`);
   }
 
   // 6. Immutable Message Storage (Audit Trail) — includes tool call provenance
