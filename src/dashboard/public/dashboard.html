@@ -1250,8 +1250,15 @@ async function handleCalendarConnect() {
 }
 
 async function cardAction(type, id, actionId) {
+    // Phase A.6 — the 'dynamic' branch used to fire an orphan toast
+    // ("Action triggered: X") with no actual state change. Either we have
+    // a real endpoint for this action type or we don't. If you reach here
+    // with type='dynamic', the caller is wired wrong — log it loud so it
+    // surfaces during dogfood instead of silently producing a misleading
+    // success toast.
     if (type === 'dynamic') {
-        showToast(`Action triggered: ${actionId}`);
+        console.warn(`[CARD-ACTION] Unhandled dynamic action "${actionId}" on card ${id}. No endpoint wired.`);
+        showToast(`Couldn't run that action`, true);
         return;
     }
     const endpoints = {
@@ -1260,15 +1267,26 @@ async function cardAction(type, id, actionId) {
         calendar: '/api/calendar/add',
         shopping: '/api/stream/to-shopping',
     };
+    if (!endpoints[type]) {
+        console.warn(`[CARD-ACTION] Unknown action type "${type}" on card ${id}`);
+        showToast(`Couldn't run that action`, true);
+        return;
+    }
     try {
-        await api(endpoints[type], {
+        const r = await api(endpoints[type], {
             method: 'POST',
             body: JSON.stringify({ cardId: id }),
         });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         showToast(type === 'resolve' ? 'Done' : type === 'dismiss' ? 'Dismissed' : type === 'calendar' ? 'Added to calendar' : 'Moved to list');
         loadBrief();
     } catch (e) {
-        showToast('Action failed', true);
+        const msg = e && e.message ? `Action failed — ${e.message}` : 'Action failed';
+        console.warn(`[CARD-ACTION] ${type} failed on card ${id}:`, e);
+        showToast(msg, true);
     }
 }
 
@@ -1293,14 +1311,23 @@ async function saveEdit() {
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try {
-        await api('/api/stream/edit', {
+        // Phase A.6 — r.ok required before closing the modal. Pre-fix,
+        // a 500 response closed the modal and reloaded the brief,
+        // showing the unchanged card and a successful-looking UX.
+        const r = await api('/api/stream/edit', {
             method: 'POST',
             body: JSON.stringify({ cardId, title, body }),
         });
+        if (!r.ok) {
+            const errBody = await r.json().catch(() => ({}));
+            throw new Error(errBody.error || `HTTP ${r.status}`);
+        }
         closeEditModal();
         loadBrief();
     } catch (e) {
-        showToast('Save failed', true);
+        const msg = e && e.message ? `Save failed — ${e.message}` : 'Save failed';
+        console.warn('[STREAM-EDIT] failed:', e);
+        showToast(msg, true);
     } finally {
         btn.disabled = false;
         btn.textContent = 'Save';
@@ -2370,11 +2397,14 @@ async function addListItemSubmit() {
     try {
         // Each comma/and-separated piece is parsed independently so each
         // can carry its own #category and "by Friday" markers.
+        // Phase A.6 — track per-item failure so the user knows which
+        // entries didn't land if the API errors mid-batch.
         const parts = splitListInput(raw);
+        const failed = [];
         for (const part of parts) {
             const parsed = parseListsQuickInput(part);
             const cleanText = listsTitleCase(parsed.itemText);
-            await api('/api/lists', {
+            const r = await api('/api/lists', {
                 method: 'POST',
                 body: JSON.stringify({
                     list_type: listsKind,
@@ -2384,10 +2414,20 @@ async function addListItemSubmit() {
                     source: 'pwa',
                 }),
             });
+            if (!r.ok) {
+                failed.push(cleanText);
+                const body = await r.json().catch(() => ({}));
+                console.warn(`[LISTS] add failed for "${cleanText}":`, body.error || r.status);
+            }
         }
         await loadLists();
+        if (failed.length > 0) {
+            showToast(`Couldn't add: ${failed.join(', ')}`, true);
+        }
     } catch (err) {
-        showToast('Failed to add', true);
+        const msg = err && err.message ? `Failed to add — ${err.message}` : 'Failed to add';
+        console.warn('[LISTS] add submit failed:', err);
+        showToast(msg, true);
     } finally {
         btn.disabled = false;
         input.focus();
@@ -2470,11 +2510,20 @@ async function deleteFromListsEditModal() {
     if (!listsEditingId) return;
     if (!confirm('Delete this item?')) return;
     try {
-        await api(`/api/lists/${listsEditingId}`, { method: 'DELETE' });
+        // Phase A.6 — same r.ok pattern as completeListItem. Without
+        // the check a 500 response would silently close the modal and
+        // reload the list, showing the item still there.
+        const r = await api(`/api/lists/${listsEditingId}`, { method: 'DELETE' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         await loadLists();
         closeListsEditModal();
     } catch (err) {
-        showToast('Delete failed', true);
+        const msg = err && err.message ? `Couldn't delete — ${err.message}` : 'Delete failed';
+        console.warn('[LISTS] delete failed:', err);
+        showToast(msg, true);
     }
 }
 
@@ -2482,12 +2531,24 @@ async function completeListItem(id) {
     const row = document.querySelector(`.lists-item[data-id="${id}"]`);
     if (row) row.style.opacity = '0.4';
     try {
-        await api(`/api/lists/${id}/complete`, { method: 'POST' });
+        // Phase A.6 — fetch doesn't throw on 4xx/5xx, so without the
+        // r.ok check, a server error was treated as success: the row
+        // was removed from local cache, but on refresh the persisted
+        // pending status came back — BUG-10. Now we require an OK
+        // response before mutating local state, and restore opacity
+        // on failure so the user knows their tap didn't take.
+        const r = await api(`/api/lists/${id}/complete`, { method: 'POST' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         listsCache[listsKind] = listsCache[listsKind].filter(i => i.id !== id);
         document.getElementById('lists-count-' + listsKind).textContent = listsCache[listsKind].length;
         renderLists();
     } catch (err) {
-        showToast('Failed', true);
+        const msg = err && err.message ? `Couldn't mark done — ${err.message}` : 'Failed';
+        console.warn(`[LISTS] complete failed on item ${id}:`, err);
+        showToast(msg, true);
         if (row) row.style.opacity = '';
     }
 }
@@ -2495,12 +2556,18 @@ async function completeListItem(id) {
 async function deleteListItemPrompt(id) {
     if (!confirm('Delete this item?')) return;
     try {
-        await api(`/api/lists/${id}`, { method: 'DELETE' });
+        const r = await api(`/api/lists/${id}`, { method: 'DELETE' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         listsCache[listsKind] = listsCache[listsKind].filter(i => i.id !== id);
         document.getElementById('lists-count-' + listsKind).textContent = listsCache[listsKind].length;
         renderLists();
     } catch (err) {
-        showToast('Failed', true);
+        const msg = err && err.message ? `Couldn't delete — ${err.message}` : 'Delete failed';
+        console.warn(`[LISTS] delete failed on item ${id}:`, err);
+        showToast(msg, true);
     }
 }
 
@@ -3270,12 +3337,21 @@ async function deleteCurrentSpace() {
     if (!id) return;
     if (!confirm('Delete this Space? This cannot be undone.')) return;
     try {
-        await api('/api/spaces/' + id, { method: 'DELETE' });
+        // Phase A.6 — destructive op, double down on the error check.
+        // Without r.ok a server failure showed "Deleted" and closed the
+        // detail view; the Space still existed on the next loadSpaces.
+        const r = await api('/api/spaces/' + id, { method: 'DELETE' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         closeSpaceDetail();
         await loadSpaces();
         showToast('Deleted');
     } catch (err) {
-        showToast('Delete failed', true);
+        const msg = err && err.message ? `Couldn't delete — ${err.message}` : 'Delete failed';
+        console.warn('[SPACES] delete failed:', err);
+        showToast(msg, true);
     }
 }
 
