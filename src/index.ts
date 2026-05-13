@@ -2297,31 +2297,55 @@ server.post('/api/stream/action/update-space', async (request, reply) => {
 
   try {
     const existing = await findSpaceBySlug(profileId, payload.category as SpaceCategory, payload.slug);
-    if (!existing) {
-      return reply.code(404).send({ error: `Space not found: ${payload.category}/${payload.slug}` });
-    }
-    const space = await upsertSpace({
-      familyId: existing.familyId,
-      category: existing.category,
-      slug: existing.slug,
-      name: existing.name,
-      bodyMarkdown: payload.body_markdown,
-      description: existing.description,
-      domains: existing.domains,
-      people: existing.people,
-      visibility: existing.visibility,
-      confidence: Math.min(1, existing.confidence + 0.05),
-      sourceReferences: [...existing.sourceReferences, `briefing-action:${cardId}`],
-      tags: existing.tags,
-      actorProfileId: profileId,
-    });
+    // The briefing skill suggests "fill in weekly rhythm" / "fill in current focus"
+    // for Spaces that the user hasn't seeded yet — slug + category come from the
+    // onboarding catalogue. Pre-2026-05-13 this 404'd because findSpaceBySlug
+    // didn't find a row, leaving the user stuck on a CTA they couldn't act on.
+    // Create-on-missing instead: use the suggested body_markdown verbatim and
+    // synthesise the metadata that upsertSpace needs.
+    const space = existing
+      ? await upsertSpace({
+          familyId: existing.familyId,
+          category: existing.category,
+          slug: existing.slug,
+          name: existing.name,
+          bodyMarkdown: payload.body_markdown,
+          description: existing.description,
+          domains: existing.domains,
+          people: existing.people,
+          visibility: existing.visibility,
+          confidence: Math.min(1, existing.confidence + 0.05),
+          sourceReferences: [...existing.sourceReferences, `briefing-action:${cardId}`],
+          tags: existing.tags,
+          actorProfileId: profileId,
+        })
+      : await upsertSpace({
+          familyId: profileId,
+          category: payload.category as SpaceCategory,
+          slug: payload.slug,
+          name: humaniseSlug(payload.slug),
+          bodyMarkdown: payload.body_markdown,
+          description: '',
+          visibility: 'family',
+          confidence: 0.6,
+          sourceReferences: [`briefing-action:${cardId}`],
+          tags: ['briefing'],
+          actorProfileId: profileId,
+        });
     await resolveCard(cardId, profileId);
-    return { success: true, uri: space.uri };
+    return { success: true, uri: space.uri, created: !existing };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'update-space failed' });
   }
 });
+
+function humaniseSlug(slug: string): string {
+  return slug
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim() || 'Untitled Space';
+}
 
 // reply_draft is a no-op endpoint — the user clicked Copy in the inline preview
 // and the draft was copied to their clipboard client-side. We resolve the card
