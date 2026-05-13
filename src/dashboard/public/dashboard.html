@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-brief-pointer">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-nudge-eyebrow">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1408,7 +1408,7 @@ function maybeEmitDaySeparator(timestamp) {
 
 function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrievalState, nudge) {
     // `nudge` is the optional Phase A.5 payload for action-nudge messages:
-    //   { streamCardId, cardTitle, cardBody, cardActions }
+    //   { streamCardId, cardTitle, cardBody, cardActions, cardType, cardStatus }
     // Only present when type === 'action_nudge'.
     // First write into the empty chat clears the welcome blank-state placeholder.
     const blank = document.getElementById('chat-blank-state');
@@ -1418,16 +1418,16 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
     const time = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // Action-nudge messages (Canvas Phase A.5) — render as a Memu bubble
-    // with the card title, body, and action buttons. Same visual register
-    // as a normal reply (avatar + bubble alignment) but with inline
-    // affordances. Action handlers call /api/stream/* and update the DOM
-    // in place on success — no orphan toast, no parallel Today-feed render.
+    // with the card title, body, type eyebrow, and action buttons. Same
+    // visual register as a normal reply (avatar + bubble alignment) but
+    // with inline affordances. Action handlers call /api/stream/* and
+    // update the DOM in place on success — no orphan toast, no parallel
+    // Today-feed render. Empty cardActions arrays fall back to default
+    // Mark done / Dismiss so backfilled cards still resolve.
     if (!isUser
         && type === 'action_nudge'
         && nudge
-        && nudge.streamCardId
-        && Array.isArray(nudge.cardActions)
-        && nudge.cardActions.length > 0) {
+        && nudge.streamCardId) {
       const card = renderActionNudgeBubble(nudge, time);
       chatMessages.appendChild(card);
       chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1554,6 +1554,54 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
 // of "Memu nudged me, I acted on it" — matching the principle that the
 // conversation IS the audit trail.
 
+// Mirrors mobile/lib/cardTypeDisplay.ts. Keep these maps in lockstep when
+// extending stream_cards.card_type so the user sees the same eyebrow in
+// both surfaces. Tone drives the left accent rule + eyebrow colour:
+// 'attention' for things the family should look at (contradictions,
+// lapses, stale facts), 'neutral' otherwise.
+const NUDGE_TYPE_DISPLAY = {
+    shopping: { label: 'Shopping', iconKey: 'basket', tone: 'neutral' },
+    extraction: { label: 'Task', iconKey: 'check', tone: 'neutral' },
+    reminder: { label: 'Reminder', iconKey: 'alarm', tone: 'neutral' },
+    document_extracted: { label: 'From document', iconKey: 'doc', tone: 'neutral' },
+    calendar_added: { label: 'Calendar', iconKey: 'calendar', tone: 'neutral' },
+    proactive_nudge: { label: 'Nudge', iconKey: 'sparkle', tone: 'neutral' },
+    weekly_digest: { label: 'Digest', iconKey: 'news', tone: 'neutral' },
+    pattern: { label: 'Pattern', iconKey: 'trend', tone: 'neutral' },
+    briefing: { label: 'Briefing', iconKey: 'sun', tone: 'neutral' },
+    contradiction: { label: 'Check this', iconKey: 'warn', tone: 'attention' },
+    stale_fact: { label: 'Stale info', iconKey: 'clock', tone: 'attention' },
+    unfinished_business: { label: 'Unfinished', iconKey: 'hourglass', tone: 'attention' },
+    collision: { label: 'Collision', iconKey: 'warn', tone: 'attention' },
+    care_standard_lapsed: { label: 'Overdue', iconKey: 'alert', tone: 'attention' },
+};
+
+const NUDGE_TYPE_FALLBACK = { label: 'Note', iconKey: 'dot', tone: 'neutral' };
+
+// Inline SVG markup keyed by iconKey so eyebrow renders without an icon
+// font dependency. 12px viewBox to match the eyebrow text height.
+const NUDGE_ICON_SVG = {
+    basket: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18l-2 12H5L3 8z"/><path d="M8 8V5a4 4 0 0 1 8 0v3"/></svg>',
+    check: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/></svg>',
+    alarm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3L3 5"/><path d="M19 3l2 2"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>',
+    sparkle: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>',
+    news: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>',
+    trend: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    hourglass: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v4l-4 4 4 4v4H6v-4l4-4-4-4z"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="3"/></svg>',
+};
+
+function getNudgeTypeDisplay(cardType) {
+    if (!cardType) return NUDGE_TYPE_FALLBACK;
+    return NUDGE_TYPE_DISPLAY[cardType] || NUDGE_TYPE_FALLBACK;
+}
+
 function renderActionNudgeBubble(nudge, timeStr) {
     const row = document.createElement('div');
     row.className = 'message-row message-row-memu';
@@ -1561,23 +1609,48 @@ function renderActionNudgeBubble(nudge, timeStr) {
     // again when transitioning state.
     row.setAttribute('data-nudge-card', nudge.streamCardId);
 
+    const display = getNudgeTypeDisplay(nudge.cardType);
+    const toneClass = display.tone === 'attention' ? 'nudge-tone-attention' : 'nudge-tone-neutral';
+    const iconSvg = NUDGE_ICON_SVG[display.iconKey] || NUDGE_ICON_SVG.dot;
+
+    const eyebrowHtml = `<div class="nudge-eyebrow">${iconSvg}<span>${esc(display.label.toUpperCase())}</span></div>`;
     const titleHtml = nudge.cardTitle && nudge.cardTitle.trim()
         ? `<div class="nudge-title">${esc(nudge.cardTitle)}</div>`
         : '';
     const bodyHtml = nudge.cardBody && nudge.cardBody.trim()
         ? `<div class="nudge-body">${esc(nudge.cardBody)}</div>`
         : '';
-    const actionsHtml = renderNudgeActions(nudge.streamCardId, nudge.cardActions);
+
+    // Empty cardActions fall back to default Mark done / Dismiss so the
+    // bubble doesn't dead-end on backfilled cards (migration 034) or
+    // producers that didn't attach explicit actions.
+    const rawActions = (Array.isArray(nudge.cardActions) && nudge.cardActions.length > 0)
+        ? nudge.cardActions
+        : [
+            { type: 'resolve', label: 'Mark done' },
+            { type: 'dismiss', label: 'Dismiss' },
+          ];
+
+    // Seed render state from server-side stream_cards.status so resolved
+    // cards stay resolved on history reload — no extra round-trip.
+    let actionsRegionHtml;
+    if (nudge.cardStatus === 'resolved') {
+        actionsRegionHtml = `<div class="nudge-resolved-row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg><span>Done</span></div>`;
+    } else if (nudge.cardStatus === 'dismissed') {
+        actionsRegionHtml = `<div class="nudge-resolved-row nudge-resolved-muted"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg><span>Dismissed</span></div>`;
+    } else {
+        const actionsHtml = renderNudgeActions(nudge.streamCardId, rawActions);
+        actionsRegionHtml = `<div class="nudge-actions" data-nudge-actions="${nudge.streamCardId}">${actionsHtml}</div>`;
+    }
 
     row.innerHTML = `
         <div class="avatar avatar-mark">${AVATAR_MARK_SVG}</div>
         <div class="bubble-wrap">
-            <div class="bubble bubble-memu nudge-bubble">
+            <div class="bubble bubble-memu nudge-bubble ${toneClass}">
+                ${eyebrowHtml}
                 ${titleHtml}
                 ${bodyHtml}
-                <div class="nudge-actions" data-nudge-actions="${nudge.streamCardId}">
-                    ${actionsHtml}
-                </div>
+                ${actionsRegionHtml}
             </div>
             <div class="timestamp timestamp-left">${timeStr}</div>
         </div>
@@ -1626,6 +1699,10 @@ function describeNudgeAction(cardId, index, action) {
                 return { kind: 'dismiss', label: action.label || 'Dismiss', variant: 'ghost' };
             case 'standard_complete':
                 return { kind: 'standard_complete', label: action.label || 'Mark done', variant: 'primary' };
+            case 'resolve':
+                // Generic mark-done. Default for backfilled cards (migration 034)
+                // and any producer that didn't attach explicit actions.
+                return { kind: 'resolve', label: action.label || 'Mark done', variant: 'primary' };
             case 'open_space':
                 return { kind: 'open_space', label: action.label || 'Open Space', variant: 'secondary' };
             default:
@@ -1668,6 +1745,15 @@ async function handleNudgeAction(cardId, index, kind, btnEl) {
             const r = await api(`/api/stream/resolve`, { method: 'POST', body: JSON.stringify({ cardId }) });
             if (!r.ok) throw new Error(`Mark done failed (${r.status})`);
             outcome = 'Marked complete';
+            transitionNudgeToResolved(cardId, outcome);
+            return;
+        }
+        if (kind === 'resolve') {
+            // Generic mark-done (no care-standard coupling). Default action
+            // for backfilled cards.
+            const r = await api(`/api/stream/resolve`, { method: 'POST', body: JSON.stringify({ cardId }) });
+            if (!r.ok) throw new Error(`Mark done failed (${r.status})`);
+            outcome = 'Marked done';
             transitionNudgeToResolved(cardId, outcome);
             return;
         }
@@ -1875,6 +1961,8 @@ async function pickConversation(conversationId) {
                     cardTitle: msg.cardTitle,
                     cardBody: msg.cardBody,
                     cardActions: msg.cardActions,
+                    cardType: msg.cardType,
+                    cardStatus: msg.cardStatus,
                     error: msg.error,
                 });
             }
@@ -1916,6 +2004,8 @@ async function loadChatHistory() {
                     cardTitle: msg.cardTitle,
                     cardBody: msg.cardBody,
                     cardActions: msg.cardActions,
+                    cardType: msg.cardType,
+                    cardStatus: msg.cardStatus,
                     error: msg.error,
                 });
             }

@@ -75,6 +75,27 @@ export interface RawCardAction {
   [k: string]: unknown;
 }
 
+/**
+ * Default actions for a card with no explicit `actions` payload. Backfilled
+ * cards (migration 034) and any producer that forgot to attach actions
+ * fall back to this — every nudge needs at least one way to resolve so
+ * the bubble doesn't dead-end. The defaults vary by card type: things
+ * Memu extracted that mirror an existing surface (shopping → Lists tab,
+ * documents → Spaces) offer an Open action; everything else gets a
+ * straight Mark done + Dismiss pair.
+ */
+export function defaultActionsForCardType(cardType?: string | null): RawCardAction[] {
+  // 'resolve' marks the card done via /api/stream/resolve (no
+  // standard-complete coupling). 'dismiss' hides it without completion.
+  // Every card gets these two as a minimum so the bubble doesn't
+  // dead-end on backfilled rows (migration 034) or producers that
+  // forgot to attach explicit actions.
+  return [
+    { type: 'resolve', label: 'Mark done' },
+    { type: 'dismiss', label: 'Dismiss' },
+  ];
+}
+
 export function mapCardActionsToHandlers(
   cardId: string,
   actions: RawCardAction[],
@@ -177,6 +198,20 @@ function buildLegacyActionHandler(
         onPress: async () => {
           await dismissCard(cardId);
           deps.onResolve('dismissed');
+        },
+      };
+    case 'resolve':
+      // Generic mark-done for cards without an attached care-standard.
+      // Default for backfilled cards (migration 034) and any producer
+      // that didn't attach explicit actions.
+      return {
+        label: action.label || 'Mark done',
+        icon: 'checkmark',
+        variant: 'primary',
+        onPress: async () => {
+          const { error } = await resolveCard(cardId);
+          if (error) return deps.onError(error);
+          deps.onResolve('resolved', 'Marked done');
         },
       };
     case 'standard_complete': {

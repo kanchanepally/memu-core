@@ -2641,14 +2641,23 @@ server.get('/api/chat/history', async (request, reply) => {
     //      IS NULL, content_response_translated IS NOT NULL, metadata.type='briefing'.
     // We accept either as long as content_response_translated exists; client-side
     // shape depends on whether userMessage is non-empty.
+    // Phase A.5 follow-up — JOIN stream_cards so the renderer can show a
+    // type label ("SHOPPING", "REMINDER", "TASK") on nudge bubbles. Card
+    // type is the source of truth on stream_cards; the message's metadata
+    // doesn't carry it because the producer (postCardAsMessage) stored
+    // title/body/actions there and not type. LEFT JOIN so chat turns
+    // without a linked card (the normal case) still return.
     const msgRes = await db.query(
-      `SELECT id, conversation_id, content_original, content_response_translated,
-              channel, created_at, actions_executed, metadata, retrieval_state,
-              retrieved_space_uris, stream_card_id
-       FROM messages
-       WHERE conversation_id = $1
-         AND content_response_translated IS NOT NULL
-       ORDER BY created_at DESC
+      `SELECT m.id, m.conversation_id, m.content_original, m.content_response_translated,
+              m.channel, m.created_at, m.actions_executed, m.metadata, m.retrieval_state,
+              m.retrieved_space_uris, m.stream_card_id,
+              sc.card_type AS stream_card_type,
+              sc.status AS stream_card_status
+       FROM messages m
+       LEFT JOIN stream_cards sc ON sc.id = m.stream_card_id
+       WHERE m.conversation_id = $1
+         AND m.content_response_translated IS NOT NULL
+       ORDER BY m.created_at DESC
        LIMIT $2`,
       [convId, limit]
     );
@@ -2784,6 +2793,11 @@ server.get('/api/chat/history', async (request, reply) => {
         cardTitle: metadata?.cardTitle ?? null,
         cardBody: metadata?.cardBody ?? null,
         cardActions: Array.isArray(metadata?.cardActions) ? metadata.cardActions : null,
+        // From the LEFT JOIN — type tag the renderer turns into the eyebrow
+        // label (e.g. "SHOPPING", "REMINDER", "TASK"). Null when this row
+        // isn't linked to a stream_card (normal chat turns).
+        cardType: row.stream_card_type ?? null,
+        cardStatus: row.stream_card_status ?? null,
         retrievalState: row.retrieval_state ?? null,  // 'sourced'|'fallback'|'empty'|null; null = legacy
         // BUG-16 — when the pipeline failed mid-flight, the row carries
         // metadata.error=true and content_response_translated holds an

@@ -30,7 +30,7 @@ import ScreenHeader from '../../components/ScreenHeader';
 import ThinkingPill, { type PillStage } from '../../components/ThinkingPill';
 import { useToast } from '../../components/Toast';
 import InlineActionNudge, { type NudgeResolutionState } from '../../components/InlineActionNudge';
-import type { RawCardAction } from '../../lib/cardActions';
+import { defaultActionsForCardType, type RawCardAction } from '../../lib/cardActions';
 
 interface Message {
   id: string;
@@ -63,6 +63,18 @@ interface Message {
   cardTitle?: string | null;
   cardBody?: string | null;
   cardActions?: RawCardAction[] | null;
+  /**
+   * stream_cards.card_type — used by the renderer to pick an eyebrow
+   * label and tone for the nudge bubble. Null when not a card-linked
+   * message (normal chat turns).
+   */
+  cardType?: string | null;
+  /**
+   * stream_cards.status — 'active'|'resolved'|'dismissed'. Drives the
+   * initial nudge state so a card the user resolved on Today still
+   * renders as resolved when they scroll back through chat history.
+   */
+  cardStatus?: string | null;
   /**
    * BUG-15 honesty signal. 'empty' = no Spaces/recall/fallback fed this
    * reply → Memu is answering from training only; bubble shows an
@@ -128,6 +140,8 @@ function expandHistoryRows(rows: Array<{
   cardTitle?: string | null;
   cardBody?: string | null;
   cardActions?: Array<Record<string, unknown>> | null;
+  cardType?: string | null;
+  cardStatus?: string | null;
   retrievalState?: RetrievalState | null;
   error?: boolean;
 }>): Message[] {
@@ -150,6 +164,8 @@ function expandHistoryRows(rows: Array<{
       cardTitle: msg.cardTitle ?? null,
       cardBody: msg.cardBody ?? null,
       cardActions: (msg.cardActions ?? null) as RawCardAction[] | null,
+      cardType: msg.cardType ?? null,
+      cardStatus: msg.cardStatus ?? null,
       retrievalState: msg.retrievalState ?? null,
       error: msg.error === true,
     };
@@ -548,20 +564,33 @@ export default function ChatScreen() {
     }
     const isWhatsApp = item.channel === 'whatsapp';
     const isBriefing = item.fromMemu && item.type === 'briefing';
+    // A nudge is anything from Memu that's linked to a stream_card and
+    // tagged as an action surface. We no longer require a non-empty
+    // cardActions array — empty arrays (backfilled cards, producers
+    // that forgot to attach explicit actions) fall back to default
+    // Mark done / Dismiss buttons so the bubble never dead-ends.
     const isActionNudge = item.fromMemu
       && item.type === 'action_nudge'
-      && !!item.streamCardId
-      && Array.isArray(item.cardActions)
-      && item.cardActions.length > 0;
+      && !!item.streamCardId;
 
     // Action-nudge messages (Canvas Phase A.5): the bubble shape stays
     // the same as a normal Memu reply — same avatar, same alignment —
-    // but the body is the InlineActionNudge component with title +
-    // body + action buttons. Resolution state lives in nudgeStates,
-    // keyed by streamCardId.
+    // but the body is the InlineActionNudge component with a type
+    // eyebrow, title + body, and action buttons. Resolution state lives
+    // in nudgeStates, keyed by streamCardId, seeded from the server's
+    // stream_cards.status so resolved/dismissed cards stay that way.
     if (isActionNudge) {
       const cardId = item.streamCardId!;
-      const state = nudgeStates[cardId] ?? { kind: 'open' as const };
+      const rawActions = Array.isArray(item.cardActions) && item.cardActions.length > 0
+        ? (item.cardActions as RawCardAction[])
+        : defaultActionsForCardType(item.cardType);
+      const seededState: NudgeResolutionState =
+        item.cardStatus === 'resolved'
+          ? { kind: 'resolved' }
+          : item.cardStatus === 'dismissed'
+            ? { kind: 'dismissed' }
+            : { kind: 'open' };
+      const state = nudgeStates[cardId] ?? seededState;
       return (
         <View style={[styles.row, styles.rowMemu]}>
           <View style={styles.avatarWrap}>
@@ -571,12 +600,13 @@ export default function ChatScreen() {
             </View>
           </View>
           <View style={[styles.bubbleWrap, { alignItems: 'flex-start' }]}>
-            <View style={[styles.bubble, styles.bubbleMemu]}>
+            <View style={[styles.bubble, styles.bubbleMemu, styles.bubbleNudge]}>
               <InlineActionNudge
                 cardId={cardId}
                 title={item.cardTitle ?? ''}
                 body={item.cardBody ?? ''}
-                actions={(item.cardActions ?? []) as RawCardAction[]}
+                actions={rawActions}
+                cardType={item.cardType}
                 state={state}
                 onState={(next) => {
                   setNudgeStates(prev => ({ ...prev, [cardId]: next }));
@@ -925,6 +955,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceContainerLowest,
     borderBottomLeftRadius: radius.sm,
     ...shadows.low,
+  },
+  // Nudge bubbles need a touch more breathing room than a plain reply —
+  // the eyebrow + action row stack vertically, and the type icon needs
+  // room next to the eyebrow text. Same visual register as a Memu reply
+  // overall; the difference is the left rule + eyebrow inside.
+  bubbleNudge: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   bubbleUser: {
     backgroundColor: colors.primary,

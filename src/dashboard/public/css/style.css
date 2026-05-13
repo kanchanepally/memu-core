@@ -1201,6 +1201,50 @@ textarea.input {
    Mirrors mobile/components/InlineActionNudge.tsx. */
 .nudge-bubble {
   display: block;
+  /* Left rule + extra inset distinguish a nudge from a plain reply at
+     a glance, even before the eyebrow registers. Tone classes override
+     the border colour below. */
+  padding-left: 12px;
+  border-left: 3px solid var(--color-accent, #5054B5);
+}
+.nudge-bubble.nudge-tone-attention {
+  border-left-color: #C26A00;
+}
+.nudge-bubble.nudge-tone-neutral {
+  border-left-color: var(--color-accent, #5054B5);
+}
+/* Type eyebrow — ALL-CAPS label above the title that names what KIND of
+   nudge this is ("SHOPPING", "REMINDER", "TASK", "CHECK THIS"...). The
+   single biggest signal that this bubble isn't a normal Memu reply. */
+.nudge-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent, #5054B5);
+  margin-bottom: 6px;
+}
+.nudge-bubble.nudge-tone-attention .nudge-eyebrow {
+  color: #C26A00;
+}
+.nudge-eyebrow svg {
+  flex-shrink: 0;
+}
+.nudge-resolved-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-accent, #5054B5);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.nudge-resolved-row.nudge-resolved-muted {
+  color: var(--text-secondary);
+  font-weight: 400;
 }
 .nudge-title {
   font-weight: 600;

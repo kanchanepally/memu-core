@@ -38,6 +38,7 @@ import {
   type CardActionDescriptor,
   type RawCardAction,
 } from '../lib/cardActions';
+import { getCardTypeDisplay, type NudgeTone } from '../lib/cardTypeDisplay';
 
 export type NudgeResolutionState =
   | { kind: 'open' }
@@ -50,6 +51,13 @@ interface Props {
   title: string;
   body: string;
   actions: RawCardAction[];
+  /**
+   * Server-side stream_cards.card_type. Drives the eyebrow label ("SHOPPING",
+   * "REMINDER", "TASK", "CHECK THIS"…) and the tone accent (neutral indigo
+   * vs. attention amber). Optional — falls back to a generic "Note"
+   * eyebrow if absent (e.g. test fixtures, legacy data).
+   */
+  cardType?: string | null;
   /** Resolved state controlled by parent. Persists across re-render so
    *  closing/reopening a conversation preserves the resolution. */
   state: NudgeResolutionState;
@@ -66,12 +74,14 @@ export default function InlineActionNudge({
   title,
   body,
   actions,
+  cardType,
   state,
   onState,
   onError,
   onReplyDraftRequested,
   onOpenSpace,
 }: Props) {
+  const display = useMemo(() => getCardTypeDisplay(cardType), [cardType]);
   // Memoise handlers — actions array is per-message and stable. The
   // handlers close over a wrapped onResolve that transitions state via
   // the parent's onState callback.
@@ -115,11 +125,31 @@ export default function InlineActionNudge({
     },
   }));
 
+  const toneAccent = display.tone === 'attention'
+    ? styles.accentAttention
+    : styles.accentNeutral;
+  const eyebrowTextStyle = display.tone === 'attention'
+    ? styles.eyebrowTextAttention
+    : styles.eyebrowTextNeutral;
+  const eyebrowIconColor = display.tone === 'attention'
+    ? colors.error ?? '#C26A00'
+    : colors.tertiary;
+
+  const eyebrow = (
+    <View style={styles.eyebrowRow}>
+      <Ionicons name={display.icon} size={12} color={eyebrowIconColor} />
+      <Text style={[styles.eyebrowText, eyebrowTextStyle]}>
+        {display.label.toUpperCase()}
+      </Text>
+    </View>
+  );
+
   // Resolution-state render. The bubble persists in chat history; only
   // the action region transitions.
   if (state.kind === 'resolved') {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, toneAccent]}>
+        {eyebrow}
         <NudgeHeader title={title} body={body} resolved />
         <View style={styles.resolvedRow}>
           <Ionicons name="checkmark-circle" size={14} color={colors.tertiary} />
@@ -131,7 +161,8 @@ export default function InlineActionNudge({
 
   if (state.kind === 'dismissed') {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, toneAccent]}>
+        {eyebrow}
         <NudgeHeader title={title} body={body} dismissed />
         <View style={styles.resolvedRow}>
           <Ionicons name="close-circle-outline" size={14} color={colors.onSurfaceVariant} />
@@ -144,7 +175,8 @@ export default function InlineActionNudge({
   const busy = state.kind === 'busy';
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, toneAccent]}>
+      {eyebrow}
       <NudgeHeader title={title} body={body} />
       <View style={styles.actionRow}>
         {wrappedHandlers.map((handler) => (
@@ -238,6 +270,35 @@ function ActionButton({ handler, disabled, spinning }: ActionButtonProps) {
 const styles = StyleSheet.create({
   container: {
     gap: spacing.sm,
+    // Left rule provides the tonal accent without changing the bubble's
+    // background tint. Distinguishes a nudge from a plain Memu reply
+    // even when the eyebrow is offscreen (long body text scroll).
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 3,
+  },
+  accentNeutral: {
+    borderLeftColor: colors.tertiary,
+  },
+  accentAttention: {
+    borderLeftColor: colors.error ?? '#C26A00',
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  eyebrowText: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    letterSpacing: typography.tracking.widest,
+    textTransform: 'uppercase',
+  },
+  eyebrowTextNeutral: {
+    color: colors.tertiary,
+  },
+  eyebrowTextAttention: {
+    color: colors.error ?? '#C26A00',
   },
   title: {
     fontSize: typography.sizes.body,

@@ -783,6 +783,19 @@ export interface ChatHistoryMessage {
   cardBody?: string | null;
   cardActions?: Array<Record<string, unknown>> | null;
   /**
+   * stream_cards.card_type — used by the chat renderer to show a type
+   * eyebrow ("SHOPPING", "REMINDER", "TASK", etc.) on nudge bubbles so
+   * the user can scan what each one is for at a glance. Null on rows
+   * without a linked card (normal chat turns).
+   */
+  cardType?: string | null;
+  /**
+   * stream_cards.status — 'active' | 'resolved' | 'dismissed'. Mirrors
+   * server resolution state into history loads so a card the user
+   * resolved on Today still renders as resolved in the chat thread.
+   */
+  cardStatus?: string | null;
+  /**
    * What retrieval found for this turn. See `RetrievalState`. null for
    * legacy messages (pre-FEAT-02) — UI treats null as "unknown, render nothing".
    */
