@@ -41,11 +41,15 @@ export default function TabLayout() {
               tabBarIcon: ({ color }) => <Ionicons name="chatbubble-outline" size={20} color={color} />,
             }}
           />
+          {/* Phase A.4 — renamed "Today" → "Dashboard". The route filename
+              `today.tsx` stays for now to avoid a churn-y rename across
+              router params, deep links, and stale APKs; the user-facing
+              label is what matters. */}
           <Tabs.Screen
             name="today"
             options={{
-              title: 'Today',
-              tabBarIcon: ({ color }) => <Ionicons name="sunny-outline" size={20} color={color} />,
+              title: 'Dashboard',
+              tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={20} color={color} />,
             }}
           />
           <Tabs.Screen

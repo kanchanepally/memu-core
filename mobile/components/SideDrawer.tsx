@@ -30,12 +30,24 @@ type Destination = {
 };
 
 // Primary nav — the surfaces the user opens daily.
+//
+// Phase A.4 — 'Dashboard' (was 'Today') is now positioned as the
+// power-user structured view: full calendar strip, all open commitments,
+// raw stream feed. The default landing is Chat (chat-first per the
+// Canvas brief), so Dashboard sits as the second item — discoverable
+// for users who want the structured overview, not the daily default.
+//
+// The underlying route is still /(tabs)/today.tsx — the screen wasn't
+// reworked, only its semantic position changed. A.5's polymorphic chat
+// renderer means most of what used to be on Today (briefings, action
+// nudges) now also shows up inline in chat, so the Dashboard is
+// genuinely a complementary view rather than the primary one.
 const PRIMARY: Destination[] = [
   { label: 'Chat', icon: 'chatbubble-outline', iconActive: 'chatbubble', path: '/(tabs)/chat' },
-  { label: 'Today', icon: 'sunny-outline', iconActive: 'sunny', path: '/(tabs)/today' },
   { label: 'Spaces', icon: 'albums-outline', iconActive: 'albums', path: '/(tabs)/spaces' },
   { label: 'Calendar', icon: 'calendar-outline', iconActive: 'calendar', path: '/(tabs)/calendar' },
   { label: 'Lists', icon: 'list-outline', iconActive: 'list', path: '/(tabs)/lists' },
+  { label: 'Dashboard', icon: 'grid-outline', iconActive: 'grid', path: '/(tabs)/today' },
 ];
 
 // Secondary nav — less-frequent surfaces. Settings sits under a divider so
