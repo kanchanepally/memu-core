@@ -1,6 +1,12 @@
 import { db } from '../db/tenant';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
+import {
+  postCardAsMessage,
+  getOrCreateActiveConversation,
+  type StreamCardType,
+  type StreamCardSource,
+} from '../canvas/timeline';
 
 /**
  * Map a callsite-supplied channel string to a value the
@@ -85,20 +91,30 @@ export async function processGroupMessageExtraction(
         continue;
       }
 
-      await db.query(
-        `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          familyId,
-          extraction.card_type || 'extraction',
-          realTitle,
-          realBody,
-          source,
-          messageId,
-          JSON.stringify(extraction.actions || [])
-        ]
+      // Phase A.2 — extracted cards land on the Canvas timeline. Dual-write
+      // through postCardAsMessage so the stream_card AND its surface
+      // assistant message commit atomically. The chat surface gets an
+      // inline action nudge bubble; the Today/Dashboard view continues
+      // to see the same card via the stream_cards table.
+      const conversationId = await getOrCreateActiveConversation(senderProfileId);
+      const result = await postCardAsMessage({
+        familyId,
+        conversationId,
+        profileId: senderProfileId,
+        channel,
+        card: {
+          type: (extraction.card_type || 'extraction') as StreamCardType,
+          title: realTitle,
+          body: realBody,
+          source: source as StreamCardSource,
+          sourceMessageId: messageId,
+          actions: Array.isArray(extraction.actions) ? extraction.actions : [],
+        },
+        messageType: 'action_nudge',
+      });
+      console.log(
+        `[EXTRACTION STREAM CARD CREATED]: "${realTitle}" (card=${result.cardId}, msg=${result.messageId}, source=${source})`,
       );
-      console.log(`[EXTRACTION STREAM CARD CREATED]: ${realTitle} (source=${source})`);
     }
   } catch (err) {
     console.error('[EXTRACTION ERROR]', err);
