@@ -226,10 +226,17 @@ export async function runUnifiedBriefing(
     ]);
 
     // 4. Domain health header — at-a-glance sphere status.
+    // Suppressed entirely when nothing actionable: an "all domains green"
+    // ticker for a family with zero seeded care_standards is noise
+    // dressed up as signal. The briefing reads better without it.
+    // Only render the header when at least one domain is amber or red.
+    // The empty string trips the skill's "if domain_header is empty, omit it"
+    // branch (added in this same commit to briefing/SKILL.md v3).
     const domainStates = await listDomainStates(profileId);
-    const domainHeaderRaw = domainStates.length === 0
-      ? "Today's domains:\n(no standards seeded yet)"
-      : renderDomainHealthHeader(domainStates);
+    const hasActionableDomainSignal = domainStates.some(d => d.health !== 'green');
+    const domainHeaderRaw = hasActionableDomainSignal
+      ? renderDomainHealthHeader(domainStates)
+      : '';
 
     // 5. Twin invariant: every field that reaches the LLM is anonymised.
     // The Twin guard would refuse the call in throw mode anyway; doing it
