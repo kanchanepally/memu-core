@@ -57,6 +57,34 @@ export async function processGroupMessageExtraction(
       const realTitle = await translateToReal(extraction.title);
       const realBody = await translateToReal(extraction.body);
 
+      // Dedup against any same-titled card in the last 7 days — active OR
+      // dismissed/resolved. Without this, every casual mention of the same
+      // task across chats minted a fresh stream card, and a card the user
+      // had explicitly dismissed kept reappearing as soon as they mentioned
+      // it again. Hareesh raised this 2026-05-13 ("it still has bunch of
+      // items that i either closed or said delete… i still get those in
+      // streams as to do").
+      //
+      // We dedupe on (family_id, lower(title)) within 7 days. Card type is
+      // not part of the key — if extraction reclassifies the same title
+      // under a different card_type, that's still the same item from the
+      // user's perspective.
+      const dupeRes = await db.query<{ id: string; status: string }>(
+        `SELECT id, status FROM stream_cards
+          WHERE family_id = $1
+            AND LOWER(title) = LOWER($2)
+            AND created_at > NOW() - INTERVAL '7 days'
+          LIMIT 1`,
+        [familyId, realTitle],
+      );
+      if (dupeRes.rows.length > 0) {
+        const existing = dupeRes.rows[0];
+        console.log(
+          `[EXTRACTION] Skip dupe — "${realTitle}" already on this family's stream (status=${existing.status}, id=${existing.id}, within 7d).`,
+        );
+        continue;
+      }
+
       await db.query(
         `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
