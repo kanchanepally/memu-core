@@ -2633,7 +2633,7 @@ server.get('/api/chat/history', async (request, reply) => {
     const msgRes = await db.query(
       `SELECT id, conversation_id, content_original, content_response_translated,
               channel, created_at, actions_executed, metadata, retrieval_state,
-              retrieved_space_uris
+              retrieved_space_uris, stream_card_id
        FROM messages
        WHERE conversation_id = $1
          AND content_response_translated IS NOT NULL
@@ -2760,7 +2760,19 @@ server.get('/api/chat/history', async (request, reply) => {
         channel: row.channel,
         timestamp: row.created_at,
         spaces: spaces.slice(0, 5),
-        type: metadata?.type ?? null,                 // 'briefing' for elevated render
+        // Canvas timeline (Phase A.1): renderer dispatches on `type`.
+        // 'briefing' renders with the elevated AI-Insight bubble (existing);
+        // 'action_nudge' renders the inline action UI (A.5); plain text
+        // falls through to a normal bubble.
+        type: metadata?.type ?? null,
+        // Card linkage: present on action_nudge messages, lets the renderer
+        // resolve actions on tap. The full action list rides on
+        // metadata.cardActions / cardTitle / cardBody to avoid an extra
+        // join here — postCardAsMessage stores them denormalised on purpose.
+        streamCardId: row.stream_card_id ?? null,
+        cardTitle: metadata?.cardTitle ?? null,
+        cardBody: metadata?.cardBody ?? null,
+        cardActions: Array.isArray(metadata?.cardActions) ? metadata.cardActions : null,
         retrievalState: row.retrieval_state ?? null,  // 'sourced'|'fallback'|'empty'|null; null = legacy
       };
     });
