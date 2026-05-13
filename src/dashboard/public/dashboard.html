@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-inline-action-nudge">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-briefing-actions">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1424,6 +1424,23 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
     if (!isUser && type === 'briefing') {
         const card = document.createElement('article');
         card.className = 'chat-briefing-card';
+        // Phase A.3 — briefings carry suggested_actions in nudge.cardActions.
+        // Render them as inline action buttons below the prose so the user can
+        // act on the brief without leaving the chat thread.
+        const hasBriefingActions = !!(nudge
+            && nudge.streamCardId
+            && Array.isArray(nudge.cardActions)
+            && nudge.cardActions.length > 0);
+        const actionsRegion = hasBriefingActions
+            ? `<div class="chat-briefing-actions">
+                 <div class="nudge-actions" data-nudge-actions="${nudge.streamCardId}">
+                   ${renderNudgeActions(nudge.streamCardId, nudge.cardActions)}
+                 </div>
+               </div>`
+            : '';
+        if (hasBriefingActions) {
+            card.setAttribute('data-nudge-card', nudge.streamCardId);
+        }
         card.innerHTML = `
             <div class="chat-briefing-glow" aria-hidden="true"></div>
             <header class="chat-briefing-head">
@@ -1433,6 +1450,7 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
                 <span class="chat-briefing-eyebrow">Today's brief</span>
             </header>
             <div class="chat-briefing-body">${renderMarkdown(text)}</div>
+            ${actionsRegion}
             <div class="chat-briefing-time">${time}</div>
         `;
         chatMessages.appendChild(card);

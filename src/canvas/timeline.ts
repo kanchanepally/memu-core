@@ -138,11 +138,26 @@ export interface PostCardAsMessageInput {
   };
   /**
    * Render type. Defaults to 'action_nudge' — the chat renderer will show
-   * the inline action UI. Use 'briefing' when posting briefing-shaped
-   * messages through this helper (rare; briefing.ts has its own path
-   * today, will migrate in A.3).
+   * the inline action UI. Use 'briefing' for the morning brief; briefing.ts
+   * passes the briefing markdown via `messageBodyOverride` so the bubble
+   * renders the full markdown rather than a title+body concat.
    */
   messageType?: CanvasMessageType;
+  /**
+   * When set, this string becomes the message's content_response_translated
+   * verbatim, instead of the default title + body concat. Used by the
+   * briefing path to keep the full briefing markdown intact for the
+   * elevated AI-Insight render — chat reads from content_response_translated
+   * for that bubble, not from the card title/body fields.
+   */
+  messageBodyOverride?: string;
+  /**
+   * Optional explicit conversation handling for the briefing path:
+   * 'fresh' creates a new conversation so the morning brief lands on a
+   * clean thread. Anything else (or omitted) uses the caller-provided
+   * conversationId (the active conversation). Briefing.ts passes 'fresh'.
+   */
+  conversationMode?: 'fresh' | 'reuse';
 }
 
 export interface PostCardAsMessageResult {
@@ -185,14 +200,29 @@ export async function postCardAsMessage(
     );
     const cardId = cardRes.rows[0].id;
 
+    // Resolve target conversation: 'fresh' opens a new one (briefings get
+    // their own clean thread each morning); otherwise reuse the
+    // caller-supplied id. Done inside the same transaction so a failure
+    // doesn't leak an orphan conversation row.
+    let targetConversationId = input.conversationId;
+    if (input.conversationMode === 'fresh') {
+      const convRes = await client.query<{ id: string }>(
+        `INSERT INTO conversations (profile_id) VALUES ($1) RETURNING id`,
+        [input.profileId],
+      );
+      targetConversationId = convRes.rows[0].id;
+    }
+
     const messageType = input.messageType ?? 'action_nudge';
     const messageId = `card-${cardId}`;
-    // Body for the chat renderer. Cards have title + body; messages have a
-    // single response_translated field. Concat with a blank line so the
-    // renderer can split if it wants visual separation (it doesn't, today;
-    // A.5 may treat them distinctly). Conservative: preserve both as
-    // structured fields too via metadata so renderers don't have to parse.
-    const renderBody = `${input.card.title}\n\n${input.card.body}`.trim();
+    // content_response_translated body. Default is title+body concat (right
+    // for action nudges where the bubble renders both as inline text). The
+    // briefing path passes the full briefing markdown via
+    // messageBodyOverride so its elevated render reads the markdown
+    // unmodified — the renderer keys off metadata.type='briefing' and
+    // pulls from content_response_translated directly.
+    const renderBody = input.messageBodyOverride
+      ?? `${input.card.title}\n\n${input.card.body}`.trim();
     const metadata: Record<string, unknown> = {
       type: messageType,
       cardTitle: input.card.title,
@@ -207,7 +237,7 @@ export async function postCardAsMessage(
        VALUES ($1, $2, $3, 'assistant', $4, $5, $6, $7)`,
       [
         messageId,
-        input.conversationId,
+        targetConversationId,
         input.profileId,
         renderBody,
         input.channel,
@@ -216,10 +246,19 @@ export async function postCardAsMessage(
       ],
     );
 
-    await client.query(
-      `UPDATE conversations SET message_count = message_count + 1 WHERE id = $1`,
-      [input.conversationId],
-    );
+    // For fresh briefing conversations, this is the first message → count=1.
+    // For reused conversations, increment.
+    if (input.conversationMode === 'fresh') {
+      await client.query(
+        `UPDATE conversations SET message_count = 1 WHERE id = $1`,
+        [targetConversationId],
+      );
+    } else {
+      await client.query(
+        `UPDATE conversations SET message_count = message_count + 1 WHERE id = $1`,
+        [targetConversationId],
+      );
+    }
 
     return { cardId, messageId };
   });

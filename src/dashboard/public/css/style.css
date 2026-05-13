@@ -1296,6 +1296,16 @@ textarea.input {
   opacity: 0.6;
 }
 
+/* Phase A.3 — briefing inline actions. The briefing's suggested_actions
+   now ride inside the elevated chat-briefing-card render. A subtle top
+   border partitions the action region from the prose, preserving the
+   briefing's hero feel while making the actions feel actionable. */
+.chat-briefing-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(80, 84, 181, 0.18);
+}
+
 /* BUG-15 honesty caption — mirrors the mobile chat.tsx unsourcedRow styling.
    Surfaces when a Memu reply had no Spaces / no recall / no fallback context
    to draw from. Subtle (italic, surface-variant colour, info icon) so it

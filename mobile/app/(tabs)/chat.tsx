@@ -590,6 +590,16 @@ export default function ChatScreen() {
     // bubble cap) and surface the "Today's brief" eyebrow above the text
     // so they read as a hero artefact within the conversation.
     if (isBriefing) {
+      // Phase A.3 — briefings carry suggested_actions in metadata.cardActions.
+      // Render an InlineActionNudge below the briefing body so the user can
+      // act on the brief inline (Add to calendar / Add to shopping / Update
+      // Space / Draft reply) without leaving the chat thread.
+      const briefingActions = item.cardActions ?? null;
+      const briefingCardId = item.streamCardId ?? null;
+      const hasBriefingActions =
+        briefingCardId && Array.isArray(briefingActions) && briefingActions.length > 0;
+      const briefingState: NudgeResolutionState =
+        nudgeStates[briefingCardId ?? ''] ?? { kind: 'open' };
       return (
         <View style={styles.briefingRow}>
           <View style={styles.briefingCard}>
@@ -603,6 +613,25 @@ export default function ChatScreen() {
             <Text selectable={true} style={styles.briefingBody}>
               {item.text}
             </Text>
+            {hasBriefingActions ? (
+              <View style={styles.briefingActionsRow}>
+                <InlineActionNudge
+                  cardId={briefingCardId!}
+                  title=""
+                  body=""
+                  actions={briefingActions as RawCardAction[]}
+                  state={briefingState}
+                  onState={(next) => {
+                    setNudgeStates(prev => ({ ...prev, [briefingCardId!]: next }));
+                    if (next.kind === 'resolved' && next.outcome) {
+                      toast.show(next.outcome, 'success');
+                    }
+                  }}
+                  onError={(msg) => toast.show(msg, 'error')}
+                  onOpenSpace={() => router.push('/(tabs)/spaces' as any)}
+                />
+              </View>
+            ) : null}
             <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
           </View>
         </View>
@@ -957,6 +986,15 @@ const styles = StyleSheet.create({
     color: colors.onSurface,
     lineHeight: 22,
     marginBottom: spacing.sm,
+  },
+  // Phase A.3 — separates the briefing prose from the inline action
+  // buttons. Top border subtly partitions them; preserves the briefing's
+  // hero feel while making the actions feel actionable, not decorative.
+  briefingActionsRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.outline + '30',
   },
 
   timestamp: {

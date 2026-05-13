@@ -1464,9 +1464,20 @@ server.get('/api/dashboard/brief', async (request, reply) => {
     const linkRes = await db.query(`SELECT 1 FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
     const isCalendarConnected = linkRes.rows.length > 0;
     
-    // 2. Fetch Active Stream Cards (excluding shopping)
+    // 2. Fetch Active Stream Cards
+    //    - excluded 'shopping' — separate UI (shopping pill / list view)
+    //    - excluded 'briefing' — Phase A.3, briefings are messages, not feed
+    //      cards. The chat surface is the canonical place for the morning
+    //      brief; the Today/Dashboard view shows actionable items, not a
+    //      duplicate briefing render. The card row still exists (it backs
+    //      the briefing's suggested-action endpoints) but it is not
+    //      surfaced here.
     const streamRes = await db.query(
-      `SELECT * FROM stream_cards WHERE family_id = $1 AND status = 'active' AND card_type != 'shopping' ORDER BY created_at DESC`, 
+      `SELECT * FROM stream_cards
+        WHERE family_id = $1
+          AND status = 'active'
+          AND card_type NOT IN ('shopping', 'briefing')
+        ORDER BY created_at DESC`,
       [profileId]
     );
 
