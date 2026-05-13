@@ -1209,6 +1209,93 @@ textarea.input {
   font-size: 14px;
 }
 
+/* Phase A.5 — inline action nudge.
+   Surfaces a stream card AS a chat bubble. Same visual register as a
+   normal Memu reply (bubble shape + avatar), with title + body text
+   inside and a row of action buttons below. After the user acts the
+   buttons collapse into a "✓ Done" / "Dismissed" caption and the
+   bubble persists in chat history as a record of the resolution.
+
+   Mirrors mobile/components/InlineActionNudge.tsx. */
+.nudge-bubble {
+  display: block;
+}
+.nudge-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.nudge-body {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.nudge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.nudge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  min-height: 32px;
+  transition: opacity 0.15s ease;
+}
+.nudge-btn:hover { opacity: 0.85; }
+.nudge-btn:active { opacity: 0.7; }
+.nudge-btn-primary {
+  background: var(--color-accent, #5054B5);
+  color: white;
+}
+.nudge-btn-secondary {
+  background: var(--color-surface-variant, #f5f5f5);
+  color: var(--text-primary);
+  border-color: var(--color-outline, #e0e0e0);
+}
+.nudge-btn-ghost {
+  background: transparent;
+  color: var(--color-accent, #5054B5);
+}
+.nudge-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  font-style: italic;
+}
+.nudge-resolved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-accent, #5054B5);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.nudge-resolved-dismissed {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.nudge-bubble-resolved {
+  opacity: 0.7;
+}
+.nudge-bubble-resolved .nudge-title,
+.nudge-bubble-resolved .nudge-body {
+  opacity: 0.6;
+}
+
 /* BUG-15 honesty caption — mirrors the mobile chat.tsx unsourcedRow styling.
    Surfaces when a Memu reply had no Spaces / no recall / no fallback context
    to draw from. Subtle (italic, surface-variant colour, info icon) so it

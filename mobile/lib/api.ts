@@ -767,9 +767,21 @@ export interface ChatHistoryMessage {
   spaces?: ChatMessageSpaceRef[];
   /**
    * Server-tagged type. 'briefing' marks the morning briefing turn for
-   * elevated rendering. Plain turns leave this null/absent.
+   * elevated rendering. 'action_nudge' marks a stream-card surface
+   * (Canvas timeline, Phase A.1/A.2). Plain turns leave this null/absent.
    */
-  type?: 'briefing' | null;
+  type?: 'briefing' | 'action_nudge' | null;
+  /**
+   * Card linkage (Phase A.1/A.2). Present on 'action_nudge' messages so
+   * the renderer can dispatch the inline action UI. The cardActions
+   * array is the raw shape from stream_cards.actions — see the server
+   * type RawCardAction in src/canvas/timeline.ts. The mobile mapper
+   * (lib/cardActions.ts) consumes it.
+   */
+  streamCardId?: string | null;
+  cardTitle?: string | null;
+  cardBody?: string | null;
+  cardActions?: Array<Record<string, unknown>> | null;
   /**
    * What retrieval found for this turn. See `RetrievalState`. null for
    * legacy messages (pre-FEAT-02) — UI treats null as "unknown, render nothing".

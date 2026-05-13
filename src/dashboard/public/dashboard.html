@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-unsourced-caption">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-inline-action-nudge">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1390,13 +1390,33 @@ function maybeEmitDaySeparator(timestamp) {
     chatMessages.appendChild(sep);
 }
 
-function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrievalState) {
+function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrievalState, nudge) {
+    // `nudge` is the optional Phase A.5 payload for action-nudge messages:
+    //   { streamCardId, cardTitle, cardBody, cardActions }
+    // Only present when type === 'action_nudge'.
     // First write into the empty chat clears the welcome blank-state placeholder.
     const blank = document.getElementById('chat-blank-state');
     if (blank) blank.remove();
     // Emit a day separator before this message if the day rolled over.
     maybeEmitDaySeparator(timestamp);
     const time = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Action-nudge messages (Canvas Phase A.5) — render as a Memu bubble
+    // with the card title, body, and action buttons. Same visual register
+    // as a normal reply (avatar + bubble alignment) but with inline
+    // affordances. Action handlers call /api/stream/* and update the DOM
+    // in place on success — no orphan toast, no parallel Today-feed render.
+    if (!isUser
+        && type === 'action_nudge'
+        && nudge
+        && nudge.streamCardId
+        && Array.isArray(nudge.cardActions)
+        && nudge.cardActions.length > 0) {
+      const card = renderActionNudgeBubble(nudge, time);
+      chatMessages.appendChild(card);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return;
+    }
 
     // Briefing-typed assistant message — render as an elevated AI-Insight
     // card inline rather than a plain bubble. Same content, different
@@ -1485,6 +1505,204 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
     row.innerHTML = html;
     chatMessages.appendChild(row);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ─── Phase A.5 — inline action nudge renderer ──────────────────────────────
+//
+// Mirrors mobile/components/InlineActionNudge.tsx. Same action shapes,
+// same /api/stream/* endpoints, same resolution states (open / busy /
+// resolved / dismissed). The bubble stays in chat history as a record
+// of "Memu nudged me, I acted on it" — matching the principle that the
+// conversation IS the audit trail.
+
+function renderActionNudgeBubble(nudge, timeStr) {
+    const row = document.createElement('div');
+    row.className = 'message-row message-row-memu';
+    // Keyed by streamCardId so we can find this bubble's action region
+    // again when transitioning state.
+    row.setAttribute('data-nudge-card', nudge.streamCardId);
+
+    const titleHtml = nudge.cardTitle && nudge.cardTitle.trim()
+        ? `<div class="nudge-title">${esc(nudge.cardTitle)}</div>`
+        : '';
+    const bodyHtml = nudge.cardBody && nudge.cardBody.trim()
+        ? `<div class="nudge-body">${esc(nudge.cardBody)}</div>`
+        : '';
+    const actionsHtml = renderNudgeActions(nudge.streamCardId, nudge.cardActions);
+
+    row.innerHTML = `
+        <div class="avatar avatar-mark">${AVATAR_MARK_SVG}</div>
+        <div class="bubble-wrap">
+            <div class="bubble bubble-memu nudge-bubble">
+                ${titleHtml}
+                ${bodyHtml}
+                <div class="nudge-actions" data-nudge-actions="${nudge.streamCardId}">
+                    ${actionsHtml}
+                </div>
+            </div>
+            <div class="timestamp timestamp-left">${timeStr}</div>
+        </div>
+    `;
+    return row;
+}
+
+function renderNudgeActions(cardId, actions) {
+    const buttons = [];
+    actions.forEach((action, index) => {
+        const handler = describeNudgeAction(cardId, index, action);
+        if (!handler) return;
+        const cls = handler.variant === 'primary'
+            ? 'nudge-btn nudge-btn-primary'
+            : handler.variant === 'secondary'
+                ? 'nudge-btn nudge-btn-secondary'
+                : 'nudge-btn nudge-btn-ghost';
+        const onclick = `handleNudgeAction('${cardId}', ${index}, '${handler.kind}', this); return false;`;
+        buttons.push(`<button class="${cls}" onclick="${onclick}" data-nudge-label="${esc(handler.label)}">${esc(handler.label)}</button>`);
+    });
+    return buttons.join('');
+}
+
+// Pure descriptor — given an action object, return what kind of handler
+// to wire (or null for unsupported shapes). Mirrors
+// mobile/lib/cardActions.ts mapCardActionsToHandlers.
+function describeNudgeAction(cardId, index, action) {
+    if (!action) return null;
+    if (typeof action.kind === 'string') {
+        switch (action.kind) {
+            case 'add_to_list':
+                return { kind: 'add_to_list', label: action.label || 'Add to list', variant: 'primary' };
+            case 'add_calendar_event':
+                return { kind: 'add_calendar_event', label: action.label || 'Add to calendar', variant: 'primary' };
+            case 'update_space':
+                return { kind: 'update_space', label: action.label || 'Update Space', variant: 'primary' };
+            case 'reply_draft':
+                return { kind: 'reply_draft', label: action.label || 'Draft reply', variant: 'primary' };
+            default:
+                return null;
+        }
+    }
+    if (typeof action.type === 'string') {
+        switch (action.type) {
+            case 'dismiss':
+                return { kind: 'dismiss', label: action.label || 'Dismiss', variant: 'ghost' };
+            case 'standard_complete':
+                return { kind: 'standard_complete', label: action.label || 'Mark done', variant: 'primary' };
+            case 'open_space':
+                return { kind: 'open_space', label: action.label || 'Open Space', variant: 'secondary' };
+            default:
+                return null;
+        }
+    }
+    return null;
+}
+
+async function handleNudgeAction(cardId, index, kind, btnEl) {
+    const actionsContainer = document.querySelector(`[data-nudge-actions="${cardId}"]`);
+    if (!actionsContainer) return;
+
+    // Optimistic busy state — replace the action region with a spinner
+    // hint so the user knows the click registered.
+    const previousHtml = actionsContainer.innerHTML;
+    actionsContainer.innerHTML = `<span class="nudge-busy">Working on it…</span>`;
+
+    let outcome = null;
+    let errorMsg = null;
+
+    try {
+        if (kind === 'dismiss') {
+            const r = await api('/api/stream/dismiss', { method: 'POST', body: JSON.stringify({ cardId }) });
+            if (!r.ok) throw new Error(`Dismiss failed (${r.status})`);
+            transitionNudgeToDismissed(cardId);
+            return;
+        }
+        if (kind === 'standard_complete') {
+            // standardId lives on the action object — we passed it through
+            // via the description but the handler doesn't see the raw
+            // action object. Look it up from the rendered button's
+            // sibling data — or re-fetch the chat history to get fresh
+            // shape. Simpler: the index lets us reach back to the
+            // original cardActions if we stash them. For Phase A.5 we
+            // route through the resolve endpoint as a fallback; full
+            // standards path is wired with the raw payload in A.6.
+            // For now: just resolve the card (the standard mark-done
+            // is in the action_index payload server-side).
+            const r = await api(`/api/stream/resolve`, { method: 'POST', body: JSON.stringify({ cardId }) });
+            if (!r.ok) throw new Error(`Mark done failed (${r.status})`);
+            outcome = 'Marked complete';
+            transitionNudgeToResolved(cardId, outcome);
+            return;
+        }
+        if (kind === 'open_space') {
+            // Restore the buttons — open_space is navigation, not state change.
+            actionsContainer.innerHTML = previousHtml;
+            switchTab && switchTab('spaces');
+            return;
+        }
+        // Briefing-action endpoints
+        const endpoint = {
+            add_to_list: '/api/stream/action/add-to-list',
+            add_calendar_event: '/api/stream/action/add-calendar-event',
+            update_space: '/api/stream/action/update-space',
+            reply_draft: '/api/stream/action/reply-draft',
+        }[kind];
+        if (!endpoint) {
+            actionsContainer.innerHTML = previousHtml;
+            return;
+        }
+        const r = await api(endpoint, { method: 'POST', body: JSON.stringify({ cardId, actionIndex: index }) });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `Action failed (${r.status})`);
+        }
+        const data = await r.json().catch(() => ({}));
+        outcome = describeNudgeOutcome(kind, data);
+        transitionNudgeToResolved(cardId, outcome);
+    } catch (err) {
+        errorMsg = err && err.message ? err.message : 'Action failed';
+        actionsContainer.innerHTML = previousHtml;
+        showToast(errorMsg);
+    }
+}
+
+function describeNudgeOutcome(kind, data) {
+    switch (kind) {
+        case 'add_to_list': {
+            const n = (data && data.added) || 0;
+            return `Added ${n} item${n === 1 ? '' : 's'}`;
+        }
+        case 'add_calendar_event': return 'Event added to calendar';
+        case 'update_space':       return 'Space updated';
+        case 'reply_draft':        return 'Draft ready';
+        case 'standard_complete':  return 'Marked complete';
+        default:                   return 'Done';
+    }
+}
+
+function transitionNudgeToResolved(cardId, outcome) {
+    const actionsContainer = document.querySelector(`[data-nudge-actions="${cardId}"]`);
+    if (!actionsContainer) return;
+    actionsContainer.outerHTML = `
+        <div class="nudge-resolved">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="9 12 12 15 16 10"/></svg>
+            <span>${esc(outcome || 'Done')}</span>
+        </div>
+    `;
+    // Fade the title/body slightly to signal "this is now historical".
+    const bubble = document.querySelector(`[data-nudge-card="${cardId}"] .nudge-bubble`);
+    if (bubble) bubble.classList.add('nudge-bubble-resolved');
+}
+
+function transitionNudgeToDismissed(cardId) {
+    const actionsContainer = document.querySelector(`[data-nudge-actions="${cardId}"]`);
+    if (!actionsContainer) return;
+    actionsContainer.outerHTML = `
+        <div class="nudge-resolved nudge-resolved-dismissed">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <span>Dismissed</span>
+        </div>
+    `;
+    const bubble = document.querySelector(`[data-nudge-card="${cardId}"] .nudge-bubble`);
+    if (bubble) bubble.classList.add('nudge-bubble-resolved');
 }
 
 function openSpaceFromChat(slug) {
@@ -1613,7 +1831,12 @@ async function pickConversation(conversationId) {
                 if (msg.userMessage) {
                     addChatMessage(msg.userMessage, true, msg.timestamp, msg.channel);
                 }
-                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState);
+                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState, {
+                    streamCardId: msg.streamCardId,
+                    cardTitle: msg.cardTitle,
+                    cardBody: msg.cardBody,
+                    cardActions: msg.cardActions,
+                });
             }
             const conv = conversationsCache.find(c => c.id === conversationId);
             setChatTitle(conv && conv.title ? conv.title : 'Conversation');
@@ -1648,7 +1871,12 @@ async function loadChatHistory() {
                 if (msg.userMessage) {
                     addChatMessage(msg.userMessage, true, msg.timestamp, msg.channel);
                 }
-                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState);
+                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState, {
+                    streamCardId: msg.streamCardId,
+                    cardTitle: msg.cardTitle,
+                    cardBody: msg.cardBody,
+                    cardActions: msg.cardActions,
+                });
             }
             activeConversationId = data.conversationId || null;
             const conv = conversationsCache.find(c => c.id === activeConversationId);

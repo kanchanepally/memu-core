@@ -29,6 +29,8 @@ import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ThinkingPill, { type PillStage } from '../../components/ThinkingPill';
 import { useToast } from '../../components/Toast';
+import InlineActionNudge, { type NudgeResolutionState } from '../../components/InlineActionNudge';
+import type { RawCardAction } from '../../lib/cardActions';
 
 interface Message {
   id: string;
@@ -39,10 +41,21 @@ interface Message {
   spaces?: ChatMessageSpaceRef[];
   /**
    * Server-tagged type. 'briefing' marks the morning briefing assistant
-   * message, rendered with elevated AI-Insight-Card styling inline. Plain
+   * message, rendered with elevated AI-Insight-Card styling inline.
+   * 'action_nudge' marks a stream-card surface (Canvas timeline, Phase A.1/A.2):
+   * the bubble renders InlineActionNudge with the card's actions. Plain
    * turns leave this null.
    */
-  type?: 'briefing' | null;
+  type?: 'briefing' | 'action_nudge' | null;
+  /**
+   * Card linkage — present on 'action_nudge' messages. Used by the
+   * renderer to dispatch InlineActionNudge and by action handlers to
+   * call the right /api/stream/* endpoint.
+   */
+  streamCardId?: string | null;
+  cardTitle?: string | null;
+  cardBody?: string | null;
+  cardActions?: RawCardAction[] | null;
   /**
    * BUG-15 honesty signal. 'empty' = no Spaces/recall/fallback fed this
    * reply → Memu is answering from training only; bubble shows an
@@ -96,9 +109,26 @@ const WELCOME: Message = {
   timestamp: new Date(),
 };
 
-function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null; memuResponse: string; timestamp: string; channel: string; spaces?: ChatMessageSpaceRef[]; type?: 'briefing' | null; retrievalState?: RetrievalState | null }>): Message[] {
-  // Two row shapes: full turns (user + memu) and assistant-only (briefing).
-  // Briefings carry no user message — render just the memu bubble.
+function expandHistoryRows(rows: Array<{
+  id: string;
+  userMessage: string | null;
+  memuResponse: string;
+  timestamp: string;
+  channel: string;
+  spaces?: ChatMessageSpaceRef[];
+  type?: 'briefing' | 'action_nudge' | null;
+  streamCardId?: string | null;
+  cardTitle?: string | null;
+  cardBody?: string | null;
+  cardActions?: Array<Record<string, unknown>> | null;
+  retrievalState?: RetrievalState | null;
+}>): Message[] {
+  // Three row shapes:
+  //   - full turns (user + memu, plain text)
+  //   - assistant-only briefings (memu bubble, no paired user prompt)
+  //   - assistant-only action nudges (Canvas Phase A — card surface
+  //     messages from extraction / reflection / document ingestion;
+  //     no paired user prompt either)
   return rows.flatMap(msg => {
     const memuBubble: Message = {
       id: `hist-memu-${msg.id}`,
@@ -108,8 +138,14 @@ function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null;
       channel: msg.channel,
       spaces: msg.spaces,
       type: msg.type ?? null,
+      streamCardId: msg.streamCardId ?? null,
+      cardTitle: msg.cardTitle ?? null,
+      cardBody: msg.cardBody ?? null,
+      cardActions: (msg.cardActions ?? null) as RawCardAction[] | null,
       retrievalState: msg.retrievalState ?? null,
     };
+    // Briefings AND action nudges arrive without a paired user message
+    // — they're server-generated assistant turns. Render just the bubble.
     if (!msg.userMessage) return [memuBubble];
     return [
       {
@@ -135,6 +171,14 @@ export default function ChatScreen() {
   const consumedParamRef = useRef<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const toast = useToast();
+
+  // Resolution state for inline action nudges, keyed by streamCardId.
+  // Local-only — the server is the source of truth (status flips on
+  // /api/stream/{resolve|dismiss}/action/*). This map is the optimistic
+  // mirror so the bubble transitions immediately, then a subsequent
+  // history reload confirms persistence. On first paint of a fresh
+  // message, the entry is absent → renderer treats it as 'open'.
+  const [nudgeStates, setNudgeStates] = useState<Record<string, NudgeResolutionState>>({});
 
   const loadConversation = useCallback(async (conversationId?: string) => {
     setLoadingHistory(true);
@@ -495,6 +539,51 @@ export default function ChatScreen() {
     }
     const isWhatsApp = item.channel === 'whatsapp';
     const isBriefing = item.fromMemu && item.type === 'briefing';
+    const isActionNudge = item.fromMemu
+      && item.type === 'action_nudge'
+      && !!item.streamCardId
+      && Array.isArray(item.cardActions)
+      && item.cardActions.length > 0;
+
+    // Action-nudge messages (Canvas Phase A.5): the bubble shape stays
+    // the same as a normal Memu reply — same avatar, same alignment —
+    // but the body is the InlineActionNudge component with title +
+    // body + action buttons. Resolution state lives in nudgeStates,
+    // keyed by streamCardId.
+    if (isActionNudge) {
+      const cardId = item.streamCardId!;
+      const state = nudgeStates[cardId] ?? { kind: 'open' as const };
+      return (
+        <View style={[styles.row, styles.rowMemu]}>
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatarGlow} />
+            <View style={styles.avatar}>
+              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+            </View>
+          </View>
+          <View style={[styles.bubbleWrap, { alignItems: 'flex-start' }]}>
+            <View style={[styles.bubble, styles.bubbleMemu]}>
+              <InlineActionNudge
+                cardId={cardId}
+                title={item.cardTitle ?? ''}
+                body={item.cardBody ?? ''}
+                actions={(item.cardActions ?? []) as RawCardAction[]}
+                state={state}
+                onState={(next) => {
+                  setNudgeStates(prev => ({ ...prev, [cardId]: next }));
+                  if (next.kind === 'resolved' && next.outcome) {
+                    toast.show(next.outcome, 'success');
+                  }
+                }}
+                onError={(msg) => toast.show(msg, 'error')}
+                onOpenSpace={() => router.push('/(tabs)/spaces' as any)}
+              />
+            </View>
+            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+          </View>
+        </View>
+      );
+    }
 
     // Briefing messages get a wider container + the AI-Insight-Card glow
     // treatment inline. They take the full content width (not the 78%
@@ -602,7 +691,10 @@ export default function ChatScreen() {
         </View>
       </View>
     );
-  }, [toast]);
+    // nudgeStates is in the dep array so InlineActionNudge re-renders
+    // when an action transitions (open → busy → resolved). router is in
+    // the dep array because the onOpenSpace handler closes over it.
+  }, [toast, nudgeStates, router]);
 
   return (
     <View style={styles.container}>
