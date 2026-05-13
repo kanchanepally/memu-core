@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import { useDrawer } from '../lib/drawer';
 import { colors, spacing, radius, typography } from '../lib/tokens';
 import { LogoMark } from './Logo';
 import { listConversations, type ConversationSummary } from '../lib/api';
+import { loadAuthState } from '../lib/auth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(300, SCREEN_WIDTH * 0.82);
@@ -61,11 +62,8 @@ const PRIMARY: Destination[] = [
   { label: 'Dashboard', Icon: LayoutGrid, path: '/(tabs)/today' },
 ];
 
-// Secondary nav — less-frequent surfaces. Settings sits under a divider so
-// the eye groups it apart from the daily flow.
-const SECONDARY: Destination[] = [
-  { label: 'Settings', Icon: LucideSettings, path: '/(tabs)/settings' },
-];
+// Phase A.8 — Settings retired from inline nav. The account pill at the
+// bottom of the drawer (see renderAccountPill) is now the entry point.
 
 function isChatActive(pathname: string): boolean {
   return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/chat' || pathname === '/chat';
@@ -110,15 +108,38 @@ export default function SideDrawer() {
   const overlay = useRef(new Animated.Value(0)).current;
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   const reloadConversations = useCallback(async () => {
     const { data } = await listConversations();
     if (data?.conversations) setConversations(data.conversations);
   }, []);
 
+  // Phase A.8 — populate the account pill at the bottom of the drawer.
+  // Reads from SecureStore/web storage on every open so a name change in
+  // Settings reflects on the next drawer open without a full reload.
+  const loadDisplayName = useCallback(async () => {
+    const auth = await loadAuthState();
+    setDisplayName(auth.displayName);
+  }, []);
+
   useEffect(() => {
-    if (open) reloadConversations();
-  }, [open, reloadConversations]);
+    if (open) {
+      reloadConversations();
+      loadDisplayName();
+    }
+  }, [open, reloadConversations, loadDisplayName]);
+
+  const avatarInitial = useMemo(() => {
+    const trimmed = (displayName || '').trim();
+    return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
+  }, [displayName]);
+
+  const isSettingsActive = pathname === '/(tabs)/settings' || pathname === '/settings';
+  const openSettings = useCallback(() => {
+    hide();
+    setTimeout(() => router.push('/(tabs)/settings' as any), 120);
+  }, [hide, router]);
 
   useEffect(() => {
     if (open) {
@@ -202,21 +223,18 @@ export default function SideDrawer() {
             <Text style={styles.wordmark}>Memu</Text>
           </View>
 
-          {/* Top region — primary + secondary nav. Fixed height; never
-              scrolls regardless of how many conversations accumulate. */}
+          {/* Phase A.8 — primary nav only (Settings retired from this
+              region). Fixed height; never scrolls regardless of how many
+              conversations accumulate. */}
           <View style={styles.navRegion}>
             <View style={styles.section}>
               {PRIMARY.map(renderNavRow)}
             </View>
-            <View style={styles.divider} />
-            <View style={styles.section}>
-              {SECONDARY.map(renderNavRow)}
-            </View>
           </View>
 
-          {/* Bottom region — conversations. Section label + pinned New
-              chat button + FlatList that takes the remaining height and
-              scrolls on its own. */}
+          {/* Conversations promoted directly under primary nav. Section
+              label + pinned New chat button + FlatList that takes the
+              remaining height and scrolls on its own. */}
           <View style={styles.conversationsRegion}>
             <View style={styles.conversationsHeader}>
               <Text style={styles.conversationsLabel}>Conversations</Text>
@@ -243,6 +261,35 @@ export default function SideDrawer() {
               />
             )}
           </View>
+
+          {/* Account pill — pinned at bottom. Avatar (initial) + display
+              name + small gear hint. Whole pill is the tap target →
+              Settings. Subtle top divider separates it from the
+              scrolling conversation list above. */}
+          <Pressable
+            onPress={openSettings}
+            style={({ pressed }) => [
+              styles.accountPill,
+              isSettingsActive && styles.accountPillActive,
+              pressed && styles.rowPressed,
+            ]}
+            accessibilityLabel="Open settings"
+          >
+            <View style={styles.accountAvatar}>
+              <Text style={styles.accountAvatarText}>{avatarInitial}</Text>
+            </View>
+            <View style={styles.accountMeta}>
+              <Text style={styles.accountName} numberOfLines={1}>
+                {displayName || 'Account'}
+              </Text>
+              <Text style={styles.accountHint}>Settings</Text>
+            </View>
+            <LucideSettings
+              size={14}
+              strokeWidth={1.5}
+              color={colors.onSurfaceVariant}
+            />
+          </Pressable>
         </Animated.View>
       </View>
     </Modal>
@@ -291,13 +338,7 @@ const styles = StyleSheet.create({
   navRegion: {
     // Fixed natural height — no flex so it doesn't grow.
   },
-  section: { gap: 2 },
-  divider: {
-    height: 1,
-    backgroundColor: colors.surfaceVariant,
-    marginVertical: spacing.sm,
-    marginHorizontal: spacing.sm,
-  },
+  section: { gap: 1 },
   // Phase A.7 — nav rail is chrome, not content.
   // - 13px / 400 at rest, 600 active (was body / bold-active)
   // - Active state is a 3px left rule + indigo text (was filled
@@ -398,5 +439,58 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.body,
     color: colors.onSurfaceVariant,
     fontStyle: 'italic',
+  },
+
+  // ---- Phase A.8 — account pill at the bottom of the drawer ----
+  // Avatar + display name + small gear hint. Whole pill is the tap
+  // target → Settings. Mirrors the PWA .sidebar-account-pill rules.
+  accountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: spacing.sm,
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceVariant,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+  },
+  accountPillActive: {
+    borderLeftColor: colors.primary,
+    backgroundColor: colors.surfaceContainerLow,
+  },
+  accountAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.tertiaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountAvatarText: {
+    fontSize: 13,
+    fontFamily: typography.families.bodyBold,
+    color: colors.tertiary,
+    lineHeight: 16,
+  },
+  accountMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  accountName: {
+    fontSize: 13,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+    lineHeight: 16,
+  },
+  accountHint: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    letterSpacing: typography.tracking.wide,
+    textTransform: 'uppercase',
+    marginTop: 1,
   },
 });

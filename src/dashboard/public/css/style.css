@@ -2071,6 +2071,98 @@ textarea.input {
   opacity: 1;
 }
 
+/* Phase A.8 — account pill at the bottom of the sidebar. Replaces the
+   inline Settings nav row. Avatar (initial) + display name + small
+   gear hint on the right; whole pill is the tap target → Settings.
+   Sits pinned at the bottom regardless of conversation count.
+   The .sidebar-account-pill carries the same `tab-settings` id so
+   switchTab() still finds it for active-state toggling. */
+.sidebar-account-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: var(--space-sm);
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font-family: var(--font-family);
+  /* Subtle top divider — softer than the old .sidebar-divider line. */
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  padding-top: 12px;
+}
+
+.sidebar-account-pill:hover {
+  background: var(--color-surface-hover);
+}
+
+.sidebar-account-pill.active {
+  background: var(--color-surface-hover);
+  /* Match nav-item active treatment — 3px indigo rule on the left edge.
+     Sits inside the pill's left edge, not a full slab. */
+  box-shadow: inset 3px 0 0 var(--indigo-primary);
+}
+
+.sidebar-account-avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,
+    var(--indigo-secondary-container, #E2DFFF) 0%,
+    var(--indigo-tertiary-container, #E9E4F0) 100%);
+  color: var(--indigo-primary);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+}
+
+.sidebar-account-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.sidebar-account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-hint {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.sidebar-account-gear {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-account-pill:hover .sidebar-account-gear {
+  opacity: 1;
+}
+
 .sidebar-divider {
   margin: var(--space-sm) 0;
   border-top: 1px solid var(--border);

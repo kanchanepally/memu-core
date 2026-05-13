@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-nav-refresh">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-account-pill">
 </head>
 <body>
 <!-- Auth gate -->
@@ -106,18 +106,11 @@ async function api(path, opts = {}) {
             <span>Dashboard</span>
         </button>
     </nav>
-    <div class="sidebar-divider"></div>
-    <nav class="sidebar-nav">
-        <button class="sidebar-nav-item" id="tab-settings" onclick="switchTab('settings')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Settings</span>
-        </button>
-    </nav>
 
-    <!-- Bottom region: conversations. Section label + pinned New chat button,
-         then a flex: 1 scroll container so the list takes the remaining
-         sidebar height and scrolls on its own. Visible regardless of which
-         tab is currently active — conversation history is always reachable. -->
+    <!-- Phase A.8 — conversations region promoted directly under primary
+         nav (no divider, no Settings inline). Takes the remaining vertical
+         space; scrolls independently. Conversation history is the highest-
+         density surface in the rail — it earns the room. -->
     <div class="sidebar-conversations-region" id="sidebar-chat-children">
         <div class="sidebar-conversations-head">
             <span class="sidebar-conversations-label">Conversations</span>
@@ -130,6 +123,20 @@ async function api(path, opts = {}) {
             <div class="sidebar-conversations-empty">No conversations yet.</div>
         </div>
     </div>
+
+    <!-- Phase A.8 — account pill at bottom-left, Claude/Linear/Granola
+         pattern. Avatar (initial in indigo tint) + display name + small
+         settings-gear hint on the right. Whole pill is the tap target →
+         Settings tab. Settings as a nav row is retired; everything that
+         lived there is reachable via this pill. -->
+    <button class="sidebar-account-pill" id="tab-settings" onclick="switchTab('settings')" aria-label="Open settings">
+        <span class="sidebar-account-avatar" id="sidebar-account-avatar">?</span>
+        <span class="sidebar-account-meta">
+            <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
+            <span class="sidebar-account-hint">Settings</span>
+        </span>
+        <svg class="sidebar-account-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
 </aside>
 <main class="app-main">
 
@@ -4069,6 +4076,19 @@ function renderSelectedDay() {
             </div>`;
     }).join('');
 }
+
+// Phase A.8 — populate the bottom-left account pill from cached auth.
+// Initial letter from displayName goes in the avatar (uppercased,
+// fallback "?"); full displayName goes in the meta block. Fires synchronously
+// because `auth` is already in scope from the page-top auth guard.
+(function populateAccountPill() {
+    const nameEl = document.getElementById('sidebar-account-name');
+    const avatarEl = document.getElementById('sidebar-account-avatar');
+    if (!nameEl || !avatarEl) return;
+    const name = (auth.displayName || '').trim();
+    nameEl.textContent = name || 'Account';
+    avatarEl.textContent = name ? name.charAt(0).toUpperCase() : '?';
+})();
 
 // ========== INIT ==========
 // Default landing is Chat. switchTab('chat') sets currentTab, updates the
