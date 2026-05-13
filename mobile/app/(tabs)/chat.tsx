@@ -393,7 +393,12 @@ export default function ChatScreen() {
     }, 15000);
 
     let finalised = false;
-    const finalise = (memuText: string, isError = false, retrievalState?: RetrievalState | null) => {
+    const finalise = (
+      memuText: string,
+      isError = false,
+      retrievalState?: RetrievalState | null,
+      retrievedSpaces?: ChatMessageSpaceRef[],
+    ) => {
       if (finalised) return;
       finalised = true;
       if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
@@ -409,6 +414,7 @@ export default function ChatScreen() {
           fromMemu: true,
           timestamp: new Date(),
           retrievalState: retrievalState ?? null,
+          spaces: retrievedSpaces,
         },
       ]);
     };
@@ -437,8 +443,17 @@ export default function ChatScreen() {
             setPillTool(undefined);
             return;
           case 'done': {
-            const payload = event.data as { response?: string; retrievalState?: RetrievalState };
-            finalise(payload.response || 'No response.', false, payload.retrievalState ?? null);
+            const payload = event.data as {
+              response?: string;
+              retrievalState?: RetrievalState;
+              retrievedSpaces?: ChatMessageSpaceRef[];
+            };
+            finalise(
+              payload.response || 'No response.',
+              false,
+              payload.retrievalState ?? null,
+              payload.retrievedSpaces,
+            );
             return;
           }
           case 'error': {

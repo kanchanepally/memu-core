@@ -148,7 +148,10 @@ export type RetrievalState = 'sourced' | 'fallback' | 'empty';
 export interface ChatResponse {
   response: string;
   retrievalState?: RetrievalState;
-  retrievedSpaceUris?: string[];
+  /** Spaces that grounded this reply (retrieval-touched). UI renders as chips.
+   *  Defined as ChatMessageSpaceRef[] so streaming `done` events and chat
+   *  history can share one renderer — see line ~750. */
+  retrievedSpaces?: ChatMessageSpaceRef[];
 }
 
 export type Visibility = 'personal' | 'family';
@@ -451,7 +454,7 @@ export type StreamEvent =
   | { name: 'routing'; data: { provider?: string; model?: string } }
   | { name: 'tool_use'; data: { tool?: string } }
   | { name: 'synthesising'; data: Record<string, unknown> }
-  | { name: 'done'; data: { response?: string; retrievalState?: RetrievalState; retrievedSpaceUris?: string[] } }
+  | { name: 'done'; data: { response?: string; retrievalState?: RetrievalState; retrievedSpaces?: ChatMessageSpaceRef[] } }
   | { name: 'error'; data: { error?: string } };
 
 export interface StreamHandle {

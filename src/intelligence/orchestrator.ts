@@ -128,11 +128,25 @@ export interface PipelineOptions {
  * rather than Spaces, and (b) source chips for the Spaces that grounded the
  * reply. Both ride on the same `deriveRetrievalState` decision the prompt
  * builder used — by design, never two parallel decisions about emptiness.
+ *
+ * `retrievedSpaces` is the resolved {id, name, slug, category} shape rather
+ * than raw URIs — UI consumers (mobile + PWA) render chips directly without
+ * a second round-trip to resolve. URIs are still what's persisted on the
+ * messages row; the resolution happens here, where we already have the
+ * full Space objects loaded by retrieval.
  */
+export interface PipelineSpaceRef {
+  id: string;
+  uri: string;
+  name: string;
+  slug: string;
+  category: string;
+}
+
 export interface PipelineResult {
   response: string;
   retrievalState: RetrievalState;
-  retrievedSpaceUris: string[];
+  retrievedSpaces: PipelineSpaceRef[];
 }
 
 export async function processIntelligencePipeline(
@@ -174,7 +188,7 @@ export async function processIntelligencePipeline(
     // in a concrete list operation, not in training data. The badge stays
     // off for these turns.
     await storeMessageAudit(profileId, content, anonymousMsg, anonymousResponse, listResult.response, channel, messageId, undefined, 'sourced');
-    return { response: listResult.response, retrievalState: 'sourced', retrievedSpaceUris: [] };
+    return { response: listResult.response, retrievalState: 'sourced', retrievedSpaces: [] };
   }
 
   // 2. Synthesis-first retrieval — Story 2.1. Direct addressing and
@@ -338,10 +352,12 @@ export async function processIntelligencePipeline(
 
   // 6. Immutable Message Storage (Audit Trail) — includes tool call provenance
   // so /api/chat/history can surface Space artefacts as inline chips beneath
-  // Memu's bubble (replaces the substring-matching fallback).
+  // Memu's bubble (replaces the substring-matching fallback). retrieval-
+  // touched Spaces persist as URIs (cheap TEXT[]); the UI resolves via
+  // synthesis_pages lookup at history-read time.
   await storeMessageAudit(
     profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId,
-    dispatchResult.toolCalls, retrievalState,
+    dispatchResult.toolCalls, retrievalState, retrieval.provenance.spaceUris,
   );
 
   // 6b. Provenance record — what retrieval path answered this message.
@@ -366,10 +382,20 @@ export async function processIntelligencePipeline(
   });
 
   emit({ type: 'done' });
+  // Resolve the retrieval-touched Spaces to the {id, uri, name, slug, category}
+  // shape the UI renders. retrieval.spaces is the array of full Space objects
+  // that fed the prompt — they're already in memory, no extra DB hop.
+  const retrievedSpaces: PipelineSpaceRef[] = retrieval.spaces.map(sp => ({
+    id: sp.id,
+    uri: sp.uri,
+    name: sp.name,
+    slug: sp.slug,
+    category: sp.category,
+  }));
   return {
     response: realResponse,
     retrievalState,
-    retrievedSpaceUris: retrieval.provenance.spaceUris,
+    retrievedSpaces,
   };
 }
 
@@ -525,6 +551,7 @@ async function storeMessageAudit(
   messageId: string,
   toolCalls?: Array<{ name: string; ok: boolean; error?: string; output?: Record<string, unknown> }>,
   retrievalState?: RetrievalState,
+  retrievedSpaceUris?: string[],
 ) {
   const convId = await getOrCreateConversation(profileId);
 
@@ -537,14 +564,22 @@ async function storeMessageAudit(
     ? toolCalls.map(c => ({ name: c.name, ok: c.ok, error: c.error, output: c.output }))
     : null;
 
+  // retrievedSpaceUris captures Spaces that retrieval pulled to ground the
+  // answer — complementary to actions_executed (which only logs tool calls).
+  // /api/chat/history unions both to render source chips on the reply.
+  const retrievedUris = retrievedSpaceUris && retrievedSpaceUris.length > 0
+    ? retrievedSpaceUris
+    : null;
+
   await db.query(
     `INSERT INTO messages
-    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed, retrieval_state)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed, retrieval_state, retrieved_space_uris)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       messageId, convId, profileId, 'user', original, translated, claudeRaw, realResp, channel,
       actionsExecuted ? JSON.stringify(actionsExecuted) : null,
       retrievalState ?? null,
+      retrievedUris,
     ],
   );
 

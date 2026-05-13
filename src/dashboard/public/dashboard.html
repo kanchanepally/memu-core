@@ -1718,7 +1718,7 @@ async function sendMessage() {
     }, 15000);
 
     let finalised = false;
-    const finalise = (memuText, isError, retrievalState) => {
+    const finalise = (memuText, isError, retrievalState, retrievedSpaces) => {
         if (finalised) return;
         finalised = true;
         clearTimeout(slowTimer);
@@ -1726,7 +1726,9 @@ async function sendMessage() {
         // retrievalState is undefined for errors and legacy events — addChatMessage
         // treats it as null and renders no caption. Only 'empty' triggers the
         // "Unsourced" caption (BUG-15).
-        addChatMessage(memuText, false, undefined, undefined, undefined, undefined, retrievalState);
+        // retrievedSpaces is the resolved Space-ref list from the SSE done event
+        // — chips render alongside the bubble.
+        addChatMessage(memuText, false, undefined, undefined, retrievedSpaces, undefined, retrievalState);
         chatSending = false;
         chatSend.disabled = !chatInput.value.trim();
         chatInput.focus();
@@ -1765,7 +1767,12 @@ async function sendMessage() {
                     apply('Pulling it together', PILL_ICONS.pen);
                     break;
                 case 'done':
-                    finalise(event.data?.response || 'No response received.', false, event.data?.retrievalState);
+                    finalise(
+                        event.data?.response || 'No response received.',
+                        false,
+                        event.data?.retrievalState,
+                        event.data?.retrievedSpaces,
+                    );
                     break;
                 case 'error':
                     finalise(`Couldn't reach Memu: ${event.data?.error || 'unknown error'}`, true);

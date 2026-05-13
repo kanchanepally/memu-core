@@ -371,7 +371,7 @@ server.post('/api/message', async (request, reply) => {
     return {
       response: result.response,
       retrievalState: result.retrievalState,
-      retrievedSpaceUris: result.retrievedSpaceUris,
+      retrievedSpaces: result.retrievedSpaces,
     };
   } catch (err) {
     server.log.error(err);
@@ -472,7 +472,7 @@ server.post('/api/message/stream', async (request, reply) => {
       sse('done', {
         response: result.response,
         retrievalState: result.retrievalState,
-        retrievedSpaceUris: result.retrievedSpaceUris,
+        retrievedSpaces: result.retrievedSpaces,
       });
     }
   } catch (err) {
@@ -2632,7 +2632,8 @@ server.get('/api/chat/history', async (request, reply) => {
     // shape depends on whether userMessage is non-empty.
     const msgRes = await db.query(
       `SELECT id, conversation_id, content_original, content_response_translated,
-              channel, created_at, actions_executed, metadata, retrieval_state
+              channel, created_at, actions_executed, metadata, retrieval_state,
+              retrieved_space_uris
        FROM messages
        WHERE conversation_id = $1
          AND content_response_translated IS NOT NULL
@@ -2700,15 +2701,47 @@ server.get('/api/chat/history', async (request, reply) => {
       return out;
     };
 
+    // Resolve a URI list (from retrieved_space_uris) to Space refs, deduped
+    // against an already-resolved set so retrieval-touched chips don't double
+    // up with tool-touched ones.
+    const resolveUrisToSpaceRefs = (uris: unknown, alreadySeen: Set<string>): Array<{ id: string; name: string; slug: string; category: string }> => {
+      if (!Array.isArray(uris)) return [];
+      const out: Array<{ id: string; name: string; slug: string; category: string }> = [];
+      for (const uri of uris) {
+        if (typeof uri !== 'string') continue;
+        const sp = byUri.get(uri);
+        if (sp && !alreadySeen.has(sp.id)) {
+          out.push({ id: sp.id, name: sp.name, slug: sp.slug, category: sp.category });
+          alreadySeen.add(sp.id);
+        }
+      }
+      return out;
+    };
+
     const messages = ordered.map((row: any) => {
       const text = row.content_response_translated || '';
       let spaces: Array<{ id: string; name: string; slug: string; category: string }> = [];
 
       const actions = row.actions_executed;
-      if (Array.isArray(actions) && actions.length > 0) {
-        spaces = extractSpaceRefsFromActions(actions);
+      const retrievedUris = row.retrieved_space_uris;
+      const haveStructured = (Array.isArray(actions) && actions.length > 0) ||
+        (Array.isArray(retrievedUris) && retrievedUris.length > 0);
+
+      if (haveStructured) {
+        // PRECISE path — union of tool-touched (createSpace/updateSpace/
+        // findSpaces) AND retrieval-touched Spaces. Tool-touched go first
+        // because they represent active intent ("Memu wrote to this");
+        // retrieval-touched fill remaining slots ("Memu read this to answer").
+        // Deduped on Space id so a Space that's both tool-touched and
+        // retrieval-touched only shows once.
+        const seenIds = new Set<string>();
+        const toolRefs = extractSpaceRefsFromActions(actions || []);
+        for (const r of toolRefs) seenIds.add(r.id);
+        const retrievedRefs = resolveUrisToSpaceRefs(retrievedUris, seenIds);
+        spaces = [...toolRefs, ...retrievedRefs];
       } else {
-        // Fallback for legacy messages — substring match.
+        // FALLBACK for legacy messages where neither column was populated.
+        // Substring-match the response against existing Space titles.
         const seen = new Set<string>();
         for (const sp of matchableByName) {
           if (sp.pattern.test(text) && !seen.has(sp.id)) {
