@@ -11,7 +11,16 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  MessageCircle,
+  Layers,
+  Calendar as LucideCalendar,
+  ListChecks,
+  LayoutGrid,
+  Settings as LucideSettings,
+  Plus,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useDrawer } from '../lib/drawer';
 import { colors, spacing, radius, typography } from '../lib/tokens';
@@ -24,36 +33,38 @@ const TOP_PAD = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 56;
 
 type Destination = {
   label: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  iconActive: React.ComponentProps<typeof Ionicons>['name'];
+  Icon: LucideIcon;
   path: string;
 };
 
 // Primary nav — the surfaces the user opens daily.
 //
-// Phase A.4 — 'Dashboard' (was 'Today') is now positioned as the
-// power-user structured view: full calendar strip, all open commitments,
-// raw stream feed. The default landing is Chat (chat-first per the
-// Canvas brief), so Dashboard sits as the second item — discoverable
-// for users who want the structured overview, not the daily default.
+// Phase A.7 — icons swapped from Ionicons-outline/solid pairs to Lucide.
+// Lucide's stroke calibration reads cleaner at 18px than Ionicons-outline
+// (which were drawn for 24px display); active state no longer relies on
+// outline → solid morph but on colour + a left rule (see styles.rowActive
+// below).
+//
+// Phase A.4 — 'Dashboard' (was 'Today') is the power-user structured view:
+// full calendar strip, all open commitments, raw stream feed. The default
+// landing is Chat (chat-first per the Canvas brief), so Dashboard sits as
+// the last primary item — discoverable for users who want the structured
+// overview, not the daily default.
 //
 // The underlying route is still /(tabs)/today.tsx — the screen wasn't
-// reworked, only its semantic position changed. A.5's polymorphic chat
-// renderer means most of what used to be on Today (briefings, action
-// nudges) now also shows up inline in chat, so the Dashboard is
-// genuinely a complementary view rather than the primary one.
+// reworked, only its semantic position changed.
 const PRIMARY: Destination[] = [
-  { label: 'Chat', icon: 'chatbubble-outline', iconActive: 'chatbubble', path: '/(tabs)/chat' },
-  { label: 'Spaces', icon: 'albums-outline', iconActive: 'albums', path: '/(tabs)/spaces' },
-  { label: 'Calendar', icon: 'calendar-outline', iconActive: 'calendar', path: '/(tabs)/calendar' },
-  { label: 'Lists', icon: 'list-outline', iconActive: 'list', path: '/(tabs)/lists' },
-  { label: 'Dashboard', icon: 'grid-outline', iconActive: 'grid', path: '/(tabs)/today' },
+  { label: 'Chat', Icon: MessageCircle, path: '/(tabs)/chat' },
+  { label: 'Spaces', Icon: Layers, path: '/(tabs)/spaces' },
+  { label: 'Calendar', Icon: LucideCalendar, path: '/(tabs)/calendar' },
+  { label: 'Lists', Icon: ListChecks, path: '/(tabs)/lists' },
+  { label: 'Dashboard', Icon: LayoutGrid, path: '/(tabs)/today' },
 ];
 
 // Secondary nav — less-frequent surfaces. Settings sits under a divider so
 // the eye groups it apart from the daily flow.
 const SECONDARY: Destination[] = [
-  { label: 'Settings', icon: 'settings-outline', iconActive: 'settings', path: '/(tabs)/settings' },
+  { label: 'Settings', Icon: LucideSettings, path: '/(tabs)/settings' },
 ];
 
 function isChatActive(pathname: string): boolean {
@@ -140,6 +151,7 @@ export default function SideDrawer() {
 
   const renderNavRow = (dest: Destination) => {
     const active = isActive(pathname, dest);
+    const Icon = dest.Icon;
     return (
       <Pressable
         key={dest.path}
@@ -150,9 +162,9 @@ export default function SideDrawer() {
           pressed && styles.rowPressed,
         ]}
       >
-        <Ionicons
-          name={active ? dest.iconActive : dest.icon}
-          size={20}
+        <Icon
+          size={18}
+          strokeWidth={active ? 2 : 1.5}
           color={active ? colors.primary : colors.onSurfaceVariant}
         />
         <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
@@ -213,7 +225,7 @@ export default function SideDrawer() {
                 style={({ pressed }) => [styles.newChatBtn, pressed && styles.rowPressed]}
                 accessibilityLabel="Start new chat"
               >
-                <Ionicons name="add" size={16} color={colors.primary} />
+                <Plus size={14} strokeWidth={1.8} color={colors.primary} />
                 <Text style={styles.newChatLabel}>New</Text>
               </Pressable>
             </View>
@@ -286,24 +298,35 @@ const styles = StyleSheet.create({
     marginVertical: spacing.sm,
     marginHorizontal: spacing.sm,
   },
+  // Phase A.7 — nav rail is chrome, not content.
+  // - 13px / 400 at rest, 600 active (was body / bold-active)
+  // - Active state is a 3px left rule + indigo text (was filled
+  //   grey slab). Same gesture as the PWA — the rail is a persistent
+  //   spatial anchor; active item is legible without a competing fill.
+  // - Inset by 3px on inactive rows so the text doesn't shift left
+  //   when the rule appears on active.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: 8,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
   },
   rowActive: {
-    backgroundColor: colors.surfaceVariant,
+    backgroundColor: 'transparent',
+    borderLeftColor: colors.primary,
   },
   rowPressed: {
     opacity: 0.6,
   },
   rowLabel: {
-    fontSize: typography.sizes.body,
+    fontSize: 13,
     fontFamily: typography.families.body,
-    color: colors.onSurface,
+    color: colors.onSurfaceVariant,
+    letterSpacing: 0.1,
   },
   rowLabelActive: {
     color: colors.primary,

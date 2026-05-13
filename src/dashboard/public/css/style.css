@@ -2017,25 +2017,34 @@ textarea.input {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
+/* Phase A.7 — nav rail is chrome, not content.
+   - 13px / 400 at rest (was 15px / 500): labels defer to icons + content
+   - 8px vertical padding (was 10px): tighter row height, closer to Linear
+   - Active state is a 3px left rule + indigo text, not a filled slab:
+     the rail becomes a persistent spatial anchor; the active item is
+     legible without a competing background fill.
+   - 1px gap (was 2px): rail reads as one continuous structure. */
 .sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   background: none;
   border: none;
+  border-left: 3px solid transparent;
   font-family: var(--font-family);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.005em;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: var(--transition);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .sidebar-nav-item:hover {
@@ -2044,16 +2053,22 @@ textarea.input {
 }
 
 .sidebar-nav-item.active {
-  background: var(--indigo-secondary-container);
+  background: transparent;
+  border-left-color: var(--indigo-primary);
   color: var(--indigo-primary);
   font-weight: 600;
 }
 
 .sidebar-nav-item svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   stroke: currentColor;
   flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.sidebar-nav-item.active svg {
+  opacity: 1;
 }
 
 .sidebar-divider {
