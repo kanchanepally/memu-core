@@ -134,8 +134,21 @@ export async function checkServerHealth(serverUrl: string): Promise<ApiResponse<
 // ==========================================
 
 // Chat with Memu
+/**
+ * `retrievalState` tells the UI what fed this reply:
+ *  - 'sourced'   → compiled Spaces matched. Bubble may render source chips (FEAT-03).
+ *  - 'fallback'  → no Space matched but fallback context (onboarding summary,
+ *                  embedding recall) carried the turn. Reply is loosely grounded.
+ *  - 'empty'     → nothing retrieved. Bubble renders an "Unsourced" caption so
+ *                  the reader knows the reply isn't from their notes (BUG-15).
+ *  - null/missing → legacy turn (pre-FEAT-02) or server didn't supply. Render nothing.
+ */
+export type RetrievalState = 'sourced' | 'fallback' | 'empty';
+
 export interface ChatResponse {
   response: string;
+  retrievalState?: RetrievalState;
+  retrievedSpaceUris?: string[];
 }
 
 export type Visibility = 'personal' | 'family';
@@ -438,7 +451,7 @@ export type StreamEvent =
   | { name: 'routing'; data: { provider?: string; model?: string } }
   | { name: 'tool_use'; data: { tool?: string } }
   | { name: 'synthesising'; data: Record<string, unknown> }
-  | { name: 'done'; data: { response?: string } }
+  | { name: 'done'; data: { response?: string; retrievalState?: RetrievalState; retrievedSpaceUris?: string[] } }
   | { name: 'error'; data: { error?: string } };
 
 export interface StreamHandle {
@@ -754,6 +767,11 @@ export interface ChatHistoryMessage {
    * elevated rendering. Plain turns leave this null/absent.
    */
   type?: 'briefing' | null;
+  /**
+   * What retrieval found for this turn. See `RetrievalState`. null for
+   * legacy messages (pre-FEAT-02) — UI treats null as "unknown, render nothing".
+   */
+  retrievalState?: RetrievalState | null;
 }
 
 export interface ChatHistoryResponse {

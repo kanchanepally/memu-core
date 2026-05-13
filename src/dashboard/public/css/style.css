@@ -1209,6 +1209,26 @@ textarea.input {
   font-size: 14px;
 }
 
+/* BUG-15 honesty caption — mirrors the mobile chat.tsx unsourcedRow styling.
+   Surfaces when a Memu reply had no Spaces / no recall / no fallback context
+   to draw from. Subtle (italic, surface-variant colour, info icon) so it
+   informs without reading as "broken". */
+.chat-unsourced-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 2px;
+  max-width: 320px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-secondary, var(--text-muted));
+}
+.chat-unsourced-row svg {
+  flex-shrink: 0;
+  color: var(--text-secondary, var(--text-muted));
+}
+
 /* Narrow viewport: collapse the conversations column to a slide-in panel.
    Toggle controlled by .chat-history-open + .chat-history-toggle button. */
 @media (max-width: 720px) {

@@ -367,8 +367,12 @@ server.post('/api/message', async (request, reply) => {
     }
     const messageId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const visibility = body.visibility === 'personal' ? 'personal' : 'family';
-    const responseText = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId, visibility);
-    return { response: responseText };
+    const result = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId, visibility);
+    return {
+      response: result.response,
+      retrievalState: result.retrievalState,
+      retrievedSpaceUris: result.retrievedSpaceUris,
+    };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Pipeline failed' });
@@ -446,7 +450,7 @@ server.post('/api/message/stream', async (request, reply) => {
     const messageId = `mobile-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const visibility = body.visibility === 'personal' ? 'personal' : 'family';
 
-    const responseText = await processIntelligencePipeline(
+    const result = await processIntelligencePipeline(
       profileId,
       body.content,
       'mobile',
@@ -465,7 +469,11 @@ server.post('/api/message/stream', async (request, reply) => {
     );
 
     if (!aborted) {
-      sse('done', { response: responseText });
+      sse('done', {
+        response: result.response,
+        retrievalState: result.retrievalState,
+        retrievedSpaceUris: result.retrievedSpaceUris,
+      });
     }
   } catch (err) {
     server.log.error(err);
@@ -2624,7 +2632,7 @@ server.get('/api/chat/history', async (request, reply) => {
     // shape depends on whether userMessage is non-empty.
     const msgRes = await db.query(
       `SELECT id, conversation_id, content_original, content_response_translated,
-              channel, created_at, actions_executed, metadata
+              channel, created_at, actions_executed, metadata, retrieval_state
        FROM messages
        WHERE conversation_id = $1
          AND content_response_translated IS NOT NULL
@@ -2720,6 +2728,7 @@ server.get('/api/chat/history', async (request, reply) => {
         timestamp: row.created_at,
         spaces: spaces.slice(0, 5),
         type: metadata?.type ?? null,                 // 'briefing' for elevated render
+        retrievalState: row.retrieval_state ?? null,  // 'sourced'|'fallback'|'empty'|null; null = legacy
       };
     });
 

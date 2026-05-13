@@ -23,6 +23,7 @@ import {
   type ChatMessageSpaceRef,
   type Visibility,
   type StreamHandle,
+  type RetrievalState,
 } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
@@ -42,6 +43,13 @@ interface Message {
    * turns leave this null.
    */
   type?: 'briefing' | null;
+  /**
+   * BUG-15 honesty signal. 'empty' = no Spaces/recall/fallback fed this
+   * reply → Memu is answering from training only; bubble shows an
+   * "Unsourced" caption so the reader knows. 'sourced' / 'fallback' /
+   * null leave the bubble plain.
+   */
+  retrievalState?: RetrievalState | null;
 }
 
 interface DaySeparator {
@@ -88,7 +96,7 @@ const WELCOME: Message = {
   timestamp: new Date(),
 };
 
-function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null; memuResponse: string; timestamp: string; channel: string; spaces?: ChatMessageSpaceRef[]; type?: 'briefing' | null }>): Message[] {
+function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null; memuResponse: string; timestamp: string; channel: string; spaces?: ChatMessageSpaceRef[]; type?: 'briefing' | null; retrievalState?: RetrievalState | null }>): Message[] {
   // Two row shapes: full turns (user + memu) and assistant-only (briefing).
   // Briefings carry no user message — render just the memu bubble.
   return rows.flatMap(msg => {
@@ -100,6 +108,7 @@ function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null;
       channel: msg.channel,
       spaces: msg.spaces,
       type: msg.type ?? null,
+      retrievalState: msg.retrievalState ?? null,
     };
     if (!msg.userMessage) return [memuBubble];
     return [
@@ -384,7 +393,7 @@ export default function ChatScreen() {
     }, 15000);
 
     let finalised = false;
-    const finalise = (memuText: string, isError = false) => {
+    const finalise = (memuText: string, isError = false, retrievalState?: RetrievalState | null) => {
       if (finalised) return;
       finalised = true;
       if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
@@ -399,6 +408,7 @@ export default function ChatScreen() {
           text: memuText,
           fromMemu: true,
           timestamp: new Date(),
+          retrievalState: retrievalState ?? null,
         },
       ]);
     };
@@ -427,8 +437,8 @@ export default function ChatScreen() {
             setPillTool(undefined);
             return;
           case 'done': {
-            const response = (event.data as { response?: string }).response || 'No response.';
-            finalise(response, false);
+            const payload = event.data as { response?: string; retrievalState?: RetrievalState };
+            finalise(payload.response || 'No response.', false, payload.retrievalState ?? null);
             return;
           }
           case 'error': {
@@ -542,6 +552,20 @@ export default function ChatScreen() {
                   <Ionicons name="chevron-forward" size={12} color={colors.outline} />
                 </Pressable>
               ))}
+            </View>
+          ) : null}
+
+          {/* BUG-15 honesty signal — render an "Unsourced" caption when this
+              Memu turn had no Spaces, no recall, no fallback context to draw
+              from. The user sees that the reply is from training, not their
+              notes. Hidden for non-Memu bubbles, briefings, sourced/fallback
+              replies, and legacy (null) messages. */}
+          {item.fromMemu && item.retrievalState === 'empty' ? (
+            <View style={styles.unsourcedRow}>
+              <Ionicons name="information-circle-outline" size={12} color={colors.onSurfaceVariant} />
+              <Text style={styles.unsourcedText}>
+                Memu had no notes for this — answered from general knowledge.
+              </Text>
             </View>
           ) : null}
 
@@ -1011,6 +1035,26 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.bodyMedium,
     color: colors.onTertiaryContainer,
+  },
+  // BUG-15 honesty caption — subtle, low-contrast, info icon. Sits below the
+  // Memu bubble when retrievalState === 'empty'. Designed to inform without
+  // alarming; the goal is "user knows the reply was unsourced", not "Memu is
+  // broken" panic.
+  unsourcedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 2,
+    alignSelf: 'flex-start',
+    maxWidth: 320,
+  },
+  unsourcedText: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    fontStyle: 'italic',
+    flexShrink: 1,
   },
 
 });

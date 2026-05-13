@@ -15,7 +15,7 @@ import { formatToolSummaryFooter } from './toolSummary';
 import { scrapeUrlContent } from './browser';
 import { db, enterCollectiveContext } from '../db/tenant';
 import { processSynthesisUpdate } from './synthesis';
-import { retrieveForQuery, buildContextBlock, deriveRetrievalState } from '../spaces/retrieval';
+import { retrieveForQuery, buildContextBlock, deriveRetrievalState, type RetrievalState } from '../spaces/retrieval';
 import { recordRetrievalProvenance } from '../spaces/provenance';
 
 const HISTORY_LIMIT = 10; // Last N message pairs for multi-turn conversation
@@ -121,6 +121,20 @@ export interface PipelineOptions {
   onProgress?: (event: PipelineProgressEvent) => void;
 }
 
+/**
+ * The full pipeline result. The string `response` is what's rendered in the
+ * chat bubble. The extra fields tell the UI what kind of turn this was so it
+ * can surface (a) an "Unsourced" caption when the answer came from training
+ * rather than Spaces, and (b) source chips for the Spaces that grounded the
+ * reply. Both ride on the same `deriveRetrievalState` decision the prompt
+ * builder used — by design, never two parallel decisions about emptiness.
+ */
+export interface PipelineResult {
+  response: string;
+  retrievalState: RetrievalState;
+  retrievedSpaceUris: string[];
+}
+
 export async function processIntelligencePipeline(
   profileId: string,
   content: string,
@@ -128,7 +142,7 @@ export async function processIntelligencePipeline(
   messageId: string = 'unknown',
   visibility: Visibility = 'family',
   options: PipelineOptions = {},
-): Promise<string> {
+): Promise<PipelineResult> {
   const onProgress = options.onProgress;
   const emit = (event: PipelineProgressEvent) => {
     if (!onProgress) return;
@@ -155,8 +169,12 @@ export async function processIntelligencePipeline(
   if (listResult) {
     console.log(`[LIST -> ${listResult.kind}]: ${listResult.items.length} item(s)`);
     const anonymousResponse = await translateToAnonymous(listResult.response);
-    await storeMessageAudit(profileId, content, anonymousMsg, anonymousResponse, listResult.response, channel, messageId);
-    return listResult.response;
+    // List-command fast path: no retrieval ran (we skipped straight to a
+    // deterministic handler). State is 'sourced' — the result is grounded
+    // in a concrete list operation, not in training data. The badge stays
+    // off for these turns.
+    await storeMessageAudit(profileId, content, anonymousMsg, anonymousResponse, listResult.response, channel, messageId, undefined, 'sourced');
+    return { response: listResult.response, retrievalState: 'sourced', retrievedSpaceUris: [] };
   }
 
   // 2. Synthesis-first retrieval — Story 2.1. Direct addressing and
@@ -323,7 +341,7 @@ export async function processIntelligencePipeline(
   // Memu's bubble (replaces the substring-matching fallback).
   await storeMessageAudit(
     profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId,
-    dispatchResult.toolCalls,
+    dispatchResult.toolCalls, retrievalState,
   );
 
   // 6b. Provenance record — what retrieval path answered this message.
@@ -348,7 +366,11 @@ export async function processIntelligencePipeline(
   });
 
   emit({ type: 'done' });
-  return realResponse;
+  return {
+    response: realResponse,
+    retrievalState,
+    retrievedSpaceUris: retrieval.provenance.spaceUris,
+  };
 }
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
@@ -502,6 +524,7 @@ async function storeMessageAudit(
   channel: string,
   messageId: string,
   toolCalls?: Array<{ name: string; ok: boolean; error?: string; output?: Record<string, unknown> }>,
+  retrievalState?: RetrievalState,
 ) {
   const convId = await getOrCreateConversation(profileId);
 
@@ -516,11 +539,12 @@ async function storeMessageAudit(
 
   await db.query(
     `INSERT INTO messages
-    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed, retrieval_state)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       messageId, convId, profileId, 'user', original, translated, claudeRaw, realResp, channel,
       actionsExecuted ? JSON.stringify(actionsExecuted) : null,
+      retrievalState ?? null,
     ],
   );
 

@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-thinking-pill">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-unsourced-caption">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1390,7 +1390,7 @@ function maybeEmitDaySeparator(timestamp) {
     chatMessages.appendChild(sep);
 }
 
-function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
+function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrievalState) {
     // First write into the empty chat clears the welcome blank-state placeholder.
     const blank = document.getElementById('chat-blank-state');
     if (blank) blank.remove();
@@ -1461,10 +1461,23 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
         artefactBlock = `<div class="chat-artefact-stack">${chips}</div>`;
     }
 
+    // BUG-15 honesty signal — "Unsourced" caption when this Memu turn had no
+    // Spaces / no recall / no fallback to draw from. Mirrors the mobile
+    // chat.tsx treatment. Hidden for user turns, sourced/fallback turns, and
+    // legacy (null) messages.
+    let unsourcedBlock = '';
+    if (!isUser && retrievalState === 'empty') {
+        unsourcedBlock = `<div class="chat-unsourced-row">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Memu had no notes for this — answered from general knowledge.</span>
+        </div>`;
+    }
+
     html += `<div class="bubble-wrap">
         ${channelBadge}
         <div class="bubble ${isUser ? 'bubble-user' : 'bubble-memu'}">${bubbleContent}</div>
         ${artefactBlock}
+        ${unsourcedBlock}
         ${draftActions}
         <div class="timestamp ${isUser ? 'timestamp-right' : 'timestamp-left'}">${time}</div>
     </div>`;
@@ -1600,7 +1613,7 @@ async function pickConversation(conversationId) {
                 if (msg.userMessage) {
                     addChatMessage(msg.userMessage, true, msg.timestamp, msg.channel);
                 }
-                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type);
+                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState);
             }
             const conv = conversationsCache.find(c => c.id === conversationId);
             setChatTitle(conv && conv.title ? conv.title : 'Conversation');
@@ -1635,7 +1648,7 @@ async function loadChatHistory() {
                 if (msg.userMessage) {
                     addChatMessage(msg.userMessage, true, msg.timestamp, msg.channel);
                 }
-                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type);
+                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState);
             }
             activeConversationId = data.conversationId || null;
             const conv = conversationsCache.find(c => c.id === activeConversationId);
@@ -1705,12 +1718,15 @@ async function sendMessage() {
     }, 15000);
 
     let finalised = false;
-    const finalise = (memuText, isError) => {
+    const finalise = (memuText, isError, retrievalState) => {
         if (finalised) return;
         finalised = true;
         clearTimeout(slowTimer);
         document.getElementById('thinking-pill')?.remove();
-        addChatMessage(memuText, false);
+        // retrievalState is undefined for errors and legacy events — addChatMessage
+        // treats it as null and renders no caption. Only 'empty' triggers the
+        // "Unsourced" caption (BUG-15).
+        addChatMessage(memuText, false, undefined, undefined, undefined, undefined, retrievalState);
         chatSending = false;
         chatSend.disabled = !chatInput.value.trim();
         chatInput.focus();
@@ -1749,7 +1765,7 @@ async function sendMessage() {
                     apply('Pulling it together', PILL_ICONS.pen);
                     break;
                 case 'done':
-                    finalise(event.data?.response || 'No response received.', false);
+                    finalise(event.data?.response || 'No response received.', false, event.data?.retrievalState);
                     break;
                 case 'error':
                     finalise(`Couldn't reach Memu: ${event.data?.error || 'unknown error'}`, true);
