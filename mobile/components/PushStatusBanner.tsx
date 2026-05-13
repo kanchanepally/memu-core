@@ -51,8 +51,15 @@ export default function PushStatusBanner({ tokens, onTokensChange }: Props) {
       );
     } else if (result.reason === 'simulator') {
       toast.show('Push only works on a real device, not a simulator', 'error');
+    } else if (result.reason === 'token_unavailable') {
+      Alert.alert(
+        'Push token unavailable',
+        result.detail ?? "Expo couldn't issue a token. On Android this usually means Firebase Cloud Messaging credentials aren't set up for the EAS project.",
+        [{ text: 'OK' }],
+      );
     } else {
-      toast.show(`Couldn't enable: ${result.reason}`, 'error');
+      const detail = result.detail ? `${result.reason} — ${result.detail.slice(0, 120)}` : result.reason;
+      toast.show(`Couldn't enable: ${detail}`, 'error');
     }
     setBusy(false);
   }, [refreshTokens, toast]);

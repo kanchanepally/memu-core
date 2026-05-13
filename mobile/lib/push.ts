@@ -81,7 +81,14 @@ export async function registerForPushNotifications(): Promise<PushRegistrationRe
     }
 
     const token = tokenResp.data;
-    if (!token) return { ok: false, reason: 'token_unavailable' };
+    if (!token) {
+      console.warn('[PUSH] getExpoPushTokenAsync returned empty data', tokenResp);
+      return {
+        ok: false,
+        reason: 'token_unavailable',
+        detail: 'Expo returned no token. Most likely cause on Android: FCM credentials not configured for this EAS project. Run `npx eas credentials` and set up an FCM V1 service account.',
+      };
+    }
 
     const auth = await loadAuthState();
     if (!auth.isAuthenticated || !auth.serverUrl || !auth.apiKey) {
