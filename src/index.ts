@@ -3,7 +3,7 @@ import 'dotenv/config'; // Load env variables immediately before other imports
 import Fastify from 'fastify';
 import pino from 'pino';
 import { testConnection, pool } from './db/connection';
-import { db, enterCollectiveContext } from './db/tenant';
+import { db, enterCollectiveContext, bindCollectiveContext, currentCollectiveId } from './db/tenant';
 import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
@@ -218,6 +218,26 @@ server.addHook('preHandler', async (request, reply) => {
   return requireCollective(request, reply);
 });
 
+// Re-bind the ALS tenant context at the latest possible preHandler slot
+// (TD-05). On the Z2 standalone deploy 2026-05-13, the context that
+// requireCollective.bindCollectiveContext() entered via AsyncLocalStorage
+// .enterWith() didn't propagate into the route handler — every chat turn
+// failed with NOT NULL violations on `collective_id` for conversations,
+// privacy_ledger, and downstream tool calls (updateSpace / addToList).
+//
+// Re-binding here, in a fresh preHandler that runs AFTER requireCollective
+// resolves, refreshes the ALS frame at the latest async boundary before
+// the route handler runs. Idempotent if the original bind held; a fix
+// if it didn't. Root cause likely a Fastify-Node async-resource interplay
+// where requireCollective's await of queryAsBootstrap before the enterWith
+// causes the bound store to be popped by the time control returns to the
+// route handler. Investigation deferred — TD-05.
+server.addHook('preHandler', async (request) => {
+  if (isUnauthenticatedRoute(request.url)) return;
+  const collectiveId = (request as any).collectiveId as string | undefined;
+  if (collectiveId) bindCollectiveContext(collectiveId);
+});
+
 // After auth, bind the resolved profileId into the request logger so every
 // log line under that request carries it. Critical for beta debug — when a
 // user reports a problem and we have only the timestamp, we want to be able
@@ -335,6 +355,16 @@ server.post('/api/message', async (request, reply) => {
 
   try {
     const profileId = (request as any).profileId;
+    // Belt-and-braces ALS re-bind at handler entry. The latest-preHandler
+    // re-bind above should be sufficient, but pipelines that await heavily
+    // (chat, especially the SSE variant) span enough async slots that
+    // entering one more time at the root of the handler's own async tree
+    // is cheap insurance. TD-05.
+    const collectiveId = (request as any).collectiveId;
+    if (collectiveId) bindCollectiveContext(collectiveId);
+    if (!currentCollectiveId()) {
+      server.log.warn({ profileId, collectiveId }, '[ALS] tenant context still null at /api/message entry');
+    }
     const messageId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const visibility = body.visibility === 'personal' ? 'personal' : 'family';
     const responseText = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId, visibility);
@@ -374,6 +404,13 @@ server.post('/api/message/stream', async (request, reply) => {
 
   const profileId = (request as any).profileId;
   if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
+
+  // Belt-and-braces ALS re-bind — see /api/message handler. TD-05.
+  const collectiveId = (request as any).collectiveId;
+  if (collectiveId) bindCollectiveContext(collectiveId);
+  if (!currentCollectiveId()) {
+    server.log.warn({ profileId, collectiveId }, '[ALS] tenant context still null at /api/message/stream entry');
+  }
 
   // SSE setup. Take over the raw response — Fastify reply.hijack()
   // releases the framework's serialisation so we can write chunked events.
