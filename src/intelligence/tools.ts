@@ -29,7 +29,7 @@ import { db } from '../db/tenant';
 import { upsertSpace, findSpaceByUri, findSpaceBySlug, validateParentRelationship, countChildrenForParents } from '../spaces/store';
 import { SPACE_CATEGORIES, type SpaceCategory } from '../spaces/model';
 import { getCatalogue } from '../spaces/catalogue';
-import { insertCalendarEvent, fetchUpcomingEvents } from '../channels/calendar/google';
+import { insertCalendarEvent, fetchUpcomingEventsDetailed } from '../channels/calendar/google';
 
 export interface ToolContext {
   familyId: string;
@@ -773,10 +773,51 @@ const READ_UPCOMING_EVENTS_SCHEMA: ClaudeToolSchema = {
 
 async function executeReadUpcomingEvents(rawInput: unknown, ctx: ToolContext): Promise<ToolExecutionResult> {
   try {
-    const events = await fetchUpcomingEvents(ctx.profileId);
-    
+    // BUG-17 — use the detailed outcome so we can distinguish
+    // "no events" (a normal answer) from "calendar disconnected"
+    // (auth expired — user needs to reconnect) from "transient
+    // fetch failure" (worth retrying / continuing without). Claude
+    // sees the structured shape and can mention the disconnect
+    // ("the calendar's disconnected — reconnect in Settings") instead
+    // of silently behaving as if you have nothing scheduled.
+    const result = await fetchUpcomingEventsDetailed(ctx.profileId);
+
+    if (result.kind === 'not_connected') {
+      return {
+        ok: true,
+        output: {
+          count: 0,
+          events: [],
+          calendar_status: 'not_connected',
+          calendar_note: 'No Google Calendar is connected for this profile.',
+        },
+      };
+    }
+    if (result.kind === 'auth_expired') {
+      return {
+        ok: true,
+        output: {
+          count: 0,
+          events: [],
+          calendar_status: 'auth_expired',
+          calendar_note: 'Google Calendar access has expired. The user needs to reconnect Google Calendar in Settings — surface this naturally if the question depended on calendar context.',
+        },
+      };
+    }
+    if (result.kind === 'fetch_failed') {
+      return {
+        ok: true,
+        output: {
+          count: 0,
+          events: [],
+          calendar_status: 'fetch_failed',
+          calendar_note: 'Calendar fetch failed transiently — answer without calendar context for this turn.',
+        },
+      };
+    }
+
     // Anonymise the events before sending back to Claude
-    const anonymisedEvents = await Promise.all(events.map(async e => {
+    const anonymisedEvents = await Promise.all(result.events.map(async e => {
       const summary = e.summary ? await translateToAnonymous(e.summary) : '(untitled event)';
       const location = e.location ? await translateToAnonymous(e.location) : undefined;
       const description = e.description ? await translateToAnonymous(e.description) : undefined;
@@ -794,13 +835,27 @@ async function executeReadUpcomingEvents(rawInput: unknown, ctx: ToolContext): P
     return {
       ok: true,
       output: {
-        count: events.length,
+        count: result.events.length,
         events: anonymisedEvents,
+        calendar_status: 'ok',
       },
     };
   } catch (err) {
+    // Defence-in-depth — fetchUpcomingEventsDetailed already catches
+    // every internal failure mode and returns a structured outcome, so
+    // this catch should never fire in practice. If it does, treat as
+    // ok with a fetch_failed shape so the chat turn doesn't die.
     const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `readUpcomingEvents failed: ${message}` };
+    console.error('[TOOL readUpcomingEvents] unexpected throw:', message);
+    return {
+      ok: true,
+      output: {
+        count: 0,
+        events: [],
+        calendar_status: 'fetch_failed',
+        calendar_note: `Unexpected error: ${message}. Answer without calendar context for this turn.`,
+      },
+    };
   }
 }
 
