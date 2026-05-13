@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-account-pill">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-dashboard-zones">
 </head>
 <body>
 <!-- Auth gate -->
@@ -152,98 +152,155 @@ async function api(path, opts = {}) {
     </button>
 </header>
 
-<!-- ==================== TODAY TAB ====================
-     Single-column canvas, ~840px wide, max. Hero AI-insight card carries
-     the synthesis (or honest empty-state when there's nothing yet — no
-     fabricated platitudes). Sections below: calendar strip, stream cards,
-     shopping summary widget, privacy footer. The previous layout had
-     shopping as a 280px sidebar — accumulating to 26 items it dominated
-     the page. Lists belong in the Lists tab; this tab summarises. -->
+<!-- ==================== DASHBOARD TAB (Phase A.9 — reshape) ====================
+     Five concentric zones, each with a specific job. The Dashboard is no
+     longer a generic homepage — it's the surfacing of Memu's compiled
+     understanding. Order matters:
+
+     Zone 0  Context header  — date + greeting + family/individual lens pill
+     Zone 1  What's happening — schedule + open commitments (two-column on
+                                 desktop, stacked on mobile). Conflicts as
+                                 amber rules inline.
+     Zone 2  What I noticed   — reflection findings, contradictions, stale
+                                 facts, lapses. Memu's intelligence visible.
+     Zone 3  What I'm thinking — curated discovery (events, recipes,
+                                 nudges). MVP: beautiful empty state +
+                                 starter prompts. Wiring lands in Phase A.10.
+     Zone 4  News             — demoted to the bottom; was at the top.
+                                 Lowest-commitment content sits last.
+
+     Privacy provenance footer pinned at the end.
+
+     Tab id stays 'today' to avoid breaking switchTab() callers. -->
 <div id="view-today" class="today-canvas hidden">
 
-    <!-- Phase A.3/A.4 follow-up — briefing-hero retired. Briefings live
-         in chat (one source of truth). Dashboard becomes the at-a-glance
-         overview; this card is just the doorway to the canonical place.
-         Side effect: /api/dashboard/synthesis no longer fires per tab
-         load, closing BUG-06 (cost-on-render Sonnet burn). -->
-    <article class="today-brief-pointer" id="today-brief-pointer" onclick="switchTab('chat')" role="link" tabindex="0">
-        <header class="today-brief-pointer-header">
-            <span class="today-brief-pointer-greeting" id="greeting"></span>
-            <span class="today-brief-pointer-date" id="date-text"></span>
-        </header>
-        <div class="today-brief-pointer-cta" id="today-brief-pointer-cta">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            <span>Today's brief is in your chat</span>
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    <!-- ─── Zone 0 — Context header ─────────────────────────────────── -->
+    <header class="today-header">
+        <div class="today-header-meta">
+            <span class="today-header-date" id="date-text"></span>
+            <h1 class="today-header-greeting" id="greeting"></h1>
         </div>
-    </article>
+        <button class="today-lens-pill" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span id="today-lens-label">Family</span>
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+    </header>
 
     <div id="error-banner" class="error-banner hidden"></div>
 
-    <!-- Today's schedule — calendar strip with chip times, NOT full event
-         cards. Up to 4 visible + "see calendar" link for the rest. -->
-    <section class="today-section">
-        <div class="today-section-label">Today's schedule</div>
-        <div id="calendar-section" class="calendar-strip"></div>
+    <!-- ─── Zone 1 — What's happening ───────────────────────────────── -->
+    <!-- Two-column grid on desktop: schedule (55%) + open commitments (45%).
+         Stacks on mobile via the responsive breakpoint. Each card lives in
+         its own surface; the eye groups them as the "today" zone. -->
+    <section class="zone zone-now">
+        <div class="zone-eyebrow">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>What's happening</span>
+        </div>
+        <div class="zone-now-grid">
+            <article class="zone-card zone-now-schedule">
+                <header class="zone-card-head">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+                    <span>Schedule</span>
+                </header>
+                <div id="calendar-section" class="zone-now-list"></div>
+            </article>
+            <article class="zone-card zone-now-open">
+                <header class="zone-card-head">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    <span>Open commitments</span>
+                </header>
+                <div id="open-commitments" class="zone-now-list"></div>
+            </article>
+        </div>
     </section>
 
-    <!-- News feed — Google-Discover-shaped, populated by loadNewsFeed()
-         calling /api/news. Sources + location-driven regional matching are
-         driven by the user's brief preferences. Refresh icon top-right;
-         "More news" expand at the bottom. Tap a card → article in a new
-         tab. Empty / error / loading states all rendered inline. -->
-    <section class="today-section">
-        <div class="news-section-head">
-            <div>
-                <div class="today-section-label">News</div>
-                <div class="news-refreshed-at" id="news-refreshed-at"></div>
+    <!-- ─── Zone 2 — What I noticed ─────────────────────────────────── -->
+    <!-- Reflection findings, contradictions, stale facts, patterns, lapses.
+         Sits on a tonally-recessed surface so it reads as "Memu's thinking"
+         rather than "things to do". The eyebrow diamond ◈ marks every
+         observation card as Memu-sourced. -->
+    <section class="zone zone-noticed">
+        <div class="zone-eyebrow">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 22 12 12 22 2 12"/></svg>
+            <span>What I noticed</span>
+        </div>
+        <div id="noticed-container" class="zone-noticed-stack"></div>
+    </section>
+
+    <!-- ─── Zone 3 — What I'm thinking ──────────────────────────────── -->
+    <!-- MVP empty state. Three starter prompts that route to chat with a
+         seeded message — these are the discovery surfaces that will land
+         in Phase A.10 (curated local events / recipes / activity matching).
+         The soft radial glow distinguishes this zone as the "where Memu
+         earns its keep" surface. -->
+    <section class="zone zone-thinking">
+        <div class="zone-thinking-glow" aria-hidden="true"></div>
+        <div class="zone-eyebrow">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 16l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/><path d="M5 16l.7 2.1L8 19l-2.3.9L5 22l-.7-2.1L2 19l2.3-.9z"/></svg>
+            <span>What I'm thinking</span>
+        </div>
+        <div class="zone-thinking-intro">
+            Memu is starting to learn what matters to you. Try one of these to surface
+            what's worth your attention this week.
+        </div>
+        <div class="zone-thinking-grid">
+            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth doing this weekend with the family? Consider Robin's age and our recent activities.')">
+                <div class="thinking-card-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </div>
+                <div class="thinking-card-title">Weekend ideas</div>
+                <div class="thinking-card-sub">Local events that fit our family</div>
+            </button>
+            <button class="thinking-card" type="button" onclick="askMemuStarter('What should we eat this week? Suggest 3 recipes that work for our household given anything you know about our preferences.')">
+                <div class="thinking-card-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                </div>
+                <div class="thinking-card-title">Meals this week</div>
+                <div class="thinking-card-sub">Recipes from what you've told me</div>
+            </button>
+            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth my attention this week? Look across my Spaces, calendar, and any patterns you''ve noticed and tell me what I might be missing.')">
+                <div class="thinking-card-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                <div class="thinking-card-title">What I'm missing</div>
+                <div class="thinking-card-sub">Across Spaces, calendar, patterns</div>
+            </button>
+        </div>
+    </section>
+
+    <!-- ─── Zone 4 — News (demoted) ─────────────────────────────────── -->
+    <section class="zone zone-news">
+        <div class="zone-news-head">
+            <div class="zone-eyebrow">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+                <span>News</span>
+                <span class="zone-news-refreshed" id="news-refreshed-at"></span>
             </div>
-            <button class="news-refresh-btn" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+            <button class="zone-news-refresh" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
             </button>
         </div>
         <div id="news-feed" class="news-feed">
             <div class="news-loading">Pulling today's headlines…</div>
         </div>
-        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()">
+        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button">
             <span id="news-more-label">More news</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" id="news-more-chevron"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
     </section>
 
-    <!-- Stream — cards from briefing / extraction / reflection. Section
-         hides when empty (avoids a "nothing yet" placeholder noise; user
-         knows this is dynamic). -->
-    <section class="today-section hidden" id="stream-section">
-        <div class="today-section-label">Stream</div>
-        <div id="stream-container" class="stream-container"></div>
-    </section>
-
-    <!-- Shopping — SUMMARY only (count + 3 most recent items + open-list
-         link). Full list lives on the Lists tab. -->
-    <a class="today-summary" id="shopping-summary" href="#" onclick="switchTab('lists');return false;">
-        <div class="today-summary-icon">&#x1F6D2;</div>
-        <div class="today-summary-body">
-            <div class="today-summary-title" id="shopping-summary-title">Shopping list</div>
-            <div class="today-summary-sub" id="shopping-summary-sub">Loading…</div>
-        </div>
-        <div class="today-summary-arrow">&#x203A;</div>
-    </a>
-
-    <!-- Small "Ask Memu" link — replaces the persistent Today quick-composer.
-         Chat is the home now; this is a one-tap path back without dragging
-         a full input field onto the Today canvas. -->
-    <a href="#" class="today-ask-link" onclick="switchTab('chat');return false;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-        <span>Ask Memu &rarr;</span>
-    </a>
-
-    <!-- Privacy footer — used to be a sidebar card (over-promoted). One
-         line at the bottom keeps the trust signal without dominating. -->
-    <footer class="today-footer">
-        <span aria-hidden="true">&#x1F6E1;</span>
-        <span>Every query anonymised via Digital Twin.</span>
-        <a href="#" onclick="switchTab('ledger');return false;">See the ledger &#x2192;</a>
+    <!-- ─── Privacy provenance footer ───────────────────────────────── -->
+    <!-- Replaces the older single-line footer with show-the-work content:
+         which models / data sources touched this view. A live dot signals
+         the privacy promise is mechanical, not marketing. -->
+    <footer class="today-provenance">
+        <span class="today-provenance-dot" aria-hidden="true"></span>
+        <span class="today-provenance-text">
+            Anonymised via Digital Twin · External models touched: <strong>0</strong> · Data left your household: <strong>0</strong>
+        </span>
+        <a class="today-provenance-link" href="#" onclick="switchTab('ledger');return false;">See the ledger →</a>
     </footer>
 </div>
 
@@ -958,6 +1015,37 @@ function getSourceColor(source) {
 document.getElementById('greeting').textContent = getGreeting();
 document.getElementById('date-text').textContent = formatDate();
 
+// Phase A.9 — family/individual lens state. MVP is visual only: the pill
+// cycles label but doesn't yet swap data sources. Wiring lands when the
+// /api/dashboard/brief endpoint accepts a `lens` parameter and filters by
+// owner_profile_id. The pill's presence is intentional — it advertises
+// what's coming and primes the user's expectation of the surface.
+let todayLens = 'Family';
+function cycleTodayLens() {
+    const myName = (auth.displayName || '').split(' ')[0] || 'Me';
+    todayLens = todayLens === 'Family' ? myName : 'Family';
+    const label = document.getElementById('today-lens-label');
+    if (label) label.textContent = todayLens;
+}
+
+// Zone 3 starter prompts — route to chat with a seeded message. The
+// askMemu skill picks it up via the standard chat input path, so no new
+// API surface is needed. URL-encodes the prompt into the chat tab's
+// state via a sessionStorage handoff (the simplest cross-tab passing
+// pattern available in this PWA without router state).
+function askMemuStarter(prompt) {
+    try { sessionStorage.setItem('memu_seeded_prompt', prompt); } catch (e) {}
+    switchTab('chat');
+    setTimeout(() => {
+        const input = document.getElementById('chat-input');
+        if (input) {
+            input.value = prompt;
+            input.focus();
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }, 200);
+}
+
 // loadSynthesis() retired with the briefing-hero removal — Dashboard
 // no longer renders the briefing as a hero. Chat is the canonical
 // surface for the morning brief. The /api/dashboard/synthesis endpoint
@@ -1071,107 +1159,148 @@ function formatRelative(iso) {
     }
 }
 
+// Phase A.9 — card-type classification for Dashboard zones.
+//   Zone 1 (open commitments) = concrete, "do-this" cards
+//   Zone 2 (noticed)          = observations / reflections / patterns
+// Source of truth for the enum is migration 019; mirror NUDGE_TYPE_DISPLAY
+// in this file for label + tone resolution per type.
+const COMMITMENT_CARD_TYPES = new Set([
+    'extraction', 'reminder', 'document_extracted', 'calendar_added', 'proactive_nudge',
+]);
+const NOTICED_CARD_TYPES = new Set([
+    'contradiction', 'stale_fact', 'pattern', 'unfinished_business',
+    'care_standard_lapsed', 'collision', 'weekly_digest',
+]);
+
+// Time-bucket conflict detection on today's schedule. Two events overlap
+// → both get an amber-rule clash indicator. Pure function; tested by eye.
+function flagClashes(events) {
+    if (!Array.isArray(events) || events.length < 2) {
+        return events.map(e => ({ ...e, clash: false }));
+    }
+    const withTimes = events.map(e => ({
+        ...e,
+        startMs: e.startTime ? new Date(e.startTime).getTime() : null,
+        endMs: e.endTime ? new Date(e.endTime).getTime() : null,
+    }));
+    return withTimes.map((e, i) => {
+        if (!e.startMs) return { ...e, clash: false };
+        const clash = withTimes.some((o, j) => {
+            if (i === j || !o.startMs) return false;
+            const aStart = e.startMs;
+            const aEnd = e.endMs || (e.startMs + 30 * 60 * 1000);
+            const bStart = o.startMs;
+            const bEnd = o.endMs || (o.startMs + 30 * 60 * 1000);
+            return aStart < bEnd && bStart < aEnd;
+        });
+        return { ...e, clash };
+    });
+}
+
 async function loadBrief() {
     try {
         const res = await api('/api/dashboard/brief');
         const data = await res.json();
 
-        // Calendar — rendered as a strip of chip-time + title rows. Up to 4
-        // visible; "+N more" link to the calendar tab for the rest. Replaces
-        // the previous block-card-per-event layout that ate vertical space.
+        // ─── Zone 1a — Schedule ────────────────────────────────────────
         const calEl = document.getElementById('calendar-section');
         if (!data.isCalendarConnected) {
-            calEl.innerHTML = '<div class="calendar-strip-empty">' +
-                '<span aria-hidden="true">&#x1F4C5;</span>' +
-                '<span>Calendar not connected.</span>' +
-                '<a href="#" onclick="switchTab(\'settings\');return false;">Connect &#x2192;</a>' +
-                '</div>';
+            calEl.innerHTML = `
+                <div class="zone-empty">
+                    <span class="zone-empty-text">Connect a calendar to see today's shape.</span>
+                    <a class="zone-empty-link" href="#" onclick="switchTab('settings');return false;">Connect →</a>
+                </div>`;
         } else if (!data.events || data.events.length === 0) {
-            calEl.innerHTML = '<div class="calendar-strip-empty">' +
-                '<span aria-hidden="true">&#x2600;&#65039;</span>' +
-                '<span>No events today — your day is wide open.</span>' +
-                '</div>';
+            calEl.innerHTML = `
+                <div class="zone-empty">
+                    <span class="zone-empty-text">No events today. Your day is wide open.</span>
+                </div>`;
         } else {
-            const visible = data.events.slice(0, 4);
-            const rest = data.events.length - visible.length;
+            const tagged = flagClashes(data.events);
+            const visible = tagged.slice(0, 4);
+            const rest = tagged.length - visible.length;
             const rows = visible.map(e => `
-                <div class="calendar-strip-row">
-                    <span class="calendar-strip-time">${formatTime(e.startTime) || '—'}</span>
-                    <span class="calendar-strip-title">${esc(e.title)}</span>
+                <div class="schedule-row${e.clash ? ' schedule-row-clash' : ''}">
+                    <span class="schedule-time">${formatTime(e.startTime) || '—'}</span>
+                    <span class="schedule-title">${esc(e.title)}</span>
+                    ${e.clash ? '<span class="schedule-clash-badge" title="Overlaps another event">Clash</span>' : ''}
                 </div>
             `).join('');
             const more = rest > 0
-                ? `<a class="calendar-strip-more" href="#" onclick="switchTab('calendar');return false;">+${rest} more · see calendar</a>`
+                ? `<a class="schedule-more" href="#" onclick="switchTab('calendar');return false;">+${rest} more · see calendar</a>`
                 : '';
             calEl.innerHTML = rows + more;
         }
 
-        // Stream cards — section toggles via the .hidden class on the parent
-        // <section>, NOT inline display:none, so the new responsive layout
-        // doesn't get stale visibility state.
-        const streamEl = document.getElementById('stream-container');
-        const streamSection = document.getElementById('stream-section');
-        if (data.streamCards && data.streamCards.length > 0) {
-            streamSection.classList.remove('hidden');
-            streamEl.innerHTML = data.streamCards.map(card => {
-                const color = getSourceColor(card.source);
-                const sourceName = card.source.replace(/_/g, ' ');
-                const typeName = card.card_type.replace(/_/g, ' ');
-                const isBriefing = card.card_type === 'briefing';
+        // ─── Zone 1b — Open commitments ───────────────────────────────
+        // Concrete cards from extraction / reminders / calendar adds /
+        // document ingestion. Compact rows (not the heavy edit-modal
+        // cards from the old design); tap routes to chat for context.
+        const allCards = Array.isArray(data.streamCards) ? data.streamCards : [];
+        const commitments = allCards.filter(c => COMMITMENT_CARD_TYPES.has(c.card_type));
+        const noticed = allCards.filter(c => NOTICED_CARD_TYPES.has(c.card_type));
 
-                let actions = '';
-                if (card.actions && Array.isArray(card.actions) && card.actions.length > 0) {
-                    card.actions.forEach(act => {
-                        const actionType = act.type || 'dynamic';
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('${actionType}','${card.id}','${act.id || act.label}')">${esc(act.label)}</button>`;
-                    });
-                } else {
-                    if (card.card_type !== 'shopping' && !isBriefing) {
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('calendar','${card.id}')">&#x1F4C5; Calendar</button>`;
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('shopping','${card.id}')">&#x1F6D2; List</button>`;
-                    }
-                }
-                if (!isBriefing) {
-                    actions += `<button class="btn btn-secondary btn-sm" onclick="openEditModal('${card.id}',\`${esc(card.title)}\`,\`${esc(card.body)}\`)">&#x270F;&#65039; Edit</button>`;
-                }
-                actions += `<button class="btn btn-secondary btn-sm" style="color:var(--color-success);border-color:var(--color-success);" onclick="cardAction('resolve','${card.id}')">&#x2713; Done</button>`;
-                actions += `<button class="btn btn-secondary btn-sm" style="color:var(--text-muted);" onclick="cardAction('dismiss','${card.id}')">&#x2715; Dismiss</button>`;
+        const openEl = document.getElementById('open-commitments');
+        const shoppingItems = data.shoppingItems || [];
+        const shoppingTeaser = shoppingItems.length > 0
+            ? `<a class="commitment-row commitment-row-shopping" href="#" onclick="switchTab('lists');return false;">
+                  <span class="commitment-dot" aria-hidden="true"></span>
+                  <span class="commitment-title">Shopping list · ${shoppingItems.length} item${shoppingItems.length === 1 ? '' : 's'}</span>
+                  <span class="commitment-arrow" aria-hidden="true">›</span>
+               </a>`
+            : '';
 
-                const bodyHtml = isBriefing ? renderMarkdown(card.body) : esc(card.body);
-                const briefingClass = isBriefing ? 'stream-card-briefing' : '';
-
-                return `
-                <div class="card stream-card ${briefingClass}" style="border-left-color:${color}; ${isBriefing ? 'background: var(--bg-surface); border: 2px solid var(--border-color);' : ''}">
-                    <div class="stream-card-header">
-                        <span class="source-pill" style="background:${color}18;">
-                            <span class="source-dot" style="background:${color};"></span>
-                            <span style="color:${color};">${sourceName}</span>
-                        </span>
-                        <span class="stream-card-type" style="${isBriefing ? 'font-weight: 700; color: var(--color-accent);' : ''}">${typeName}</span>
-                    </div>
-                    <div class="stream-card-title" style="${isBriefing ? 'font-size: 1.5rem; margin-bottom: 16px;' : ''}">${esc(card.title)}</div>
-                    <div class="stream-card-body" style="${isBriefing ? 'line-height: 1.6;' : ''}">${bodyHtml}</div>
-                    <div class="stream-card-actions">${actions}</div>
+        if (commitments.length === 0 && shoppingItems.length === 0) {
+            openEl.innerHTML = `
+                <div class="zone-empty">
+                    <span class="zone-empty-text">Nothing open. You're caught up.</span>
                 </div>`;
-            }).join('');
         } else {
-            streamSection.classList.add('hidden');
+            const rows = commitments.slice(0, 4).map(card => {
+                const display = getNudgeTypeDisplay(card.card_type);
+                return `
+                    <a class="commitment-row" href="#" onclick="cardAction('open','${card.id}');return false;">
+                        <span class="commitment-eyebrow">${esc(display.label)}</span>
+                        <span class="commitment-title" title="${esc(card.title)}">${esc(card.title)}</span>
+                        <span class="commitment-arrow" aria-hidden="true">›</span>
+                    </a>`;
+            }).join('');
+            const restCount = commitments.length - Math.min(4, commitments.length);
+            const moreLink = restCount > 0
+                ? `<a class="commitment-more" href="#" onclick="switchTab('chat');return false;">+${restCount} more in chat →</a>`
+                : '';
+            openEl.innerHTML = rows + shoppingTeaser + moreLink;
         }
 
-        // Shopping — SUMMARY widget on Today (count + 3 most recent). The
-        // full list lives on the Lists tab. Previous design rendered the
-        // entire list inline; with 26 items it dominated the page.
-        const items = data.shoppingItems || [];
-        const titleEl = document.getElementById('shopping-summary-title');
-        const subEl = document.getElementById('shopping-summary-sub');
-        if (items.length === 0) {
-            titleEl.textContent = 'Shopping list';
-            subEl.textContent = 'Empty — say "add milk to shopping" below to start.';
+        // ─── Zone 2 — Noticed ─────────────────────────────────────────
+        const noticedEl = document.getElementById('noticed-container');
+        if (noticed.length === 0) {
+            noticedEl.innerHTML = `
+                <div class="zone-empty noticed-empty">
+                    <span class="zone-empty-text">
+                        Memu hasn't surfaced anything to flag. As patterns and contradictions accumulate
+                        across your Spaces and chats, they'll appear here.
+                    </span>
+                </div>`;
         } else {
-            titleEl.textContent = `Shopping list · ${items.length} item${items.length === 1 ? '' : 's'}`;
-            const preview = items.slice(0, 3).map(i => i.title || '').filter(Boolean).join(', ');
-            const tail = items.length > 3 ? `, +${items.length - 3} more` : '';
-            subEl.textContent = preview + tail;
+            noticedEl.innerHTML = noticed.slice(0, 5).map((card, idx) => {
+                const display = getNudgeTypeDisplay(card.card_type);
+                const toneClass = display.tone === 'attention' ? 'nudge-tone-attention' : 'nudge-tone-neutral';
+                const iconSvg = NUDGE_ICON_SVG[display.iconKey] || NUDGE_ICON_SVG.dot;
+                return `
+                    <article class="noticed-card ${toneClass}" style="animation-delay: ${idx * 70}ms">
+                        <div class="noticed-eyebrow">
+                            ${iconSvg}
+                            <span>${esc(display.label.toUpperCase())}</span>
+                        </div>
+                        <div class="noticed-title">${esc(card.title)}</div>
+                        ${card.body ? `<div class="noticed-body">${esc(card.body)}</div>` : ''}
+                        <div class="noticed-actions">
+                            <button class="noticed-btn noticed-btn-primary" onclick="cardAction('resolve','${card.id}')" type="button">Mark done</button>
+                            <button class="noticed-btn noticed-btn-ghost" onclick="cardAction('dismiss','${card.id}')" type="button">Dismiss</button>
+                        </div>
+                    </article>`;
+            }).join('');
         }
 
         document.getElementById('error-banner').classList.add('hidden');

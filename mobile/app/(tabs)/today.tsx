@@ -5,6 +5,21 @@ import {
   Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  Users,
+  Clock,
+  CheckSquare,
+  Calendar as LucideCalendar,
+  Sparkles,
+  Home as LucideHome,
+  UtensilsCrossed,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  Newspaper,
+  RefreshCw,
+  Shield,
+} from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -20,6 +35,7 @@ import {
 import { useToast } from '../../components/Toast';
 import { loadAuthState } from '../../lib/auth';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { getCardTypeDisplay } from '../../lib/cardTypeDisplay';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 // AIInsightCard retired from Dashboard — briefings live in chat now.
@@ -30,6 +46,44 @@ import PushStatusBanner from '../../components/PushStatusBanner';
 import NewsFeed from '../../components/NewsFeed';
 import StreamCard from '../../components/StreamCard';
 import GradientButton from '../../components/GradientButton';
+
+// Phase A.9 — Dashboard reshape. Card-type classification for zones.
+//   Zone 1 (open commitments) = concrete "do-this" cards
+//   Zone 2 (noticed)          = observations / reflections / patterns
+// Source of truth for the enum is migration 019; mirror via cardTypeDisplay
+// for label + tone resolution per type.
+const COMMITMENT_CARD_TYPES = new Set([
+  'extraction', 'reminder', 'document_extracted', 'calendar_added', 'proactive_nudge',
+]);
+const NOTICED_CARD_TYPES = new Set([
+  'contradiction', 'stale_fact', 'pattern', 'unfinished_business',
+  'care_standard_lapsed', 'collision', 'weekly_digest',
+]);
+
+// Time-bucket conflict detection for today's schedule. Two events overlap →
+// both get an amber rule. Same logic mirrored in the PWA.
+function flagClashes(events: BriefEvent[]): Array<BriefEvent & { clash: boolean }> {
+  if (!Array.isArray(events) || events.length < 2) {
+    return events.map(e => ({ ...e, clash: false }));
+  }
+  const withTimes = events.map(e => ({
+    ...e,
+    startMs: e.startTime ? new Date(e.startTime).getTime() : null,
+    endMs: e.endTime ? new Date(e.endTime).getTime() : null,
+  }));
+  return withTimes.map((e, i) => {
+    const startMs = e.startMs;
+    if (startMs === null) return { ...e, clash: false };
+    const endMs = e.endMs ?? (startMs + 30 * 60 * 1000);
+    const clash = withTimes.some((o, j) => {
+      if (i === j || o.startMs === null) return false;
+      const bStart = o.startMs;
+      const bEnd = o.endMs ?? (o.startMs + 30 * 60 * 1000);
+      return startMs < bEnd && bStart < endMs;
+    });
+    return { ...e, clash };
+  });
+}
 
 function formatTime(isoString: string | null): string {
   if (!isoString) return '';
@@ -72,6 +126,18 @@ export default function TodayScreen() {
   // Push status — surfaced as a banner above the hero so the user can verify
   // notification delivery in two taps rather than four-deep in Settings.
   const [pushTokens, setPushTokens] = useState<PushTokenSummary[]>([]);
+
+  // Phase A.9 — family/individual lens. MVP is visual only: the pill cycles
+  // label but doesn't swap data sources yet. Wiring lands when /api/dashboard
+  // /brief accepts a `lens` parameter. The pill primes user expectation.
+  const [lens, setLens] = useState<'family' | 'me'>('family');
+  const firstName = useMemo(
+    () => (displayName ? displayName.split(' ')[0] : 'Me'),
+    [displayName],
+  );
+  const cycleLens = useCallback(() => {
+    setLens(prev => (prev === 'family' ? 'me' : 'family'));
+  }, []);
 
   const todayHeader = useTodayHeader(displayName);
 
@@ -312,6 +378,27 @@ export default function TodayScreen() {
     setReplyPreview(null);
   }, []);
 
+  // Zone 3 starter prompts — route to chat with a seeded message. Mirrors
+  // the PWA's askMemuStarter() approach. Chat input reads the message and
+  // fires the standard pipeline; no new API surface required.
+  const askMemuStarter = useCallback((prompt: string) => {
+    router.push({ pathname: '/(tabs)/chat', params: { seed: prompt } } as any);
+  }, [router]);
+
+  // Split cards into Zone 1 (commitments) and Zone 2 (noticed). Memoised
+  // so re-renders don't recompute on every state nudge.
+  const { commitments, noticed } = useMemo(() => {
+    const commitments: StreamCardData[] = [];
+    const noticed: StreamCardData[] = [];
+    for (const c of cards) {
+      if (COMMITMENT_CARD_TYPES.has(c.card_type)) commitments.push(c);
+      else if (NOTICED_CARD_TYPES.has(c.card_type)) noticed.push(c);
+    }
+    return { commitments, noticed };
+  }, [cards]);
+
+  const taggedEvents = useMemo(() => flagClashes(events), [events]);
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -355,160 +442,273 @@ export default function TodayScreen() {
             the moment Today opens. */}
         <PushStatusBanner tokens={pushTokens} onTokensChange={setPushTokens} />
 
-        {/* Phase A.3/A.4 follow-up — Dashboard no longer renders the briefing
-            as a hero. Briefings live in chat (one source of truth, per the
-            Layer Zero brief). Dashboard becomes the at-a-glance overview:
-            greeting + date, schedule, news, stream, shopping. A compact
-            pointer routes the user to chat for the full brief.
+        {/* ─── Zone 0 — Context header ──────────────────────────── */}
+        <View style={styles.headerZone}>
+          <View style={styles.headerMeta}>
+            <Text style={styles.headerDate}>{todayHeader.dateLabel}</Text>
+            <Text style={styles.headerGreeting}>{todayHeader.greeting}</Text>
+          </View>
+          <Pressable
+            style={styles.lensPill}
+            onPress={cycleLens}
+            accessibilityLabel={`Switch view to ${lens === 'family' ? 'individual' : 'family'}`}
+          >
+            <Users size={13} strokeWidth={1.6} color={colors.primary} />
+            <Text style={styles.lensPillLabel}>{lens === 'family' ? 'Family' : firstName}</Text>
+            <ChevronDown size={10} strokeWidth={2} color={colors.primary} />
+          </Pressable>
+        </View>
 
-            Side effect of removing this hero: /api/dashboard/synthesis is no
-            longer called on every Today open, which closes BUG-06 (the
-            cost-on-render anti-pattern that burned ~£0.40/day on Sonnet
-            calls fired by useFocusEffect). Empty-state nudge stays so
-            first-use users still see "tell me what's going on" guidance. */}
-        <View style={styles.heroSlot}>
-          {(() => {
-            const isFullyEmpty = events.length === 0 && cards.length === 0 && shoppingCount === 0;
-            const emptyStateMessage = !calendarConnected
-              ? 'Connect your calendar, or tell me what’s happening this week — I’ll build from there.'
-              : 'Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.';
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>Can't reach your home server. Pull to retry.</Text>
+          </View>
+        ) : null}
 
-            return (
+        {/* ─── Zone 1 — What's happening ─────────────────────────── */}
+        <View style={styles.zone}>
+          <View style={styles.zoneEyebrow}>
+            <Clock size={11} strokeWidth={1.8} color={colors.primary} />
+            <Text style={styles.zoneEyebrowText}>What's happening</Text>
+          </View>
+
+          {/* Schedule card */}
+          <View style={styles.zoneCard}>
+            <View style={styles.zoneCardHead}>
+              <LucideCalendar size={13} strokeWidth={1.5} color={colors.primary} />
+              <Text style={styles.zoneCardHeadText}>Schedule</Text>
+            </View>
+            {!calendarConnected ? (
               <Pressable
-                onPress={() => router.push('/(tabs)/chat' as any)}
-                style={styles.briefPointer}
-                accessibilityRole="link"
-                accessibilityLabel={isFullyEmpty ? 'Start chatting with Memu' : "Open today's brief in chat"}
+                style={styles.zoneEmptyRow}
+                onPress={() => router.push('/(tabs)/calendar')}
               >
-                <View style={styles.briefPointerHeader}>
-                  <Text style={styles.briefPointerGreeting}>{todayHeader.greeting}</Text>
-                  <Text style={styles.briefPointerDate}>{todayHeader.dateLabel}</Text>
-                </View>
-                {error ? (
-                  <Text style={styles.briefPointerBody}>
-                    Can't reach your home server. Pull to retry.
-                  </Text>
-                ) : isFullyEmpty ? (
-                  <Text style={styles.briefPointerBody}>{emptyStateMessage}</Text>
-                ) : (
-                  <View style={styles.briefPointerCta}>
-                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
-                    <Text style={styles.briefPointerCtaText}>
-                      Today's brief is in your chat
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={colors.primary} />
-                  </View>
-                )}
+                <Text style={styles.zoneEmptyText}>Connect a calendar to see today's shape.</Text>
+                <Text style={styles.zoneEmptyLink}>Connect →</Text>
               </Pressable>
-            );
-          })()}
+            ) : taggedEvents.length === 0 ? (
+              <View style={styles.zoneEmptyRow}>
+                <Text style={styles.zoneEmptyText}>No events today. Your day is wide open.</Text>
+              </View>
+            ) : (
+              <View style={styles.zoneList}>
+                {taggedEvents.slice(0, 4).map((event, i) => (
+                  <View
+                    key={i}
+                    style={[styles.scheduleRow, event.clash && styles.scheduleRowClash]}
+                  >
+                    <Text style={styles.scheduleTime}>{formatTime(event.startTime) || '—'}</Text>
+                    <Text style={styles.scheduleTitle} numberOfLines={1}>{event.title}</Text>
+                    {event.clash ? <Text style={styles.scheduleClashBadge}>Clash</Text> : null}
+                  </View>
+                ))}
+                {taggedEvents.length > 4 ? (
+                  <Pressable onPress={() => router.push('/(tabs)/calendar')} style={styles.scheduleMore}>
+                    <Text style={styles.scheduleMoreText}>
+                      +{taggedEvents.length - 4} more · see calendar
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
+          </View>
+
+          {/* Open commitments card */}
+          <View style={styles.zoneCard}>
+            <View style={styles.zoneCardHead}>
+              <CheckSquare size={13} strokeWidth={1.5} color={colors.primary} />
+              <Text style={styles.zoneCardHeadText}>Open commitments</Text>
+            </View>
+            {commitments.length === 0 && shoppingCount === 0 ? (
+              <View style={styles.zoneEmptyRow}>
+                <Text style={styles.zoneEmptyText}>Nothing open. You're caught up.</Text>
+              </View>
+            ) : (
+              <View style={styles.zoneList}>
+                {commitments.slice(0, 4).map(card => {
+                  const display = getCardTypeDisplay(card.card_type);
+                  return (
+                    <Pressable
+                      key={card.id}
+                      style={styles.commitmentRow}
+                      onPress={() => router.push('/(tabs)/chat' as any)}
+                    >
+                      <Text style={styles.commitmentEyebrow}>{display.label}</Text>
+                      <Text style={styles.commitmentTitle} numberOfLines={1}>{card.title}</Text>
+                      <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+                    </Pressable>
+                  );
+                })}
+                {shoppingCount > 0 ? (
+                  <Pressable
+                    style={styles.commitmentRow}
+                    onPress={() => router.push('/(tabs)/lists')}
+                  >
+                    <View style={styles.commitmentDot} />
+                    <Text style={styles.commitmentTitle} numberOfLines={1}>
+                      Shopping list · {shoppingCount} item{shoppingCount === 1 ? '' : 's'}
+                    </Text>
+                    <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+                  </Pressable>
+                ) : null}
+                {commitments.length > 4 ? (
+                  <Pressable onPress={() => router.push('/(tabs)/chat' as any)} style={styles.scheduleMore}>
+                    <Text style={styles.scheduleMoreText}>
+                      +{commitments.length - 4} more in chat →
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            )}
+          </View>
         </View>
 
-        {/* News feed — Google-Discover-shaped block of curated headlines.
-            Sources, location-driven regional matching, and refresh cadence
-            are all driven by the user's brief preferences. Pull-to-refresh
-            on the inner scroll; "More news" expands per-source from 3 → 8. */}
-        <View style={styles.section}>
-          <NewsFeed />
-        </View>
-
-        {/* Calendar strip */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Today's schedule</Text>
-          {!calendarConnected ? (
-            <Pressable style={styles.tonalCard} onPress={() => router.push('/(tabs)/calendar')}>
-              <Ionicons name="calendar-outline" size={18} color={colors.tertiary} />
-              <Text style={styles.tonalCardText}>Connect Google Calendar to see your day.</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.outline} />
-            </Pressable>
-          ) : events.length === 0 ? (
-            <View style={styles.tonalCard}>
-              <Ionicons name="sunny-outline" size={18} color={colors.tertiary} />
-              <Text style={styles.tonalCardText}>No events today — your day is wide open.</Text>
+        {/* ─── Zone 2 — What I noticed ───────────────────────────── */}
+        <View style={styles.zone}>
+          <View style={styles.zoneEyebrow}>
+            <View style={styles.diamondGlyph} />
+            <Text style={styles.zoneEyebrowText}>What I noticed</Text>
+          </View>
+          {noticed.length === 0 ? (
+            <View style={styles.noticedEmpty}>
+              <Text style={styles.noticedEmptyText}>
+                Memu hasn't surfaced anything to flag. As patterns and contradictions accumulate
+                across your Spaces and chats, they'll appear here.
+              </Text>
             </View>
           ) : (
-            <View style={styles.eventStack}>
-              {events.slice(0, 4).map((event, i) => (
-                <View key={i} style={styles.eventRow}>
-                  <View style={styles.eventTimeChip}>
-                    <Text style={styles.eventTimeText}>{formatTime(event.startTime) || '—'}</Text>
+            <View style={styles.zoneList}>
+              {noticed.slice(0, 5).map(card => {
+                const display = getCardTypeDisplay(card.card_type);
+                const isAttention = display.tone === 'attention';
+                return (
+                  <View
+                    key={card.id}
+                    style={[
+                      styles.noticedCard,
+                      { borderLeftColor: isAttention ? '#C26A00' : colors.primary },
+                    ]}
+                  >
+                    <View style={styles.noticedEyebrow}>
+                      <Ionicons
+                        name={display.icon}
+                        size={11}
+                        color={isAttention ? '#C26A00' : colors.primary}
+                      />
+                      <Text
+                        style={[
+                          styles.noticedEyebrowText,
+                          { color: isAttention ? '#C26A00' : colors.primary },
+                        ]}
+                      >
+                        {display.label.toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={styles.noticedTitle}>{card.title}</Text>
+                    {card.body ? (
+                      <Text style={styles.noticedBody}>{card.body}</Text>
+                    ) : null}
+                    <View style={styles.noticedActions}>
+                      <Pressable
+                        style={styles.noticedBtnPrimary}
+                        onPress={() => handleResolve(card.id)}
+                      >
+                        <Text style={styles.noticedBtnPrimaryText}>Mark done</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.noticedBtnGhost}
+                        onPress={() => handleDismiss(card.id)}
+                      >
+                        <Text style={styles.noticedBtnGhostText}>Dismiss</Text>
+                      </Pressable>
+                    </View>
                   </View>
-                  <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
-                </View>
-              ))}
-              {events.length > 4 ? (
-                <Pressable onPress={() => router.push('/(tabs)/calendar')} style={styles.eventMore}>
-                  <Text style={styles.eventMoreText}>+{events.length - 4} more · see calendar</Text>
-                </Pressable>
-              ) : null}
+                );
+              })}
             </View>
           )}
         </View>
 
-        {/* Stream */}
-        {cards.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Stream</Text>
-            {cards.map(card => {
-              // Data-driven: if the card was persisted with structured actions
-              // (briefing, reflection, care standards), render those. Fall back
-              // to the legacy Calendar/List/Done triplet only for cards from
-              // the old extraction path that have no actions[] yet.
-              const persistedActions = mapCardActions(card);
-              const hasPersisted = persistedActions && persistedActions.length > 0;
-              const fallbackActions: NonNullable<React.ComponentProps<typeof StreamCard>['actions']> = hasPersisted ? [] : [
-                ...(card.card_type !== 'shopping' ? [{
-                  label: 'Calendar',
-                  icon: 'calendar-outline' as const,
-                  variant: 'secondary' as const,
-                  onPress: () => handleAddToCalendar(card.id),
-                }] : []),
-                ...(card.card_type !== 'shopping' ? [{
-                  label: 'List',
-                  icon: 'basket-outline' as const,
-                  variant: 'secondary' as const,
-                  onPress: () => handleAddToShopping(card.id),
-                }] : []),
-                {
-                  label: 'Done',
-                  icon: 'checkmark' as const,
-                  variant: 'primary' as const,
-                  onPress: () => handleResolve(card.id),
-                },
-              ];
-              return (
-                <StreamCard
-                  key={card.id}
-                  id={card.id}
-                  cardType={card.card_type}
-                  title={card.title}
-                  body={card.body}
-                  source={card.source}
-                  onDismiss={() => handleDismiss(card.id)}
-                  onEdit={() => openEdit(card)}
-                  actions={hasPersisted ? persistedActions : fallbackActions}
-                />
-              );
-            })}
+        {/* ─── Zone 3 — What I'm thinking ────────────────────────── */}
+        <View style={styles.zoneThinking}>
+          <View style={styles.zoneEyebrow}>
+            <Sparkles size={11} strokeWidth={1.8} color={colors.primary} />
+            <Text style={styles.zoneEyebrowText}>What I'm thinking</Text>
           </View>
-        ) : null}
+          <Text style={styles.thinkingIntro}>
+            Memu is starting to learn what matters to you. Try one of these to surface
+            what's worth your attention this week.
+          </Text>
+          <View style={styles.thinkingStack}>
+            <Pressable
+              style={styles.thinkingCard}
+              onPress={() => askMemuStarter(
+                "What's worth doing this weekend with the family? " +
+                "Consider Robin's age and our recent activities."
+              )}
+            >
+              <View style={styles.thinkingCardIcon}>
+                <LucideHome size={16} strokeWidth={1.5} color={colors.primary} />
+              </View>
+              <View style={styles.thinkingCardBody}>
+                <Text style={styles.thinkingCardTitle}>Weekend ideas</Text>
+                <Text style={styles.thinkingCardSub}>Local events that fit our family</Text>
+              </View>
+              <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+            </Pressable>
+            <Pressable
+              style={styles.thinkingCard}
+              onPress={() => askMemuStarter(
+                'What should we eat this week? Suggest 3 recipes that work for our ' +
+                'household given anything you know about our preferences.'
+              )}
+            >
+              <View style={styles.thinkingCardIcon}>
+                <UtensilsCrossed size={16} strokeWidth={1.5} color={colors.primary} />
+              </View>
+              <View style={styles.thinkingCardBody}>
+                <Text style={styles.thinkingCardTitle}>Meals this week</Text>
+                <Text style={styles.thinkingCardSub}>Recipes from what you've told me</Text>
+              </View>
+              <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+            </Pressable>
+            <Pressable
+              style={styles.thinkingCard}
+              onPress={() => askMemuStarter(
+                "What's worth my attention this week? Look across my Spaces, " +
+                "calendar, and any patterns you've noticed and tell me what I might be missing."
+              )}
+            >
+              <View style={styles.thinkingCardIcon}>
+                <Search size={16} strokeWidth={1.5} color={colors.primary} />
+              </View>
+              <View style={styles.thinkingCardBody}>
+                <Text style={styles.thinkingCardTitle}>What I'm missing</Text>
+                <Text style={styles.thinkingCardSub}>Across Spaces, calendar, patterns</Text>
+              </View>
+              <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+            </Pressable>
+          </View>
+        </View>
 
-        {/* Shopping footer */}
-        {shoppingCount > 0 ? (
-          <Pressable style={styles.listSummary} onPress={() => router.push('/(tabs)/lists')}>
-            <Ionicons name="basket-outline" size={18} color={colors.primary} />
-            <Text style={styles.listSummaryText}>
-              {shoppingCount} item{shoppingCount === 1 ? '' : 's'} on the shopping list
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.outline} />
-          </Pressable>
-        ) : null}
+        {/* ─── Zone 4 — News (demoted) ───────────────────────────── */}
+        <View style={styles.zoneNews}>
+          <View style={styles.zoneNewsHead}>
+            <View style={styles.zoneEyebrow}>
+              <Newspaper size={11} strokeWidth={1.8} color={colors.primary} />
+              <Text style={styles.zoneEyebrowText}>News</Text>
+            </View>
+          </View>
+          <NewsFeed />
+        </View>
 
-        {/* Privacy footer */}
-        <Pressable style={styles.privacyFooter} onPress={() => router.push('/ledger')}>
-          <Ionicons name="shield-checkmark-outline" size={14} color={colors.tertiary} />
-          <Text style={styles.privacyText}>Every query anonymised via Digital Twin.</Text>
-          <Text style={styles.privacyLink}>See the ledger →</Text>
+        {/* ─── Privacy provenance footer ─────────────────────────── */}
+        <Pressable style={styles.provenance} onPress={() => router.push('/ledger')}>
+          <View style={styles.provenanceDot} />
+          <Text style={styles.provenanceText}>
+            Anonymised via Digital Twin · External models: <Text style={styles.provenanceStrong}>0</Text>
+          </Text>
+          <Text style={styles.provenanceLink}>Ledger →</Text>
         </Pressable>
       </ScreenContainer>
 
@@ -594,48 +794,384 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.body,
   },
 
-  heroSlot: {
+  // Phase A.9 — Dashboard reshape — 5 concentric zones.
+
+  // ─── Zone 0 — Context header ───────────────────────────────────
+  headerZone: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: spacing.md,
     paddingHorizontal: spacing.md,
-    marginTop: spacing.lg,
-    marginBottom: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  // Compact "today's brief" pointer replacing the full AIInsightCard
-  // hero. Briefings live in chat; this card is just the doorway.
-  briefPointer: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
+  headerMeta: { flex: 1, gap: 2 },
+  headerDate: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
   },
-  briefPointerHeader: {
-    gap: 2,
-  },
-  briefPointerGreeting: {
-    fontSize: typography.sizes.xl,
+  headerGreeting: {
+    fontSize: 26,
     fontFamily: typography.families.headline,
     color: colors.onSurface,
     letterSpacing: typography.tracking.tight,
+    lineHeight: 32,
+    marginTop: 2,
   },
-  briefPointerDate: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
-  },
-  briefPointerBody: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
-    lineHeight: 22,
-    marginTop: spacing.xs,
-  },
-  briefPointerCta: {
+  lensPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: spacing.xs,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.secondaryContainer,
+    marginBottom: 4,
   },
-  briefPointerCtaText: {
+  lensPillLabel: {
+    fontSize: 12,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+    letterSpacing: 0.02,
+  },
+
+  errorBanner: {
+    marginHorizontal: spacing.md,
+    padding: spacing.md,
+    backgroundColor: '#FFF7E6',
+    borderRadius: radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: '#E6B847',
+  },
+  errorBannerText: {
     fontSize: typography.sizes.sm,
+    color: '#7A5A12',
+    fontFamily: typography.families.body,
+  },
+
+  // ─── Zone scaffold ─────────────────────────────────────────────
+  zone: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xl,
+    gap: 12,
+  },
+  zoneEyebrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  zoneEyebrowText: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.widest,
+  },
+  diamondGlyph: {
+    width: 8,
+    height: 8,
+    backgroundColor: colors.primary,
+    transform: [{ rotate: '45deg' }],
+    marginRight: 2,
+  },
+  zoneCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.lg,
+    padding: spacing.md + 2,
+    gap: 10,
+    ...shadows.low,
+  },
+  zoneCardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.outline + '20',
+  },
+  zoneCardHeadText: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: typography.tracking.wide,
+  },
+  zoneList: {
+    gap: 4,
+  },
+  zoneEmptyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  zoneEmptyText: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    fontStyle: 'italic',
+  },
+  zoneEmptyLink: {
+    fontSize: 12,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+  },
+
+  // Schedule rows
+  scheduleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    marginHorizontal: -8,
+    borderRadius: radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+  },
+  scheduleRowClash: {
+    borderLeftColor: '#B88843',
+    backgroundColor: 'rgba(184, 136, 67, 0.06)',
+  },
+  scheduleTime: {
+    fontSize: 10,
+    fontFamily: typography.families.bodyBold,
+    color: colors.primary,
+    backgroundColor: colors.secondaryContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    letterSpacing: 0.04,
+    minWidth: 56,
+    textAlign: 'center',
+    overflow: 'hidden',
+  },
+  scheduleTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+  scheduleClashBadge: {
+    fontSize: 9,
+    fontFamily: typography.families.bodyBold,
+    color: '#B88843',
+    textTransform: 'uppercase',
+    letterSpacing: 0.08,
+  },
+  scheduleMore: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  scheduleMoreText: {
+    fontSize: 11,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.primary,
+  },
+
+  // Open-commitment rows
+  commitmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    marginHorizontal: -8,
+    borderRadius: radius.md,
+  },
+  commitmentEyebrow: {
+    fontSize: 9,
+    fontFamily: typography.families.bodyBold,
+    color: colors.primary,
+    backgroundColor: colors.secondaryContainer,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+    letterSpacing: 0.1,
+    textTransform: 'uppercase',
+    overflow: 'hidden',
+  },
+  commitmentTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: typography.families.body,
+    color: colors.onSurface,
+  },
+  commitmentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+
+  // ─── Zone 2 — Noticed ──────────────────────────────────────────
+  noticedEmpty: {
+    backgroundColor: colors.surfaceContainerLow,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+  },
+  noticedEmptyText: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 20,
+  },
+  noticedCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.md,
+    padding: spacing.md + 2,
+    borderLeftWidth: 3,
+    gap: 4,
+    ...shadows.low,
+  },
+  noticedEyebrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  noticedEyebrowText: {
+    fontSize: 10,
+    fontFamily: typography.families.label,
+    letterSpacing: typography.tracking.widest,
+  },
+  noticedTitle: {
+    fontSize: 14,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+    lineHeight: 20,
+  },
+  noticedBody: {
+    fontSize: 13,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 19,
+  },
+  noticedActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  noticedBtnPrimary: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  noticedBtnPrimaryText: {
+    fontSize: 12,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onPrimary,
+  },
+  noticedBtnGhost: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: 'transparent',
+  },
+  noticedBtnGhostText: {
+    fontSize: 12,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurfaceVariant,
+  },
+
+  // ─── Zone 3 — Thinking ─────────────────────────────────────────
+  zoneThinking: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    marginBottom: spacing.xl,
+    backgroundColor: 'rgba(80, 84, 181, 0.04)',
+    gap: 12,
+  },
+  thinkingIntro: {
+    fontSize: typography.sizes.sm,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 20,
+    marginTop: -2,
+  },
+  thinkingStack: { gap: 8 },
+  thinkingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(80, 84, 181, 0.10)',
+  },
+  thinkingCardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.secondaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thinkingCardBody: { flex: 1 },
+  thinkingCardTitle: {
+    fontSize: 14,
+    fontFamily: typography.families.bodyMedium,
+    color: colors.onSurface,
+  },
+  thinkingCardSub: {
+    fontSize: 12,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+
+  // ─── Zone 4 — News (demoted) ───────────────────────────────────
+  zoneNews: {
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xl,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.outline + '20',
+    gap: 10,
+  },
+  zoneNewsHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  // ─── Privacy provenance footer ─────────────────────────────────
+  provenance: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.outline + '20',
+  },
+  provenanceDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#4ade80',
+  },
+  provenanceText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+  },
+  provenanceStrong: {
+    fontFamily: typography.families.bodyBold,
+    color: colors.onSurface,
+  },
+  provenanceLink: {
+    fontSize: 11,
     fontFamily: typography.families.bodyMedium,
     color: colors.primary,
   },

@@ -187,7 +187,7 @@ function expandHistoryRows(rows: Array<{
 
 export default function ChatScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams() as { conversationId?: string; new?: string };
+  const params = useLocalSearchParams() as { conversationId?: string; new?: string; seed?: string };
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -226,14 +226,21 @@ export default function ChatScreen() {
     consumedParamRef.current = key;
     // Bug F — composer state is per-conversation. Clear any draft from
     // the prior thread so the next one opens blank.
-    setInput('');
+    // Phase A.9 — if a `seed` param is present (from Dashboard's
+    // "What I'm thinking" starter cards), prefill the input instead of
+    // clearing it. The user lands ready-to-send.
+    if (typeof params.seed === 'string' && params.seed.length > 0) {
+      setInput(params.seed);
+    } else {
+      setInput('');
+    }
     if (key === 'NEW') {
       setMessages([WELCOME]);
       setLoadingHistory(false);
       return;
     }
     loadConversation(key === 'LATEST' ? undefined : key);
-  }, [params.conversationId, params.new, loadConversation]);
+  }, [params.conversationId, params.new, params.seed, loadConversation]);
 
   const sendImage = useCallback(async (base64: string, mimeType: string, caption: string) => {
     const userMsg = {

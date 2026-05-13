@@ -520,12 +520,513 @@ textarea.input {
    ========================================================================== */
 
 .today-canvas {
-  max-width: 840px;
+  max-width: 920px;
   margin: 0 auto;
-  padding: var(--space-lg) var(--space-md) 120px;
+  padding: 32px var(--space-md) 120px;
   display: flex;
   flex-direction: column;
+  gap: 36px;
+}
+
+/* ─── Phase A.9 — Dashboard reshape — five concentric zones ───────────────
+   Order: header (zone 0) → now (zone 1) → noticed (zone 2) → thinking
+   (zone 3) → news (zone 4). The eye descends from "what's happening
+   today" through "what Memu noticed" to "what Memu's thinking" — a
+   semantic gradient from concrete to speculative. News sits last
+   because it's the lowest-commitment content. */
+
+/* ─── Zone 0 — Context header ──────────────────────────────────────── */
+.today-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: var(--space-lg);
+  padding-bottom: var(--space-sm);
+}
+.today-header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.today-header-date {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.today-header-greeting {
+  font-family: var(--font-headline, 'Manrope', sans-serif);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.15;
+  margin: 0;
+}
+.today-lens-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+  flex-shrink: 0;
+}
+.today-lens-pill:hover {
+  background: var(--indigo-primary-container);
+  transform: translateY(-1px);
+}
+.today-lens-pill svg { opacity: 0.85; }
+
+/* ─── Zone scaffold (shared) ───────────────────────────────────────── */
+.zone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+.zone-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--indigo-primary);
+}
+.zone-eyebrow svg { opacity: 0.85; }
+
+.zone-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.zone-empty-link {
+  margin-left: auto;
+  color: var(--indigo-primary);
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+  font-style: normal;
+}
+
+/* ─── Zone 1 — What's happening ────────────────────────────────────── */
+.zone-now-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+}
+.zone-card {
+  background: var(--surface-lowest);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04), 0 0 0 1px rgba(20, 17, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.zone-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(20, 17, 40, 0.06);
+}
+.zone-card-head svg { color: var(--indigo-primary); opacity: 0.7; }
+.zone-now-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 80px;
+}
+
+/* Schedule rows — chip-time + title, amber rule on clash */
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border-left: 3px solid transparent;
+  margin-left: -10px;
+  transition: background 0.15s ease;
+}
+.schedule-row:hover { background: var(--surface-low); }
+.schedule-row-clash {
+  border-left-color: var(--color-warning);
+  background: rgba(184, 136, 67, 0.06);
+}
+.schedule-row-clash:hover { background: rgba(184, 136, 67, 0.10); }
+.schedule-time {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--indigo-primary);
+  background: var(--indigo-secondary-container);
+  padding: 4px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  min-width: 60px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.schedule-title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-clash-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-warning);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.schedule-more {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--indigo-primary);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+/* Open-commitment rows */
+.commitment-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  margin-left: -10px;
+  margin-right: -10px;
+  transition: background 0.15s ease;
+}
+.commitment-row:hover { background: var(--surface-low); }
+.commitment-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--indigo-primary);
+  background: var(--indigo-secondary-container);
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.commitment-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commitment-arrow {
+  color: var(--outline);
+  font-size: 16px;
+  font-weight: 400;
+}
+.commitment-row-shopping .commitment-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--indigo-primary);
+  flex-shrink: 0;
+}
+.commitment-row-shopping .commitment-title {
+  font-weight: 500;
+}
+.commitment-more {
+  display: block;
+  padding: 8px 10px 0;
+  margin-left: -10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--indigo-primary);
+  text-decoration: none;
+}
+
+/* ─── Zone 2 — What I noticed ──────────────────────────────────────── */
+.zone-noticed-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.noticed-empty {
+  background: var(--surface-low);
+  border-radius: 14px;
+  padding: 18px 22px;
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.noticed-card {
+  background: var(--surface-lowest);
+  border-radius: 14px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--indigo-primary);
+  box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  transform: translateX(-8px);
+  animation: noticedEnter 400ms cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+.noticed-card.nudge-tone-attention {
+  border-left-color: var(--color-warning);
+}
+@keyframes noticedEnter {
+  to { opacity: 1; transform: translateX(0); }
+}
+.noticed-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--indigo-primary);
+  margin-bottom: 2px;
+}
+.noticed-card.nudge-tone-attention .noticed-eyebrow {
+  color: var(--color-warning);
+}
+.noticed-eyebrow svg { opacity: 0.85; }
+.noticed-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.noticed-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.noticed-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.noticed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.15s ease;
+  font-family: var(--font-family);
+}
+.noticed-btn:hover { opacity: 0.85; }
+.noticed-btn-primary {
+  background: var(--indigo-primary);
+  color: white;
+}
+.noticed-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+/* ─── Zone 3 — What I'm thinking (radial glow, starter cards) ─────── */
+.zone-thinking {
+  background: radial-gradient(
+    ellipse 70% 80% at 50% 0%,
+    rgba(80, 84, 181, 0.06) 0%,
+    transparent 70%
+  );
+  padding: 8px 0 4px;
+  margin: -8px 0;
+  border-radius: 24px;
+}
+.zone-thinking-glow {
+  position: absolute;
+  top: -20px;
+  right: 8%;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(228, 215, 253, 0.55) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+.zone-thinking .zone-eyebrow,
+.zone-thinking-intro,
+.zone-thinking-grid {
+  position: relative;
+  z-index: 1;
+}
+.zone-thinking-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 600px;
+  margin: -4px 0 6px;
+}
+.zone-thinking-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.thinking-card {
+  background: var(--surface-lowest);
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(80, 84, 181, 0.08);
+  box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04);
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+              box-shadow 0.18s ease,
+              border-color 0.18s ease;
+  font-family: var(--font-family);
+}
+.thinking-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(80, 84, 181, 0.20);
+  box-shadow: 0 6px 18px rgba(80, 84, 181, 0.10);
+}
+.thinking-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+.thinking-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.thinking-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ─── Zone 4 — News (demoted to bottom, lower visual weight) ──────── */
+.zone-news {
+  margin-top: 4px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(20, 17, 40, 0.06);
+}
+.zone-news-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.zone-news-refreshed {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-transform: none;
+}
+.zone-news-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(20, 17, 40, 0.08);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.zone-news-refresh:hover {
+  background: var(--surface-low);
+  color: var(--indigo-primary);
+}
+
+/* ─── Privacy provenance footer ────────────────────────────────────── */
+.today-provenance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 4px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(20, 17, 40, 0.06);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.today-provenance-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  flex-shrink: 0;
+}
+.today-provenance-text { flex: 1; min-width: 0; }
+.today-provenance-text strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.today-provenance-link {
+  color: var(--indigo-primary);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 11px;
+}
+.today-provenance-link:hover { text-decoration: underline; }
+
+/* Mobile breakpoint for the new zone grid */
+@media (max-width: 760px) {
+  .today-canvas { padding: 24px var(--space-md) 120px; gap: 28px; }
+  .today-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .today-header-greeting { font-size: 26px; }
+  .zone-now-grid { grid-template-columns: 1fr; }
+  .zone-thinking-grid { grid-template-columns: 1fr; gap: 10px; }
 }
 
 /* Phase A.3/A.4 follow-up — `.today-insight*` retired. The briefing-hero
