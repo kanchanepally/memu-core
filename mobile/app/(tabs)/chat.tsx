@@ -48,6 +48,13 @@ interface Message {
    */
   type?: 'briefing' | 'action_nudge' | null;
   /**
+   * BUG-16 — this turn failed mid-pipeline. The text field holds an
+   * italic placeholder; the renderer styles the bubble as
+   * error-toned so the user knows it wasn't a real Memu reply and
+   * they should consider retrying. Survives refresh.
+   */
+  error?: boolean;
+  /**
    * Card linkage — present on 'action_nudge' messages. Used by the
    * renderer to dispatch InlineActionNudge and by action handlers to
    * call the right /api/stream/* endpoint.
@@ -122,6 +129,7 @@ function expandHistoryRows(rows: Array<{
   cardBody?: string | null;
   cardActions?: Array<Record<string, unknown>> | null;
   retrievalState?: RetrievalState | null;
+  error?: boolean;
 }>): Message[] {
   // Three row shapes:
   //   - full turns (user + memu, plain text)
@@ -143,6 +151,7 @@ function expandHistoryRows(rows: Array<{
       cardBody: msg.cardBody ?? null,
       cardActions: (msg.cardActions ?? null) as RawCardAction[] | null,
       retrievalState: msg.retrievalState ?? null,
+      error: msg.error === true,
     };
     // Briefings AND action nudges arrive without a paired user message
     // — they're server-generated assistant turns. Render just the bubble.
@@ -663,10 +672,23 @@ export default function ChatScreen() {
             </View>
           )}
 
-          <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
+          <View
+            style={[
+              styles.bubble,
+              item.fromMemu ? styles.bubbleMemu : styles.bubbleUser,
+              // BUG-16 — error-state bubble. Subtle amber tint so the user
+              // can see this WAS a turn they tried but Memu couldn't reach
+              // through, not a real reply they should trust.
+              item.fromMemu && item.error && styles.bubbleError,
+            ]}
+          >
             <Text
               selectable={true}
-              style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}
+              style={[
+                styles.bubbleText,
+                item.fromMemu ? styles.textMemu : styles.textUser,
+                item.fromMemu && item.error && styles.textError,
+              ]}
             >
               {item.text}
             </Text>
@@ -908,6 +930,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderBottomRightRadius: radius.sm,
   },
+  // BUG-16 — pipeline-failure bubble. Subtle amber border + tinted
+  // background so the eye picks it up as "something happened here" but
+  // it doesn't feel alarming. The italic placeholder text is what tells
+  // the user what specifically failed.
+  bubbleError: {
+    backgroundColor: '#FFF7E6',
+    borderWidth: 1,
+    borderColor: '#E6B847',
+  },
   bubbleText: {
     fontSize: typography.sizes.body,
     fontFamily: typography.families.body,
@@ -918,6 +949,10 @@ const styles = StyleSheet.create({
   },
   textUser: {
     color: colors.onPrimary,
+  },
+  textError: {
+    color: '#7A5A12',
+    fontStyle: 'italic',
   },
 
   // ---- Day separator within a thread — "Today" / "Yesterday" / "Mon 4 May" ----

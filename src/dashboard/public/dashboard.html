@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-briefing-actions">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-error-bubble">
 </head>
 <body>
 <!-- Auth gate -->
@@ -1544,9 +1544,14 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
         </div>`;
     }
 
+    // BUG-16 — error-state bubble. Amber tint + italic text mirrors the
+    // mobile chat.tsx treatment so the visual register is consistent
+    // across surfaces. The italic placeholder ("Memu couldn't reach the
+    // brain just now...") comes from the server.
+    const errorBubbleClass = (!isUser && nudge && nudge.error) ? ' bubble-error' : '';
     html += `<div class="bubble-wrap">
         ${channelBadge}
-        <div class="bubble ${isUser ? 'bubble-user' : 'bubble-memu'}">${bubbleContent}</div>
+        <div class="bubble ${isUser ? 'bubble-user' : 'bubble-memu'}${errorBubbleClass}">${bubbleContent}</div>
         ${artefactBlock}
         ${unsourcedBlock}
         ${draftActions}
@@ -1887,6 +1892,7 @@ async function pickConversation(conversationId) {
                     cardTitle: msg.cardTitle,
                     cardBody: msg.cardBody,
                     cardActions: msg.cardActions,
+                    error: msg.error,
                 });
             }
             const conv = conversationsCache.find(c => c.id === conversationId);
@@ -1927,6 +1933,7 @@ async function loadChatHistory() {
                     cardTitle: msg.cardTitle,
                     cardBody: msg.cardBody,
                     cardActions: msg.cardActions,
+                    error: msg.error,
                 });
             }
             activeConversationId = data.conversationId || null;

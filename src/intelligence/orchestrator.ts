@@ -173,6 +173,19 @@ export async function processIntelligencePipeline(
   const anonymousMsg = await translateToAnonymous(content);
   console.log(`[IN -> Translated]: ${anonymousMsg}`);
 
+  // BUG-16 — persist the user side IMMEDIATELY. Survives any downstream
+  // pipeline failure: refresh sees the user's message, the renderer
+  // dispatches by metadata.error to show "Memu couldn't respond — try
+  // again". Pre-fix, the audit row was a single INSERT at the bottom of
+  // the pipeline and a mid-flight throw left the user with no record of
+  // their turn (2026-05-12 Garden Space update lost on refresh).
+  await persistUserTurn(profileId, content, anonymousMsg, channel, messageId);
+
+  // From here on, every error path must call markTurnFailed so the
+  // user-side row gets a placeholder response. The wrappers below cover
+  // the two early-return paths (list fast-path) and the main pipeline.
+  try {
+
   // 1.5 Deterministic list-command fast path. "Add milk to the shopping list"
   // and friends skip retrieval/LLM — the LLM was inventing "added it" replies
   // while extraction sometimes missed the user-directed command. Audit is
@@ -187,7 +200,7 @@ export async function processIntelligencePipeline(
     // deterministic handler). State is 'sourced' — the result is grounded
     // in a concrete list operation, not in training data. The badge stays
     // off for these turns.
-    await storeMessageAudit(profileId, content, anonymousMsg, anonymousResponse, listResult.response, channel, messageId, undefined, 'sourced');
+    await completeAssistantTurn(messageId, anonymousResponse, listResult.response, undefined, 'sourced', undefined);
     return { response: listResult.response, retrievalState: 'sourced', retrievedSpaces: [] };
   }
 
@@ -350,13 +363,12 @@ export async function processIntelligencePipeline(
     console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (state=empty, no tools fired). Marker injected, Rule 11 applies.`);
   }
 
-  // 6. Immutable Message Storage (Audit Trail) — includes tool call provenance
-  // so /api/chat/history can surface Space artefacts as inline chips beneath
-  // Memu's bubble (replaces the substring-matching fallback). retrieval-
-  // touched Spaces persist as URIs (cheap TEXT[]); the UI resolves via
-  // synthesis_pages lookup at history-read time.
-  await storeMessageAudit(
-    profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId,
+  // 6. Audit Trail completion — BUG-16 two-phase. The user side was
+  // persisted at the top of the pipeline; here we fill in the response
+  // fields, tool call log, and retrieval state. UPDATE rather than
+  // INSERT so the row id stays stable for the chat history endpoint.
+  await completeAssistantTurn(
+    messageId, claudeResponse, realResponse,
     dispatchResult.toolCalls, retrievalState, retrieval.provenance.spaceUris,
   );
 
@@ -397,6 +409,17 @@ export async function processIntelligencePipeline(
     retrievalState,
     retrievedSpaces,
   };
+
+  } catch (err) {
+    // BUG-16 — pipeline failed mid-flight. The user-side row is already
+    // persisted (persistUserTurn at top); attach a placeholder response so
+    // the chat renderer can show "Memu couldn't respond" instead of an
+    // empty thread on refresh. Then re-throw so the endpoint's error path
+    // (SSE 'error' event, blocking 500 response) still fires.
+    const message = err instanceof Error ? err.message : String(err);
+    await markTurnFailed(messageId, message);
+    throw err;
+  }
 }
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
@@ -541,20 +564,68 @@ async function lookupPrimaryProfile(): Promise<{ id: string; collectiveId: strin
   }
 }
 
-async function storeMessageAudit(
+/**
+ * BUG-16 three-phase persistence.
+ *
+ * Pre-fix, storeMessageAudit was a single INSERT at the end of the
+ * pipeline carrying BOTH the user message and Claude's response. If
+ * anything in the pipeline threw between top and bottom — a network
+ * blip, an OAuth token expiry, a transient RLS issue — the audit row
+ * was never written, the user refreshed, and their message vanished
+ * along with any sign they'd tried. (2026-05-12 Garden Space update.)
+ *
+ * Now the audit lifecycle is:
+ *
+ *   1. persistUserTurn(...)        — INSERT user-side row at pipeline top.
+ *                                    Returns the row id (caller-supplied
+ *                                    or generated). Survives all later
+ *                                    failures.
+ *   2a. completeAssistantTurn(...) — UPDATE on success with response
+ *                                    fields, tool log, retrieval state.
+ *   2b. markTurnFailed(...)        — UPDATE on failure with an error
+ *                                    placeholder in
+ *                                    content_response_translated and
+ *                                    metadata.error=true. The chat
+ *                                    renderer reads metadata.error and
+ *                                    surfaces "Memu couldn't respond —
+ *                                    try again" so the user sees the
+ *                                    record of their attempt and the
+ *                                    failure mode.
+ *
+ * Refresh always shows the user's turn. They keep their context;
+ * they know what they tried; they know it failed.
+ */
+
+async function persistUserTurn(
   profileId: string,
   original: string,
   translated: string,
-  claudeRaw: string,
-  realResp: string,
   channel: string,
   messageId: string,
+): Promise<{ messageId: string; conversationId: string }> {
+  const convId = await getOrCreateConversation(profileId);
+  await db.query(
+    `INSERT INTO messages
+       (id, conversation_id, profile_id, role,
+        content_original, content_translated, channel)
+     VALUES ($1, $2, $3, 'user', $4, $5, $6)`,
+    [messageId, convId, profileId, original, translated, channel],
+  );
+  await db.query(
+    'UPDATE conversations SET message_count = message_count + 1 WHERE id = $1',
+    [convId],
+  );
+  return { messageId, conversationId: convId };
+}
+
+async function completeAssistantTurn(
+  messageId: string,
+  claudeRaw: string,
+  realResp: string,
   toolCalls?: Array<{ name: string; ok: boolean; error?: string; output?: Record<string, unknown> }>,
   retrievalState?: RetrievalState,
   retrievedSpaceUris?: string[],
 ) {
-  const convId = await getOrCreateConversation(profileId);
-
   // Persist the tool-call log on the message row. Used by /api/chat/history
   // to derive Space artefact chips: createSpace / updateSpace / findSpaces
   // outputs carry URIs that resolve to the actual Spaces touched. Storing
@@ -572,20 +643,48 @@ async function storeMessageAudit(
     : null;
 
   await db.query(
-    `INSERT INTO messages
-    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed, retrieval_state, retrieved_space_uris)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    `UPDATE messages
+        SET content_response_raw = $2,
+            content_response_translated = $3,
+            actions_executed = $4,
+            retrieval_state = $5,
+            retrieved_space_uris = $6
+      WHERE id = $1`,
     [
-      messageId, convId, profileId, 'user', original, translated, claudeRaw, realResp, channel,
+      messageId,
+      claudeRaw,
+      realResp,
       actionsExecuted ? JSON.stringify(actionsExecuted) : null,
       retrievalState ?? null,
       retrievedUris,
     ],
   );
+}
 
-  // Update conversation message count
-  await db.query(
-    'UPDATE conversations SET message_count = message_count + 1 WHERE id = $1',
-    [convId]
-  );
+/**
+ * Mark a turn as failed. The user-side row stays; we write a
+ * placeholder response so the chat renderer can show "Memu couldn't
+ * respond" with the underlying reason. Best-effort: if THIS write
+ * fails we just log — the turn becomes a user-message-only row, which
+ * the renderer treats as an unresolved turn (rather than crashing
+ * the failure path).
+ *
+ * `errorMessage` is the structured cause from upstream (e.g. the
+ * Error.message). It's stored verbatim — the renderer wraps it in a
+ * "Memu couldn't reach the brain just now: <message>" frame so the
+ * user knows what went wrong AND that retrying might work.
+ */
+async function markTurnFailed(messageId: string, errorMessage: string): Promise<void> {
+  try {
+    const placeholder = `_Memu couldn't reach the brain just now. ${errorMessage}_`;
+    await db.query(
+      `UPDATE messages
+          SET content_response_translated = $2,
+              metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+        WHERE id = $1`,
+      [messageId, placeholder, JSON.stringify({ error: true, errorMessage })],
+    );
+  } catch (err) {
+    console.error('[ORCH] markTurnFailed failed:', err);
+  }
 }

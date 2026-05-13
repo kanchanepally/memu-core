@@ -787,6 +787,13 @@ export interface ChatHistoryMessage {
    * legacy messages (pre-FEAT-02) — UI treats null as "unknown, render nothing".
    */
   retrievalState?: RetrievalState | null;
+  /**
+   * BUG-16 — this turn failed mid-pipeline. The memuResponse field
+   * carries a placeholder ("_Memu couldn't reach the brain..._") and the
+   * chat renderer styles the bubble distinctly so the user knows it
+   * wasn't a real reply.
+   */
+  error?: boolean;
 }
 
 export interface ChatHistoryResponse {

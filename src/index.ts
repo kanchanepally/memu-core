@@ -2785,6 +2785,11 @@ server.get('/api/chat/history', async (request, reply) => {
         cardBody: metadata?.cardBody ?? null,
         cardActions: Array.isArray(metadata?.cardActions) ? metadata.cardActions : null,
         retrievalState: row.retrieval_state ?? null,  // 'sourced'|'fallback'|'empty'|null; null = legacy
+        // BUG-16 — when the pipeline failed mid-flight, the row carries
+        // metadata.error=true and content_response_translated holds an
+        // italic placeholder. The renderer styles this distinctly so the
+        // user knows it was an attempted turn, not a real Memu reply.
+        error: metadata?.error === true,
       };
     });
 

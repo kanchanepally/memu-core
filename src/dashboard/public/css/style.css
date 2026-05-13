@@ -1306,6 +1306,22 @@ textarea.input {
   border-top: 1px solid rgba(80, 84, 181, 0.18);
 }
 
+/* BUG-16 — error-state bubble. Marks a chat turn where the pipeline
+   failed mid-flight: the user-side message persisted (so refresh shows
+   what they tried), but Memu's reply is a placeholder explaining what
+   went wrong. The amber tint + italic text mirrors the mobile
+   chat.tsx bubbleError style so the visual register is consistent
+   across surfaces. */
+.bubble.bubble-error {
+  background: #FFF7E6;
+  border: 1px solid #E6B847;
+  color: #7A5A12;
+}
+.bubble.bubble-error p,
+.bubble.bubble-error em {
+  color: #7A5A12;
+}
+
 /* BUG-15 honesty caption — mirrors the mobile chat.tsx unsourcedRow styling.
    Surfaces when a Memu reply had no Spaces / no recall / no fallback context
    to draw from. Subtle (italic, surface-variant colour, info icon) so it
