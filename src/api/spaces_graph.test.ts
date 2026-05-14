@@ -28,54 +28,29 @@ function makeSpace(overrides: Partial<GraphSpace>): GraphSpace {
   };
 }
 
-describe('deriveGraph — wikilinks', () => {
-  it('resolves wikilinks by slug, lowercase-folded', () => {
+describe('deriveGraph — wikilinks (Phase 6 contract change)', () => {
+  // Phase 6 moved wikilink edges out of deriveGraph and into the
+  // persisted space_connections table populated at upsertSpace time.
+  // deriveGraph now operates ONLY on in-memory-derivable signals
+  // (shared_*/parent_child). loadGraphForViewer is responsible for
+  // merging persisted edges (wikilink/manual/proposed) into the
+  // result. The pure wikilink extractor lives in src/spaces/wikilinks.ts
+  // with its own tests; the integration is covered by manual QA per
+  // project convention for DB-touching paths.
+
+  it('does NOT emit wikilink edges from body content (lives in space_connections now)', () => {
     const a = makeSpace({ id: 'a', slug: 'robin', title: 'Robin', bodyMarkdown: 'See [[piano-lessons]] for details.' });
     const b = makeSpace({ id: 'b', slug: 'piano-lessons', title: 'Piano lessons' });
     const { edges } = deriveGraph([a, b]);
-    expect(edges).toHaveLength(1);
-    expect(edges[0]).toMatchObject({ type: 'wikilink', weight: 1.0 });
-    expect([edges[0].source, edges[0].target].sort()).toEqual(['a', 'b']);
-  });
-
-  it('resolves wikilinks by title even when slug differs', () => {
-    const a = makeSpace({ id: 'a', slug: 'robin', title: 'Robin', bodyMarkdown: 'Reminds me of [[Piano Lessons]] last week.' });
-    const b = makeSpace({ id: 'b', slug: 'piano-lessons', title: 'Piano Lessons' });
-    const { edges } = deriveGraph([a, b]);
-    expect(edges).toHaveLength(1);
-    expect(edges[0].type).toBe('wikilink');
-  });
-
-  it('ignores dangling wikilinks that do not match any Space', () => {
-    const a = makeSpace({ id: 'a', slug: 'robin', bodyMarkdown: 'Tied to [[ghost-page]] somehow.' });
-    const b = makeSpace({ id: 'b', slug: 'piano-lessons' });
-    const { edges } = deriveGraph([a, b]);
-    expect(edges).toHaveLength(0);
-  });
-
-  it('does not create self-loops when a Space wikilinks to itself', () => {
-    const a = makeSpace({ id: 'a', slug: 'robin', title: 'Robin', bodyMarkdown: 'See [[robin]] (this page).' });
-    const { edges } = deriveGraph([a]);
-    expect(edges).toHaveLength(0);
-  });
-
-  it('handles piped wikilinks like [[slug|Friendly Label]]', () => {
-    const a = makeSpace({ id: 'a', slug: 'robin', bodyMarkdown: 'Goes to [[piano-lessons|Robin\'s music]].' });
-    const b = makeSpace({ id: 'b', slug: 'piano-lessons' });
-    const { edges } = deriveGraph([a, b]);
-    expect(edges).toHaveLength(1);
-    expect(edges[0].type).toBe('wikilink');
+    expect(edges.filter(e => e.type === 'wikilink')).toHaveLength(0);
   });
 });
 
 describe('deriveGraph — edge dedup + types', () => {
-  it('deduplicates bidirectional wikilinks into a single undirected edge', () => {
-    const a = makeSpace({ id: 'a', slug: 'a', bodyMarkdown: '[[b]]' });
-    const b = makeSpace({ id: 'b', slug: 'b', bodyMarkdown: '[[a]]' });
-    const { edges } = deriveGraph([a, b]);
-    const wikilinks = edges.filter(e => e.type === 'wikilink');
-    expect(wikilinks).toHaveLength(1);
-  });
+  // The dedup-bidirectional-wikilinks test was removed in Phase 6 — the
+  // wikilink edge type no longer comes from deriveGraph at all. Dedup
+  // semantics still apply to the other edge types; covered by the
+  // shared_person / shared_tag / parent_child tests in this block.
 
   it('emits a shared_person edge when two Spaces share a person id', () => {
     const a = makeSpace({ id: 'a', people: ['p1', 'p2'] });
@@ -115,12 +90,16 @@ describe('deriveGraph — edge dedup + types', () => {
     ]);
   });
 
-  it('keeps wikilink + shared_person between the same pair as separate edge types', () => {
-    const a = makeSpace({ id: 'a', slug: 'a', people: ['p1'], bodyMarkdown: '[[b]]' });
-    const b = makeSpace({ id: 'b', slug: 'b', people: ['p1'] });
-    const { edges } = deriveGraph([a, b]);
+  it('keeps parent_child + shared_person between the same pair as separate edge types', () => {
+    // Post-Phase-6 substitute for the old wikilink+shared_person dedup
+    // test. Wikilinks no longer come from deriveGraph; parent_child is
+    // the in-memory-derived type that exercises the same "two types
+    // coexist on the same pair" branch of upsert().
+    const parent = makeSpace({ id: 'p', uri: 'memu://fam/p', people: ['p1'] });
+    const child = makeSpace({ id: 'c', parentSpaceUri: 'memu://fam/p', people: ['p1'] });
+    const { edges } = deriveGraph([parent, child]);
     expect(edges).toHaveLength(2);
-    expect(new Set(edges.map(e => e.type))).toEqual(new Set(['wikilink', 'shared_person']));
+    expect(new Set(edges.map(e => e.type))).toEqual(new Set(['parent_child', 'shared_person']));
   });
 
   it('does not emit any edge when arrays are disjoint', () => {
@@ -183,20 +162,10 @@ describe('deriveGraph — edge cases', () => {
     expect(edges).toEqual([]);
   });
 
-  it('handles duplicate wikilink targets within a single body without emitting duplicate edges', () => {
-    const a = makeSpace({ id: 'a', slug: 'a', bodyMarkdown: '[[b]] and again [[b]] and one more [[b]]' });
-    const b = makeSpace({ id: 'b', slug: 'b' });
-    const { edges } = deriveGraph([a, b]);
-    expect(edges).toHaveLength(1);
-    expect(edges[0].type).toBe('wikilink');
-  });
-
-  it('treats wikilink resolution as case-insensitive', () => {
-    const a = makeSpace({ id: 'a', slug: 'a', bodyMarkdown: 'See [[ROBIN]] and [[robin]] and [[Robin]].' });
-    const b = makeSpace({ id: 'b', slug: 'robin', title: 'Robin' });
-    const { edges } = deriveGraph([a, b]);
-    expect(edges).toHaveLength(1);
-  });
+  // The "duplicate wikilink targets within a single body" and
+  // "case-insensitive wikilink resolution" tests moved to
+  // src/spaces/wikilinks.test.ts — they test extractWikilinkTargets,
+  // which is where the de-dupe + case-fold behaviour now lives.
 });
 
 describe('applyVisibilityFilter', () => {
