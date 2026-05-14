@@ -19,6 +19,7 @@ import { execFileSync } from 'child_process';
 import crypto from 'crypto';
 import matter from 'gray-matter';
 import { db } from '../db/tenant';
+import { embedText } from '../intelligence/context';
 import {
   buildSpaceUri,
   slugify,
@@ -285,12 +286,22 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       ? 'parent_space_uri = EXCLUDED.parent_space_uri,'
       : ''; // preserve — omit from the SET list
 
+    // Phase 1: embed the Space body on every write. Same text shape as
+    // backfillEmbeddings.ts (title + description + body) so backfilled
+    // and live-written embeddings live in the same semantic space.
+    const embeddingText = [input.name, input.description ?? '', input.bodyMarkdown]
+      .map(s => (s ?? '').trim())
+      .filter(Boolean)
+      .join('\n\n');
+    const embeddingVec = embeddingText ? await embedText(embeddingText) : null;
+    const embeddingStr = embeddingVec ? `[${embeddingVec.join(',')}]` : null;
+
     await client.query(
       `INSERT INTO synthesis_pages (
          id, profile_id, family_id, uri, slug, category, title, body_markdown,
          description, domains, people, visibility, confidence,
-         source_references, tags, parent_space_uri, last_updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, NOW())
+         source_references, tags, parent_space_uri, embedding, last_updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::vector, NOW())
        ON CONFLICT (id) DO UPDATE SET
          title = EXCLUDED.title,
          body_markdown = EXCLUDED.body_markdown,
@@ -301,6 +312,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
          confidence = EXCLUDED.confidence,
          source_references = EXCLUDED.source_references,
          tags = EXCLUDED.tags,
+         embedding = EXCLUDED.embedding,
          ${updateClauseParent}
          last_updated_at = NOW()`,
       [
@@ -320,6 +332,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
         input.sourceReferences ?? [],
         input.tags ?? [],
         parentInsertValue,
+        embeddingStr,
       ],
     );
 
