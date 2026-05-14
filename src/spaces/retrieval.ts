@@ -79,10 +79,19 @@ export interface RetrieveInput {
   query: string;
   embeddingVisibility?: RagVisibility;
   maxEmbeddings?: number;
+  /**
+   * Phase 4 of Build Spec 1 — optional project filter. When omitted,
+   * retrieval sees every Space in the collective (project-tagged AND
+   * collective-level). When set, retrieval narrows to that project's
+   * Spaces only. The retrieval tiers themselves are unchanged —
+   * project filtering is one extra predicate applied at catalogue
+   * load time and inherited by every downstream tier.
+   */
+  projectId?: string | null;
 }
 
 export async function retrieveForQuery(input: RetrieveInput): Promise<RetrievalResult> {
-  const catalogue = await getCatalogue(input.familyId, input.viewerProfileId);
+  const catalogue = await getCatalogue(input.familyId, input.viewerProfileId, input.projectId);
 
   const directHits = uniqueByUri([
     ...resolveWikilinks(catalogue, input.query),

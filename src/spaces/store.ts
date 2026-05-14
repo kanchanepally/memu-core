@@ -177,6 +177,43 @@ export interface SpaceWriteInput {
    * that mutate parent_space_uri need to validate.
    */
   parentSpaceUri?: string | null;
+  /**
+   * Phase 4 of Build Spec 1 — optional project membership.
+   *
+   * Same shape as parentSpaceUri:
+   *   - undefined → leave unchanged on update; default NULL on insert
+   *   - null      → explicitly un-project (collective-level Space)
+   *   - string    → set/replace; MUST be a project in the same
+   *                 collective (enforced inside upsertSpace — RLS
+   *                 hides cross-collective projects, so a lookup
+   *                 that returns zero rows is the rejection signal)
+   *
+   * Unlike parent validation, upsertSpace DOES validate this inline
+   * because cross-collective project assignment is the spec's hard
+   * invariant and silently dropping the assignment would be worse
+   * than a thrown error.
+   */
+  projectId?: string | null;
+}
+
+/**
+ * Phase 4 — thrown when upsertSpace receives a projectId that either
+ * doesn't exist or belongs to a different collective (RLS makes those
+ * indistinguishable from this side; either way the assignment is
+ * illegal). Carries the offending projectId + the Space's collective
+ * scope so the API layer can surface a useful 422.
+ */
+export class SpaceProjectError extends Error {
+  readonly reason: 'project_not_in_collective';
+  readonly projectId: string;
+  readonly collectiveId: string;
+  constructor(projectId: string, collectiveId: string) {
+    super(`Project ${projectId} is not in collective ${collectiveId}; cross-collective project assignment is forbidden.`);
+    this.name = 'SpaceProjectError';
+    this.reason = 'project_not_in_collective';
+    this.projectId = projectId;
+    this.collectiveId = collectiveId;
+  }
 }
 
 export interface ParentValidationResult {
@@ -286,6 +323,29 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       ? 'parent_space_uri = EXCLUDED.parent_space_uri,'
       : ''; // preserve — omit from the SET list
 
+    // Phase 4: project_id mirrors parent_space_uri's shape — undefined
+    // preserves on update / NULL on insert; null explicitly un-projects;
+    // a string must reference a project in the SAME collective.
+    const projectInsertValue = input.projectId === undefined ? null : input.projectId;
+    const projectUpdateMode = input.projectId === undefined ? 'preserve' : 'replace';
+    const updateClauseProject = projectUpdateMode === 'replace'
+      ? 'project_id = EXCLUDED.project_id,'
+      : '';
+
+    // Validate project_id when explicitly set to a non-null string. RLS
+    // scopes the SELECT to the active collective, so a project in a
+    // different collective is indistinguishable from a non-existent
+    // project from this side — both are rejected with the same error.
+    if (typeof input.projectId === 'string' && input.projectId.length > 0) {
+      const projCheck = await client.query<{ id: string }>(
+        `SELECT id FROM projects WHERE id = $1 LIMIT 1`,
+        [input.projectId],
+      );
+      if (projCheck.rows.length === 0) {
+        throw new SpaceProjectError(input.projectId, input.familyId);
+      }
+    }
+
     // Phase 1: embed the Space body on every write. Same text shape as
     // backfillEmbeddings.ts (title + description + body) so backfilled
     // and live-written embeddings live in the same semantic space.
@@ -300,8 +360,8 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       `INSERT INTO synthesis_pages (
          id, profile_id, family_id, uri, slug, category, title, body_markdown,
          description, domains, people, visibility, confidence,
-         source_references, tags, parent_space_uri, embedding, last_updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::vector, NOW())
+         source_references, tags, parent_space_uri, embedding, project_id, last_updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::vector,$18, NOW())
        ON CONFLICT (id) DO UPDATE SET
          title = EXCLUDED.title,
          body_markdown = EXCLUDED.body_markdown,
@@ -313,6 +373,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
          source_references = EXCLUDED.source_references,
          tags = EXCLUDED.tags,
          embedding = EXCLUDED.embedding,
+         ${updateClauseProject}
          ${updateClauseParent}
          last_updated_at = NOW()`,
       [
@@ -333,6 +394,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
         input.tags ?? [],
         parentInsertValue,
         embeddingStr,
+        projectInsertValue,
       ],
     );
 

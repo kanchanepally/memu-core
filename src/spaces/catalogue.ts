@@ -71,14 +71,30 @@ function parseVisibility(stored: string): Visibility {
   return stored as Visibility;
 }
 
-export async function getCatalogue(familyId: string, viewerProfileId: string): Promise<CatalogueEntry[]> {
+export async function getCatalogue(
+  familyId: string,
+  viewerProfileId: string,
+  projectId?: string | null,
+): Promise<CatalogueEntry[]> {
+  // Phase 4 of Build Spec 1 — optional project filter. NULL/undefined =
+  // full collective catalogue (project-tagged AND collective-level
+  // Spaces both visible). A string narrows to just that project's
+  // Spaces. RLS already restricts to the active collective, so a
+  // cross-collective project_id would return zero rows (which is the
+  // correct behaviour for a malformed request).
+  const projectFilter = (typeof projectId === 'string' && projectId.length > 0)
+    ? projectId
+    : null;
+
   const [roster, rows] = await Promise.all([
     loadRoster(familyId),
     db.query<CatalogueRow>(
       `SELECT uri, slug, title, category, description, domains, people, visibility, confidence, last_updated_at
-         FROM synthesis_pages WHERE family_id = $1
+         FROM synthesis_pages
+        WHERE family_id = $1
+          AND ($2::text IS NULL OR project_id = $2)
         ORDER BY last_updated_at DESC`,
-      [familyId],
+      [familyId, projectFilter],
     ),
   ]);
 
