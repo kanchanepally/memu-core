@@ -526,6 +526,60 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (April 2026)
 
+### 2026-05-14 evening — A.9.1 lens wiring + TD-01 NOSUPERUSER role
+
+Closing a small session that resolved two threads: the half-finished
+A.9 lens pill, and the structural prerequisite for Hosted deploy.
+
+**A.9.1 — lens pill is now real.** `/api/dashboard/brief?lens=me|family`
+(default `me` per individual-first). lens=family enumerates every
+profile in the caller's collective with a linked google_calendar,
+fetches each independently (dead OAuth on one profile doesn't poison
+the others), merges + sorts by start. Response carries `lens` +
+`lensCalendarCount`. PWA + mobile: pill defaults to first name; the
+Schedule card-head caption renders `· N calendars merged` or `· Just
+yours — no other calendars connected` only when lens=family, so the
+pill stays truthful in single-profile households.
+
+Honest scope of the swap: only calendar events. Stream cards +
+shopping list stay household-scope (no `owner_profile_id` axis on
+`stream_cards` today). The Schedule footnote names that gap. Adding
+the column is A.9.2 — gated on multi-profile household need before
+Founding-50 beta.
+
+**TD-01 — NOSUPERUSER Postgres app role.** The Postgres image creates
+`POSTGRES_USER` (= `memu`) with SUPERUSER by default, which bypasses
+RLS regardless of `FORCE ROW LEVEL SECURITY`. Migration 028's
+policies were scaffolding without teeth. Migration 036 provisions
+`memu_app` (NOSUPERUSER NOBYPASSRLS) with CRUD grants on all public
+tables + DEFAULT PRIVILEGES for future migrations. Connection layer
+split into runtime `pool` (DATABASE_URL → memu_app on Hosted) and
+`migrationPool` (MEMU_DB_MIGRATE_URL → superuser, falls back to
+DATABASE_URL). Migration runner uses a single checked-out client so
+the `memu.app_password` session GUC stays in scope when 036 runs.
+`assertRuntimeRoleNotSuperuser()` boot gate logs ✅ when NOSUPERUSER
++ NOBYPASSRLS, ⚠ warning otherwise, throws when
+`MEMU_REQUIRE_NOSUPERUSER=true` (the Hosted safety net).
+
+Standalone Z2 default behaviour is unchanged — runtime keeps
+connecting as superuser until the operator flips DATABASE_URL in
+`.env`. Hosted deploy scripts will set all four envs (password +
+migrate URL + runtime URL + require-flag) from day one.
+
+**Branch state cleanup.** Tonight's work shipped as a single commit
+`0224a05` on `pre-beta-1-rls`. origin/main was at the stale PR#11
+squash-merge state (missing all of Phase A.1–A.9, BUG-15/16/17, TD-05
+ALS rebind). Resolved by `--no-ff` merging pre-beta-1-rls into main
+(`a091457`) — Z2 now pulls from main and gets everything.
+
+**Tests:** 648/648 across 38 files. TS clean both surfaces.
+
+**Deploy state.** Z2 pending standard pull + rebuild. EAS APK rebuild
+needed for A.9.1 mobile changes (lens state + Schedule footnote).
+**Next session opens on the top-5 in `memu-platform/memu-build-plan.md`
+Part 0** — C-Infra-1/2/3 (Hetzner provisioning) is the front-runner
+now that TD-01 unblocks Hosted-tier deploy scripts.
+
 ### 2026-05-06 evening — PWA fixpass + beta priority confirmed
 
 Closing a long arc that started 2026-05-04 with a chat reshape and ran
