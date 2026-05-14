@@ -2,7 +2,7 @@ import 'dotenv/config'; // Load env variables immediately before other imports
 
 import Fastify from 'fastify';
 import pino from 'pino';
-import { testConnection, pool } from './db/connection';
+import { testConnection, pool, assertRuntimeRoleNotSuperuser } from './db/connection';
 import { db, enterCollectiveContext, bindCollectiveContext, currentCollectiveId } from './db/tenant';
 import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
@@ -1429,25 +1429,67 @@ server.get('/api/memory/recent', async (request, reply) => {
 });
 
 // Today's Brief + Stream Cards — uses authenticated profile
+//
+// Phase A.9.1 — `?lens=me|family` (default `me`).
+//   me      → caller's own calendar only (current behaviour, the smallest
+//             individual scope; individual-first per the architectural
+//             North Star).
+//   family  → merged events across every profile in the caller's
+//             collective that has a linked Google Calendar.
+//
+// Honest scope of the lens today: only calendar events swap. Stream
+// cards and the shopping list are still household-scoped — they don't
+// yet carry a `owner_profile_id` axis, so "lens=me" can't filter them
+// without lying. The PWA + mobile provenance footer name this gap
+// explicitly so the pill doesn't promise more than it delivers.
 server.get('/api/dashboard/brief', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
+    const q = (request.query as Record<string, string | undefined>) || {};
+    const lens: 'me' | 'family' = q.lens === 'family' ? 'family' : 'me';
 
-    // 1. Fetch upcoming Calendar Events (Next 7 days)
-    const events = await fetchUpcomingEvents(profileId);
-    
+    // 1. Fetch upcoming Calendar Events (Next 7 days).
+    //    lens=me     → just this profile.
+    //    lens=family → every profile in the same collective with a
+    //                  linked google_calendar channel. Each profile is
+    //                  fetched independently so a dead OAuth refresh on
+    //                  one calendar (Rach's) doesn't poison the others
+    //                  (Hareesh's). fetchUpcomingEvents already returns
+    //                  [] on degraded connections via
+    //                  fetchUpcomingEventsDetailed.
+    let calendarProfiles: string[] = [profileId];
+    if (lens === 'family') {
+      const peers = await db.query(
+        `SELECT DISTINCT p.id
+           FROM profiles p
+           JOIN profile_channels pc ON pc.profile_id = p.id
+          WHERE p.collective_id = (SELECT collective_id FROM profiles WHERE id = $1)
+            AND pc.channel = 'google_calendar'`,
+        [profileId]
+      );
+      if (peers.rows.length > 0) {
+        calendarProfiles = peers.rows.map(r => r.id);
+      }
+    }
+
+    const eventsArrays = await Promise.all(
+      calendarProfiles.map(pid => fetchUpcomingEvents(pid))
+    );
+    const events = eventsArrays.flat();
+
     // Nori Dashboard pattern: Today vs Future
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
-    
-    const todayEvents = [];
-    const futureEvents = [];
+
+    type BriefEvent = { title: string; startTime: string; endTime: string | null };
+    const todayEvents: BriefEvent[] = [];
+    const futureEvents: BriefEvent[] = [];
 
     for (const e of events) {
       const startTime = e.start?.dateTime || e.start?.date || null;
       if (!startTime) continue;
-      
-      const evt = {
+
+      const evt: BriefEvent = {
         title: e.summary || 'Busy',
         startTime,
         endTime: e.end?.dateTime || e.end?.date || null
@@ -1459,11 +1501,27 @@ server.get('/api/dashboard/brief', async (request, reply) => {
         futureEvents.push(evt);
       }
     }
-    
-    // Check if the calendar is linked
-    const linkRes = await db.query(`SELECT 1 FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
+
+    // Sort merged family events by start so the schedule UI renders in
+    // chronological order regardless of which profile they came from.
+    if (lens === 'family' && calendarProfiles.length > 1) {
+      const byStart = (a: BriefEvent, b: BriefEvent) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      todayEvents.sort(byStart);
+      futureEvents.sort(byStart);
+    }
+
+    // Check if the calendar is linked. For lens=family this asks "does
+    // anyone in the household have a calendar linked" — the empty-state
+    // copy in the UI already reads as a household-level prompt, so this
+    // matches user expectation.
+    const linkRes = await db.query(
+      `SELECT 1 FROM profile_channels
+         WHERE profile_id = ANY($1::text[]) AND channel = 'google_calendar'`,
+      [calendarProfiles]
+    );
     const isCalendarConnected = linkRes.rows.length > 0;
-    
+
     // 2. Fetch Active Stream Cards
     //    - excluded 'shopping' — separate UI (shopping pill / list view)
     //    - excluded 'briefing' — Phase A.3, briefings are messages, not feed
@@ -1496,7 +1554,13 @@ server.get('/api/dashboard/brief', async (request, reply) => {
       futureEvents,
       streamCards: streamRes.rows,
       shoppingItems: shoppingRes.rows,
-      isCalendarConnected
+      isCalendarConnected,
+      lens,
+      // How many calendars contributed events. Lets the UI honestly
+      // label the schedule ("Family · 2 calendars merged") so the lens
+      // doesn't look like it's doing nothing when only one profile in
+      // the household has a calendar linked.
+      lensCalendarCount: calendarProfiles.length,
     };
   } catch (err) {
     server.log.error(err);
@@ -3270,6 +3334,12 @@ const start = async () => {
     // Initialize required external services
     await testConnection();
     await runMigrations();
+    // TD-01 — after migrations have had a chance to create the
+    // memu_app role + apply RLS, verify the runtime pool is actually
+    // bound to a non-superuser role. Hosted (Hetzner) sets
+    // MEMU_REQUIRE_NOSUPERUSER=true so this fails loud rather than
+    // silently leaking across tenants.
+    await assertRuntimeRoleNotSuperuser();
 
     // Validate prompt skills on the way up so a broken SKILL.md crashes boot,
     // not the first LLM call in production.

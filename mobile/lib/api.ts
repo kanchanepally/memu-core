@@ -261,10 +261,18 @@ export interface BriefResponse {
   streamCards: StreamCard[];
   shoppingItems: StreamCard[];
   isCalendarConnected: boolean;
+  // Phase A.9.1 — server echoes the active lens back so the client can
+  // confirm what shape of data it got (and label the provenance footer
+  // accurately even on the first paint, before the user toggles).
+  lens?: 'me' | 'family';
+  lensCalendarCount?: number;
 }
 
-export async function getTodayBrief(): Promise<ApiResponse<BriefResponse>> {
-  return request<BriefResponse>('/api/dashboard/brief');
+export async function getTodayBrief(
+  lens: 'me' | 'family' = 'me',
+): Promise<ApiResponse<BriefResponse>> {
+  const qs = lens === 'family' ? '?lens=family' : '';
+  return request<BriefResponse>(`/api/dashboard/brief${qs}`);
 }
 
 export async function getSynthesis(): Promise<ApiResponse<{ synthesis: string | null }>> {

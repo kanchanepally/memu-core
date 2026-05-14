@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-13-dashboard-zones">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-14-lens-wiring">
 </head>
 <body>
 <!-- Auth gate -->
@@ -182,7 +182,7 @@ async function api(path, opts = {}) {
         </div>
         <button class="today-lens-pill" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span id="today-lens-label">Family</span>
+            <span id="today-lens-label">Me</span>
             <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
     </header>
@@ -203,6 +203,10 @@ async function api(path, opts = {}) {
                 <header class="zone-card-head">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
                     <span>Schedule</span>
+                    <!-- Phase A.9.1 — show-the-work: when the lens widens to
+                         Family, name exactly how many calendars were merged
+                         so the user can read what the pill actually did. -->
+                    <span class="zone-card-head-meta" id="schedule-lens-meta"></span>
                 </header>
                 <div id="calendar-section" class="zone-now-list"></div>
             </article>
@@ -1014,18 +1018,53 @@ function getSourceColor(source) {
 
 document.getElementById('greeting').textContent = getGreeting();
 document.getElementById('date-text').textContent = formatDate();
-
-// Phase A.9 — family/individual lens state. MVP is visual only: the pill
-// cycles label but doesn't yet swap data sources. Wiring lands when the
-// /api/dashboard/brief endpoint accepts a `lens` parameter and filters by
-// owner_profile_id. The pill's presence is intentional — it advertises
-// what's coming and primes the user's expectation of the surface.
-let todayLens = 'Family';
-function cycleTodayLens() {
-    const myName = (auth.displayName || '').split(' ')[0] || 'Me';
-    todayLens = todayLens === 'Family' ? myName : 'Family';
+// Seed pill label from auth (set during INIT before any view renders).
+(() => {
     const label = document.getElementById('today-lens-label');
-    if (label) label.textContent = todayLens;
+    if (label) label.textContent = (auth && auth.displayName || '').split(' ')[0] || 'Me';
+})();
+
+// Phase A.9.1 — family/individual lens state.
+//
+// Default is the user's own first name ('me' lens) per the
+// individual-first architectural North Star: smallest scope by
+// default; the user widens to the household.
+//
+// What the lens actually swaps today: only calendar events. Stream
+// cards + shopping list are still household-scope (no owner_profile_id
+// axis on cards). The footer caption names what was merged so the pill
+// doesn't promise more than it delivers.
+let todayLens = 'me'; // 'me' | 'family'
+let todayLensCalendarCount = 1;
+function getLensLabel() {
+    if (todayLens === 'family') return 'Family';
+    return (auth && auth.displayName || '').split(' ')[0] || 'Me';
+}
+function cycleTodayLens() {
+    todayLens = todayLens === 'family' ? 'me' : 'family';
+    const label = document.getElementById('today-lens-label');
+    if (label) label.textContent = getLensLabel();
+    // Refetch so the schedule actually swaps to the new scope.
+    loadBrief();
+}
+
+// Populates the small caption under the Schedule card head with what the
+// active lens is showing. Empty when the lens is 'me' (no clutter — the
+// pill already says "Me"). Verbose when 'family' — names whether
+// anything was actually merged so the pill stays honest in single-profile
+// households too ("Just yours — no other calendars connected").
+function refreshLensFootnote() {
+    const el = document.getElementById('schedule-lens-meta');
+    if (!el) return;
+    if (todayLens !== 'family') {
+        el.textContent = '';
+        return;
+    }
+    if (todayLensCalendarCount <= 1) {
+        el.textContent = '· Just yours — no other calendars connected';
+    } else {
+        el.textContent = `· ${todayLensCalendarCount} calendars merged`;
+    }
 }
 
 // Zone 3 starter prompts — route to chat with a seeded message. The
@@ -1199,8 +1238,11 @@ function flagClashes(events) {
 
 async function loadBrief() {
     try {
-        const res = await api('/api/dashboard/brief');
+        const lensQs = todayLens === 'family' ? '?lens=family' : '';
+        const res = await api('/api/dashboard/brief' + lensQs);
         const data = await res.json();
+        todayLensCalendarCount = data.lensCalendarCount || 1;
+        refreshLensFootnote();
 
         // ─── Zone 1a — Schedule ────────────────────────────────────────
         const calEl = document.getElementById('calendar-section');

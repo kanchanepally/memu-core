@@ -127,10 +127,14 @@ export default function TodayScreen() {
   // notification delivery in two taps rather than four-deep in Settings.
   const [pushTokens, setPushTokens] = useState<PushTokenSummary[]>([]);
 
-  // Phase A.9 — family/individual lens. MVP is visual only: the pill cycles
-  // label but doesn't swap data sources yet. Wiring lands when /api/dashboard
-  // /brief accepts a `lens` parameter. The pill primes user expectation.
-  const [lens, setLens] = useState<'family' | 'me'>('family');
+  // Phase A.9.1 — family/individual lens. Default is `me`
+  // (individual-first per the architectural North Star — show the
+  // smallest scope by default; the user widens to the household).
+  // Calendar events swap on toggle; stream cards / shopping list are
+  // still household-scope today (no owner_profile_id axis on cards) —
+  // the provenance footer names that gap so the pill doesn't lie.
+  const [lens, setLens] = useState<'family' | 'me'>('me');
+  const [lensCalendarCount, setLensCalendarCount] = useState<number>(1);
   const firstName = useMemo(
     () => (displayName ? displayName.split(' ')[0] : 'Me'),
     [displayName],
@@ -169,7 +173,7 @@ export default function TodayScreen() {
   }, []);
 
   const loadBrief = useCallback(async () => {
-    const { data, error: err } = await getTodayBrief();
+    const { data, error: err } = await getTodayBrief(lens);
     if (err) {
       setError(err);
     } else if (data) {
@@ -177,10 +181,11 @@ export default function TodayScreen() {
       setCards(data.streamCards || []);
       setShoppingCount((data.shoppingItems || []).length);
       setCalendarConnected(data.isCalendarConnected);
+      setLensCalendarCount(data.lensCalendarCount ?? 1);
       setError(null);
     }
     setLoading(false);
-  }, []);
+  }, [lens]);
 
   // Refresh whenever the tab is focused
   useFocusEffect(
@@ -477,6 +482,16 @@ export default function TodayScreen() {
             <View style={styles.zoneCardHead}>
               <LucideCalendar size={13} strokeWidth={1.5} color={colors.primary} />
               <Text style={styles.zoneCardHeadText}>Schedule</Text>
+              {/* Phase A.9.1 — show-the-work: when the lens widens to
+                  Family, name exactly how many calendars were merged so
+                  the user can read what the pill did. Quiet on 'me'. */}
+              {lens === 'family' && (
+                <Text style={styles.zoneCardHeadMeta}>
+                  {lensCalendarCount <= 1
+                    ? '· Just yours — no other calendars connected'
+                    : `· ${lensCalendarCount} calendars merged`}
+                </Text>
+              )}
             </View>
             {!calendarConnected ? (
               <Pressable
@@ -899,6 +914,15 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.wide,
+  },
+  zoneCardHeadMeta: {
+    fontSize: 11,
+    fontFamily: typography.families.label,
+    color: colors.onSurfaceVariant,
+    opacity: 0.7,
+    textTransform: 'none',
+    letterSpacing: 0,
+    flexShrink: 1,
   },
   zoneList: {
     gap: 4,

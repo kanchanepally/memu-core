@@ -653,6 +653,16 @@ textarea.input {
   border-bottom: 1px solid rgba(20, 17, 40, 0.06);
 }
 .zone-card-head svg { color: var(--indigo-primary); opacity: 0.7; }
+/* Phase A.9.1 — lens footnote. Sits inline after the head label, lowercase
+   + lighter so it reads as context, not a sibling heading. Empty when the
+   lens is 'me' (no clutter). */
+.zone-card-head-meta {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.7;
+}
 .zone-now-list {
   display: flex;
   flex-direction: column;

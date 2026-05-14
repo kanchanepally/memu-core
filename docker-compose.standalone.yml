@@ -67,7 +67,18 @@ services:
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://memu-hub:3100}
 
       # ---- Database (own pgvector container, on internal network) ----
+      # Standalone default: runtime + migrations both connect as the
+      # entrypoint-created superuser `memu`. RLS policies exist but are
+      # bypassed (acceptable for single-household personal use).
+      #
+      # To enforce RLS (TD-01): set MEMU_APP_DB_PASSWORD in .env, then
+      # change DATABASE_URL below to use `memu_app:${MEMU_APP_DB_PASSWORD}`
+      # and add MEMU_DB_MIGRATE_URL pointing at `memu:${DB_PASSWORD}`.
+      # The boot assertion will confirm with a green check on next start.
       - DATABASE_URL=postgresql://memu:${DB_PASSWORD}@memu_core_standalone_db:5432/memu_core
+      - MEMU_DB_MIGRATE_URL=${MEMU_DB_MIGRATE_URL:-}
+      - MEMU_APP_DB_PASSWORD=${MEMU_APP_DB_PASSWORD:-}
+      - MEMU_REQUIRE_NOSUPERUSER=${MEMU_REQUIRE_NOSUPERUSER:-}
 
       # ---- LLM providers (router dispatches per skill) ----
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
