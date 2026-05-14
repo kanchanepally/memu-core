@@ -61,4 +61,15 @@ describe('loadGoldenQueries', () => {
     expect(queries[0].id).toBe('sample-query');
     expect(queries[0].expectedRetrievalState).toBe('direct');
   });
+
+  it('skips README.md, dot-files, and underscore-prefixed files', () => {
+    // Real directory has README.md alongside query files — loader must
+    // not try to parse the docs as a query.
+    const real = resolve(__dirname, '..', '..', 'eval', 'golden');
+    const queries = loadGoldenQueries(real);
+    expect(queries.length).toBeGreaterThan(0);
+    expect(queries.every(q => q.id !== 'README')).toBe(true);
+    expect(queries.every(q => !q.id.startsWith('_'))).toBe(true);
+    expect(queries.every(q => !q.id.startsWith('.'))).toBe(true);
+  });
 });

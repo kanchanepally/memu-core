@@ -27,8 +27,18 @@ export function parseGoldenQuery(id: string, raw: string): GoldenQuery {
   };
 }
 
+// README.md is reserved as documentation alongside the queries; never
+// treated as a query itself. Filenames starting with `_` or `.` are
+// also skipped (treated as scratch / hidden).
+function isQueryFilename(f: string): boolean {
+  if (!f.endsWith('.md')) return false;
+  if (f === 'README.md') return false;
+  if (f.startsWith('_') || f.startsWith('.')) return false;
+  return true;
+}
+
 export function loadGoldenQueries(dir: string): GoldenQuery[] {
-  const entries = readdirSync(dir).filter(f => f.endsWith('.md'));
+  const entries = readdirSync(dir).filter(isQueryFilename);
   return entries.map(f => {
     const id = f.replace(/\.md$/, '');
     const raw = readFileSync(resolve(dir, f), 'utf8');
