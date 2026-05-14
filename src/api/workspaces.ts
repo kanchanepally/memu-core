@@ -1,32 +1,43 @@
 /**
- * Phase 5 of Build Spec 1 — workspace API (backend).
+ * Phase 5 of Build Spec 1 — workspace API (backend), 1:1-era subset.
  *
- * Scope adapted to today's reality:
+ * ## What ships here
  *
- * - Today every profile belongs to exactly one collective via
- *   `profiles.collective_id` (1:1 membership). The Phase 3 reconciliation
- *   memory (project_memu_phase3_interim_role_on_profile) explicitly
- *   documents this as the interim model — role lives on `profiles.role`,
- *   not on a membership relation, valid only while membership is 1:1.
+ *   GET    /api/workspaces                — list caller's workspace (one row)
+ *   GET    /api/workspaces/:id/projects   — list projects in workspace
+ *   POST   /api/workspaces/:id/projects   — create a project
  *
- * - Spec 1 §8 asks for endpoints to list, create, and switch between
- *   workspaces a profile is a member of. The list endpoint works
- *   today (returns one row). The create + switch endpoints are
- *   deferred until multi-collective membership lands — they're
- *   surfaced here as 501 Not Implemented so the API shape is
- *   discoverable from the start and so the mobile switcher (Story
- *   5.3) can detect "create disabled" without guessing.
+ * Projects are per-collective and multiple-per-collective works today
+ * (Phase 4 / migration 041). These three endpoints are real,
+ * shippable surfaces under the current 1:1 model.
  *
- * - Projects are per-collective and multiple-per-collective DOES
- *   work today (Phase 4 / migration 041). The project list + create
- *   endpoints are real, shippable, useful surfaces.
+ * ## What is one coherent deferred slice
  *
- * Routes registered (mounted in src/index.ts):
+ * Spec 1 §8's "create new workspace + switch between workspaces +
+ * auto-create personal workspace on registration" — all three —
+ * derive their meaning from multi-collective membership (one profile
+ * belonging to multiple collectives with role-on-relation). Today
+ * every profile belongs to exactly one collective via
+ * `profiles.collective_id` (1:1; see memory
+ * project-memu-phase3-interim-role-on-profile).
  *
- *   GET    /api/workspaces                     — list caller's workspaces
- *   POST   /api/workspaces                     — 501; multi-collective deferred
- *   GET    /api/workspaces/:id/projects        — list projects in workspace
- *   POST   /api/workspaces/:id/projects        — create a project
+ * Pulling any one of these three forward without the others creates
+ * permanent drift with no clean migration back. Concrete example:
+ * changing registration to auto-create `type='personal'` while
+ * existing collectives stay `type='household'` produces a
+ * registration-date split that no later reconciliation can resolve
+ * honestly. See memory
+ * feedback-no-pull-forward-ahead-of-unblocking-slice for the
+ * principle. They ship together with the multi-collective slice,
+ * or they don't ship.
+ *
+ * Until then:
+ *
+ *   POST /api/workspaces           — 501, names the deferred slice
+ *   (no POST /workspaces/:id/switch route exists; client-side
+ *    "switch" UI defers in lockstep — Phase 5 Story 5.3 must NOT
+ *    surface a live "switch workspaces" affordance hitting these
+ *    501s; show a disabled / "coming soon" treatment instead.)
  *
  * RLS scopes every read/write; a workspaceId in the URL that doesn't
  * match the caller's collective returns 404 because RLS hides it.
@@ -219,9 +230,15 @@ export async function workspaceRoutes(server: FastifyInstance) {
 
   server.post('/api/workspaces', async (_request: AuthedRequest, reply: FastifyReply) => {
     return reply.code(501).send({
-      error: 'workspace creation requires multi-collective membership',
-      reason: 'multi_collective_not_implemented',
-      note: "Today every profile belongs to exactly one collective (1:1 model — see memory project_memu_phase3_interim_role_on_profile). Creating a second workspace requires multi-collective membership, which is a separate slice of Build Spec 1 that hasn't shipped yet.",
+      error: 'workspace creation is part of a deferred slice',
+      reason: 'multi_collective_membership_not_shipped',
+      deferred_with: [
+        'workspace switching (POST /api/workspaces/:id/switch — not implemented)',
+        'auto-created personal workspace on profile registration',
+      ],
+      unblocked_by: 'the multi-collective membership slice of Build Spec 1: profiles can belong to multiple collectives, with role moving from profiles.role onto the membership relation (person × collective × role). Today profile→collective is 1:1 via profiles.collective_id; creating a second workspace without that model would either silently re-point a profile or create an orphan.',
+      why_not_partial: 'Shipping create-only (without switch + auto-personal) would let a user create a workspace they can never enter. Shipping auto-personal-on-registration without multi-collective creates permanent registration-date drift between old (type=household) and new (type=personal) users with no clean reconciliation. The three pieces only make sense together.',
+      ui_guidance: "Frontends MUST NOT surface a live 'create workspace' button that hits this 501. Show a disabled affordance with 'coming with multi-workspace support' or hide entirely until the slice ships.",
     });
   });
 
