@@ -38,6 +38,26 @@
 ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS brief_preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Dedupe historical briefing cards before enforcing the per-day uniqueness.
+-- The bug this migration prevents (cron + manual run-now collision producing
+-- two briefings in the same Today stream) had already produced duplicates
+-- in deployments running before 030 — visible on Hareesh's Z2 dump
+-- 2026-05-12 as multiple cards stamped 2026-04-29. Without this cleanup
+-- the CREATE UNIQUE INDEX below fails with SQLSTATE 23505 because the
+-- existing data violates the constraint it would enforce.
+--
+-- Policy: keep the LATEST briefing card per (family_id, UTC date). Older
+-- duplicates are deleted. Rationale: the later card is what the user most
+-- recently saw in their UI; the older one is the abandoned-tab artifact.
+DELETE FROM stream_cards
+ WHERE card_type = 'briefing'
+   AND id NOT IN (
+     SELECT DISTINCT ON (family_id, (created_at AT TIME ZONE 'UTC')::date) id
+       FROM stream_cards
+      WHERE card_type = 'briefing'
+      ORDER BY family_id, (created_at AT TIME ZONE 'UTC')::date, created_at DESC
+   );
+
 -- Unique-per-day index on briefing cards. Computed key: family_id +
 -- card_type='briefing' + UTC date of created_at. Without this, a second
 -- briefing run (manual /api/briefing/run-now during the day, or two cron

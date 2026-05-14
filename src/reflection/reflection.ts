@@ -27,6 +27,12 @@ import type { Space } from '../spaces/model';
 import { translateToReal } from '../twin/translator';
 import { evaluateStandards, type CareStandard } from '../care/standards';
 import { computeDomainStates } from '../domains/health';
+import {
+  postCardAsMessage,
+  getOrCreateActiveConversation,
+  type StreamCardType,
+  type StreamCardSource,
+} from '../canvas/timeline';
 
 export type Cadence = 'per_message' | 'daily' | 'weekly';
 
@@ -183,19 +189,26 @@ async function persistFinding(
         { label: 'Not relevant', type: 'dismiss' },
       ];
 
-  const cardRes = await db.query<{ id: string }>(
-    `INSERT INTO stream_cards (family_id, card_type, title, body, source, actions)
-     VALUES ($1, $2, $3, $4, 'proactive', $5)
-     RETURNING id`,
-    [
-      familyId,
-      CARD_TYPE_BY_KIND[finding.kind],
-      realTitle,
-      realBody,
-      JSON.stringify(actions),
-    ],
-  );
-  const cardId = cardRes.rows[0].id;
+  // Phase A.2 — reflection cards land on the Canvas timeline. The card
+  // gets a surface message in the family's conversation so the user
+  // discovers it inline (chat-as-canvas), not on a parallel Today feed.
+  // reflection_findings continues to dedupe via the (kind, title,
+  // sorted-space-uris) hash — the message FK doesn't change that.
+  const conversationId = await getOrCreateActiveConversation(familyId);
+  const { cardId } = await postCardAsMessage({
+    familyId,
+    conversationId,
+    profileId: familyId,
+    channel: 'proactive',
+    card: {
+      type: CARD_TYPE_BY_KIND[finding.kind] as StreamCardType,
+      title: realTitle,
+      body: realBody,
+      source: 'proactive' as StreamCardSource,
+      actions,
+    },
+    messageType: 'action_nudge',
+  });
 
   await db.query(
     `INSERT INTO reflection_findings (family_id, finding_hash, cadence, kind, stream_card_id)
@@ -289,24 +302,29 @@ export async function runStandardsCheck(familyId: string): Promise<{ checked: nu
       );
       continue;
     }
-    const cardRes = await db.query<{ id: string }>(
-      `INSERT INTO stream_cards (family_id, card_type, title, body, source, actions)
-       VALUES ($1, 'care_standard_lapsed', $2, $3, 'proactive', $4)
-       RETURNING id`,
-      [
-        familyId,
+    // Phase A.2 — care standard lapse cards on the Canvas timeline.
+    const conversationId = await getOrCreateActiveConversation(familyId);
+    const { cardId } = await postCardAsMessage({
+      familyId,
+      conversationId,
+      profileId: familyId,
+      channel: 'proactive',
+      card: {
+        type: 'care_standard_lapsed',
         title,
         body,
-        JSON.stringify([
+        source: 'proactive',
+        actions: [
           { label: 'Mark done', type: 'standard_complete', standard_id: standard.id },
           { label: 'Snooze', type: 'dismiss' },
-        ]),
-      ],
-    );
+        ],
+      },
+      messageType: 'action_nudge',
+    });
     await db.query(
       `INSERT INTO reflection_findings (family_id, finding_hash, cadence, kind, stream_card_id)
        VALUES ($1, $2, 'daily', 'unfinished_business', $3)`,
-      [familyId, hash, cardRes.rows[0].id],
+      [familyId, hash, cardId],
     );
     lapsed++;
   }

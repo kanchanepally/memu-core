@@ -1,6 +1,12 @@
 import { db } from '../db/tenant';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
+import {
+  postCardAsMessage,
+  getOrCreateActiveConversation,
+  type StreamCardType,
+  type StreamCardSource,
+} from '../canvas/timeline';
 
 export interface ChatVisionCard {
   cardType: string;
@@ -59,26 +65,41 @@ export async function processChatVisionInput(
     return { cards: [], response: "Nothing actionable in that photo." };
   }
 
+  // Phase A.2 — chat-vision cards land on the Canvas timeline.
+  // Side-fix: the prior code passed source='photo' for mobile/pwa channels,
+  // which violates `stream_cards_source_check` (CHECK only allows the
+  // values in migration 020). Effect: chat-photo extraction was silently
+  // erroring on insert. Now: source maps to the actual channel
+  // ('mobile' or 'pwa'); WhatsApp paths preserve their channel value.
   const cards: ChatVisionCard[] = [];
+  const conversationId = await getOrCreateActiveConversation(profileId);
+  const visionSource = (channel === 'mobile' || channel === 'pwa')
+    ? (channel as StreamCardSource)
+    : (channel as StreamCardSource);
   for (let i = 0; i < extractions.length; i++) {
     const ex = extractions[i];
-    const cardType = typeof ex.card_type === 'string' ? ex.card_type : 'extraction';
+    const cardType = (typeof ex.card_type === 'string' ? ex.card_type : 'extraction') as StreamCardType;
     const realTitle = await translateToReal(typeof ex.title === 'string' ? ex.title : '(untitled)');
     const realBody = await translateToReal(typeof ex.body === 'string' ? ex.body : '');
 
-    await db.query(
-      `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        profileId,
-        cardType,
-        realTitle,
-        realBody,
-        channel === 'mobile' || channel === 'pwa' ? 'photo' : channel,
-        `${messageId}-vi-${i}`,
-        JSON.stringify(ex.actions ?? []),
-      ],
-    );
+    await postCardAsMessage({
+      familyId: profileId,
+      conversationId,
+      profileId,
+      channel,
+      card: {
+        type: cardType,
+        title: realTitle,
+        body: realBody,
+        source: visionSource,
+        sourceMessageId: `${messageId}-vi-${i}`,
+        // Skill output is permissive (Array<unknown>). The card-action shape
+        // is enforced by the consuming action endpoints, not at write time —
+        // matches the previous JSON.stringify(ex.actions ?? []) behaviour.
+        actions: Array.isArray(ex.actions) ? (ex.actions as unknown as import('../canvas/timeline').StreamCardAction[]) : [],
+      },
+      messageType: 'action_nudge',
+    });
 
     cards.push({ cardType, title: realTitle, body: realBody });
   }
@@ -133,23 +154,28 @@ export async function processVisualDocumentExtraction(
     const adultRes = await db.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
     const familyId = adultRes.rows.length > 0 ? adultRes.rows[0].id : profileId;
 
+    // Phase A.2 — WhatsApp document-vision cards land on the Canvas
+    // timeline (the user's conversation), not just on the Today feed.
+    const conversationId = await getOrCreateActiveConversation(profileId);
     for (const extraction of extractions) {
       const realTitle = await translateToReal(extraction.title);
       const realBody = await translateToReal(extraction.body);
 
-      await db.query(
-        `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          familyId,
-          extraction.card_type || 'document',
-          realTitle,
-          realBody,
-          'document',
-          messageId,
-          JSON.stringify(extraction.actions || [])
-        ]
-      );
+      await postCardAsMessage({
+        familyId,
+        conversationId,
+        profileId,
+        channel: 'whatsapp_dm',
+        card: {
+          type: (extraction.card_type || 'document_extracted') as StreamCardType,
+          title: realTitle,
+          body: realBody,
+          source: 'document',
+          sourceMessageId: messageId,
+          actions: Array.isArray(extraction.actions) ? (extraction.actions as unknown as import('../canvas/timeline').StreamCardAction[]) : [],
+        },
+        messageType: 'action_nudge',
+      });
       console.log(`[DOCUMENT STREAM CARD CREATED]: ${realTitle}`);
     }
 

@@ -10,6 +10,7 @@ import {
   renderSpacesForPrompt,
   renderEmbeddingsForPrompt,
   buildContextBlock,
+  deriveRetrievalState,
 } from './retrieval';
 import type { Space } from './model';
 
@@ -96,12 +97,102 @@ describe('buildContextBlock', () => {
     expect(block).toContain('only fact');
   });
 
-  it('returns empty block when nothing was retrieved', () => {
+  it('emits an explicit RETRIEVAL: EMPTY marker when nothing was retrieved', () => {
+    // BUG-15: silent empty prompts let Claude confabulate plausibly from
+    // training. The explicit marker turns the empty state into a load-bearing
+    // signal so Rule 11 has something concrete to match on.
     const block = buildContextBlock({
       spaces: [],
       embeddingContexts: [],
       provenance: { path: 'none', spaceUris: [], embeddingHits: 0 },
     });
-    expect(block).toBe('');
+    expect(block).toContain('=== RETRIEVAL: EMPTY ===');
+    expect(block).toContain('No compiled Spaces');
+    expect(block).toContain('Rule 11');
+    // Critical: never empty. Silent gap = bug.
+    expect(block.trim().length).toBeGreaterThan(0);
+  });
+
+  it('does NOT emit the EMPTY marker when fallback context exists', () => {
+    // Fallback (onboarding summary or first 2 person/routine Spaces) counts
+    // as context. The marker must respect the fallback path or it would
+    // tell Claude "you have nothing" when in fact it has something.
+    const block = buildContextBlock({
+      spaces: [],
+      embeddingContexts: [],
+      fallbackOnboardingText: 'PEOPLE: lives with partner Sarah and child Robin',
+      provenance: { path: 'none', spaceUris: [], embeddingHits: 0 },
+    });
+    expect(block).not.toContain('RETRIEVAL: EMPTY');
+    expect(block).toContain('HOUSEHOLD SUMMARY');
+  });
+
+  it('does NOT emit the EMPTY marker when only embeddings fired', () => {
+    const block = buildContextBlock({
+      spaces: [],
+      embeddingContexts: ['stray fact'],
+      provenance: { path: 'embedding', spaceUris: [], embeddingHits: 1 },
+    });
+    expect(block).not.toContain('RETRIEVAL: EMPTY');
+    expect(block).toContain('raw recall');
+  });
+});
+
+describe('deriveRetrievalState', () => {
+  it("returns 'sourced' when at least one compiled Space matched", () => {
+    expect(
+      deriveRetrievalState({
+        spaces: [swimSpace],
+        embeddingContexts: [],
+      }),
+    ).toBe('sourced');
+  });
+
+  it("returns 'fallback' when embeddings fired but no Space matched", () => {
+    expect(
+      deriveRetrievalState({
+        spaces: [],
+        embeddingContexts: ['something'],
+      }),
+    ).toBe('fallback');
+  });
+
+  it("returns 'fallback' when onboarding text exists but no Space matched", () => {
+    expect(
+      deriveRetrievalState({
+        spaces: [],
+        embeddingContexts: [],
+        fallbackOnboardingText: 'PEOPLE: lives with partner Sarah',
+      }),
+    ).toBe('fallback');
+  });
+
+  it("returns 'fallback' when fallback Spaces exist but no direct match", () => {
+    expect(
+      deriveRetrievalState({
+        spaces: [],
+        embeddingContexts: [],
+        fallbackSpaces: [swimSpace],
+      }),
+    ).toBe('fallback');
+  });
+
+  it("returns 'empty' when nothing was retrieved at all", () => {
+    expect(
+      deriveRetrievalState({
+        spaces: [],
+        embeddingContexts: [],
+      }),
+    ).toBe('empty');
+  });
+
+  it("returns 'sourced' even if fallback present, when a Space matched (sourced wins)", () => {
+    expect(
+      deriveRetrievalState({
+        spaces: [swimSpace],
+        embeddingContexts: ['stray'],
+        fallbackOnboardingText: 'context',
+      }),
+    ).toBe('sourced');
   });
 });

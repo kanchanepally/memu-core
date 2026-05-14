@@ -23,11 +23,14 @@ import {
   type ChatMessageSpaceRef,
   type Visibility,
   type StreamHandle,
+  type RetrievalState,
 } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ThinkingPill, { type PillStage } from '../../components/ThinkingPill';
 import { useToast } from '../../components/Toast';
+import InlineActionNudge, { type NudgeResolutionState } from '../../components/InlineActionNudge';
+import { defaultActionsForCardType, type RawCardAction } from '../../lib/cardActions';
 
 interface Message {
   id: string;
@@ -38,10 +41,47 @@ interface Message {
   spaces?: ChatMessageSpaceRef[];
   /**
    * Server-tagged type. 'briefing' marks the morning briefing assistant
-   * message, rendered with elevated AI-Insight-Card styling inline. Plain
+   * message, rendered with elevated AI-Insight-Card styling inline.
+   * 'action_nudge' marks a stream-card surface (Canvas timeline, Phase A.1/A.2):
+   * the bubble renders InlineActionNudge with the card's actions. Plain
    * turns leave this null.
    */
-  type?: 'briefing' | null;
+  type?: 'briefing' | 'action_nudge' | null;
+  /**
+   * BUG-16 — this turn failed mid-pipeline. The text field holds an
+   * italic placeholder; the renderer styles the bubble as
+   * error-toned so the user knows it wasn't a real Memu reply and
+   * they should consider retrying. Survives refresh.
+   */
+  error?: boolean;
+  /**
+   * Card linkage — present on 'action_nudge' messages. Used by the
+   * renderer to dispatch InlineActionNudge and by action handlers to
+   * call the right /api/stream/* endpoint.
+   */
+  streamCardId?: string | null;
+  cardTitle?: string | null;
+  cardBody?: string | null;
+  cardActions?: RawCardAction[] | null;
+  /**
+   * stream_cards.card_type — used by the renderer to pick an eyebrow
+   * label and tone for the nudge bubble. Null when not a card-linked
+   * message (normal chat turns).
+   */
+  cardType?: string | null;
+  /**
+   * stream_cards.status — 'active'|'resolved'|'dismissed'. Drives the
+   * initial nudge state so a card the user resolved on Today still
+   * renders as resolved when they scroll back through chat history.
+   */
+  cardStatus?: string | null;
+  /**
+   * BUG-15 honesty signal. 'empty' = no Spaces/recall/fallback fed this
+   * reply → Memu is answering from training only; bubble shows an
+   * "Unsourced" caption so the reader knows. 'sourced' / 'fallback' /
+   * null leave the bubble plain.
+   */
+  retrievalState?: RetrievalState | null;
 }
 
 interface DaySeparator {
@@ -88,9 +128,29 @@ const WELCOME: Message = {
   timestamp: new Date(),
 };
 
-function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null; memuResponse: string; timestamp: string; channel: string; spaces?: ChatMessageSpaceRef[]; type?: 'briefing' | null }>): Message[] {
-  // Two row shapes: full turns (user + memu) and assistant-only (briefing).
-  // Briefings carry no user message — render just the memu bubble.
+function expandHistoryRows(rows: Array<{
+  id: string;
+  userMessage: string | null;
+  memuResponse: string;
+  timestamp: string;
+  channel: string;
+  spaces?: ChatMessageSpaceRef[];
+  type?: 'briefing' | 'action_nudge' | null;
+  streamCardId?: string | null;
+  cardTitle?: string | null;
+  cardBody?: string | null;
+  cardActions?: Array<Record<string, unknown>> | null;
+  cardType?: string | null;
+  cardStatus?: string | null;
+  retrievalState?: RetrievalState | null;
+  error?: boolean;
+}>): Message[] {
+  // Three row shapes:
+  //   - full turns (user + memu, plain text)
+  //   - assistant-only briefings (memu bubble, no paired user prompt)
+  //   - assistant-only action nudges (Canvas Phase A — card surface
+  //     messages from extraction / reflection / document ingestion;
+  //     no paired user prompt either)
   return rows.flatMap(msg => {
     const memuBubble: Message = {
       id: `hist-memu-${msg.id}`,
@@ -100,7 +160,17 @@ function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null;
       channel: msg.channel,
       spaces: msg.spaces,
       type: msg.type ?? null,
+      streamCardId: msg.streamCardId ?? null,
+      cardTitle: msg.cardTitle ?? null,
+      cardBody: msg.cardBody ?? null,
+      cardActions: (msg.cardActions ?? null) as RawCardAction[] | null,
+      cardType: msg.cardType ?? null,
+      cardStatus: msg.cardStatus ?? null,
+      retrievalState: msg.retrievalState ?? null,
+      error: msg.error === true,
     };
+    // Briefings AND action nudges arrive without a paired user message
+    // — they're server-generated assistant turns. Render just the bubble.
     if (!msg.userMessage) return [memuBubble];
     return [
       {
@@ -117,7 +187,7 @@ function expandHistoryRows(rows: Array<{ id: string; userMessage: string | null;
 
 export default function ChatScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams() as { conversationId?: string; new?: string };
+  const params = useLocalSearchParams() as { conversationId?: string; new?: string; seed?: string };
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -126,6 +196,14 @@ export default function ChatScreen() {
   const consumedParamRef = useRef<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const toast = useToast();
+
+  // Resolution state for inline action nudges, keyed by streamCardId.
+  // Local-only — the server is the source of truth (status flips on
+  // /api/stream/{resolve|dismiss}/action/*). This map is the optimistic
+  // mirror so the bubble transitions immediately, then a subsequent
+  // history reload confirms persistence. On first paint of a fresh
+  // message, the entry is absent → renderer treats it as 'open'.
+  const [nudgeStates, setNudgeStates] = useState<Record<string, NudgeResolutionState>>({});
 
   const loadConversation = useCallback(async (conversationId?: string) => {
     setLoadingHistory(true);
@@ -148,14 +226,21 @@ export default function ChatScreen() {
     consumedParamRef.current = key;
     // Bug F — composer state is per-conversation. Clear any draft from
     // the prior thread so the next one opens blank.
-    setInput('');
+    // Phase A.9 — if a `seed` param is present (from Dashboard's
+    // "What I'm thinking" starter cards), prefill the input instead of
+    // clearing it. The user lands ready-to-send.
+    if (typeof params.seed === 'string' && params.seed.length > 0) {
+      setInput(params.seed);
+    } else {
+      setInput('');
+    }
     if (key === 'NEW') {
       setMessages([WELCOME]);
       setLoadingHistory(false);
       return;
     }
     loadConversation(key === 'LATEST' ? undefined : key);
-  }, [params.conversationId, params.new, loadConversation]);
+  }, [params.conversationId, params.new, params.seed, loadConversation]);
 
   const sendImage = useCallback(async (base64: string, mimeType: string, caption: string) => {
     const userMsg = {
@@ -384,7 +469,12 @@ export default function ChatScreen() {
     }, 15000);
 
     let finalised = false;
-    const finalise = (memuText: string, isError = false) => {
+    const finalise = (
+      memuText: string,
+      isError = false,
+      retrievalState?: RetrievalState | null,
+      retrievedSpaces?: ChatMessageSpaceRef[],
+    ) => {
       if (finalised) return;
       finalised = true;
       if (slowTimerRef.current) clearTimeout(slowTimerRef.current);
@@ -399,6 +489,8 @@ export default function ChatScreen() {
           text: memuText,
           fromMemu: true,
           timestamp: new Date(),
+          retrievalState: retrievalState ?? null,
+          spaces: retrievedSpaces,
         },
       ]);
     };
@@ -427,8 +519,17 @@ export default function ChatScreen() {
             setPillTool(undefined);
             return;
           case 'done': {
-            const response = (event.data as { response?: string }).response || 'No response.';
-            finalise(response, false);
+            const payload = event.data as {
+              response?: string;
+              retrievalState?: RetrievalState;
+              retrievedSpaces?: ChatMessageSpaceRef[];
+            };
+            finalise(
+              payload.response || 'No response.',
+              false,
+              payload.retrievalState ?? null,
+              payload.retrievedSpaces,
+            );
             return;
           }
           case 'error': {
@@ -470,12 +571,81 @@ export default function ChatScreen() {
     }
     const isWhatsApp = item.channel === 'whatsapp';
     const isBriefing = item.fromMemu && item.type === 'briefing';
+    // A nudge is anything from Memu that's linked to a stream_card and
+    // tagged as an action surface. We no longer require a non-empty
+    // cardActions array — empty arrays (backfilled cards, producers
+    // that forgot to attach explicit actions) fall back to default
+    // Mark done / Dismiss buttons so the bubble never dead-ends.
+    const isActionNudge = item.fromMemu
+      && item.type === 'action_nudge'
+      && !!item.streamCardId;
+
+    // Action-nudge messages (Canvas Phase A.5): the bubble shape stays
+    // the same as a normal Memu reply — same avatar, same alignment —
+    // but the body is the InlineActionNudge component with a type
+    // eyebrow, title + body, and action buttons. Resolution state lives
+    // in nudgeStates, keyed by streamCardId, seeded from the server's
+    // stream_cards.status so resolved/dismissed cards stay that way.
+    if (isActionNudge) {
+      const cardId = item.streamCardId!;
+      const rawActions = Array.isArray(item.cardActions) && item.cardActions.length > 0
+        ? (item.cardActions as RawCardAction[])
+        : defaultActionsForCardType(item.cardType);
+      const seededState: NudgeResolutionState =
+        item.cardStatus === 'resolved'
+          ? { kind: 'resolved' }
+          : item.cardStatus === 'dismissed'
+            ? { kind: 'dismissed' }
+            : { kind: 'open' };
+      const state = nudgeStates[cardId] ?? seededState;
+      return (
+        <View style={[styles.row, styles.rowMemu]}>
+          <View style={styles.avatarWrap}>
+            <View style={styles.avatarGlow} />
+            <View style={styles.avatar}>
+              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+            </View>
+          </View>
+          <View style={[styles.bubbleWrap, { alignItems: 'flex-start' }]}>
+            <View style={[styles.bubble, styles.bubbleMemu, styles.bubbleNudge]}>
+              <InlineActionNudge
+                cardId={cardId}
+                title={item.cardTitle ?? ''}
+                body={item.cardBody ?? ''}
+                actions={rawActions}
+                cardType={item.cardType}
+                state={state}
+                onState={(next) => {
+                  setNudgeStates(prev => ({ ...prev, [cardId]: next }));
+                  if (next.kind === 'resolved' && next.outcome) {
+                    toast.show(next.outcome, 'success');
+                  }
+                }}
+                onError={(msg) => toast.show(msg, 'error')}
+                onOpenSpace={() => router.push('/(tabs)/spaces' as any)}
+              />
+            </View>
+            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+          </View>
+        </View>
+      );
+    }
 
     // Briefing messages get a wider container + the AI-Insight-Card glow
     // treatment inline. They take the full content width (not the 78%
     // bubble cap) and surface the "Today's brief" eyebrow above the text
     // so they read as a hero artefact within the conversation.
     if (isBriefing) {
+      // Phase A.3 — briefings carry suggested_actions in metadata.cardActions.
+      // Render an InlineActionNudge below the briefing body so the user can
+      // act on the brief inline (Add to calendar / Add to shopping / Update
+      // Space / Draft reply) without leaving the chat thread.
+      const briefingActions = item.cardActions ?? null;
+      const briefingCardId = item.streamCardId ?? null;
+      const hasBriefingActions =
+        briefingCardId && Array.isArray(briefingActions) && briefingActions.length > 0;
+      const briefingState: NudgeResolutionState =
+        nudgeStates[briefingCardId ?? ''] ?? { kind: 'open' };
       return (
         <View style={styles.briefingRow}>
           <View style={styles.briefingCard}>
@@ -489,6 +659,25 @@ export default function ChatScreen() {
             <Text selectable={true} style={styles.briefingBody}>
               {item.text}
             </Text>
+            {hasBriefingActions ? (
+              <View style={styles.briefingActionsRow}>
+                <InlineActionNudge
+                  cardId={briefingCardId!}
+                  title=""
+                  body=""
+                  actions={briefingActions as RawCardAction[]}
+                  state={briefingState}
+                  onState={(next) => {
+                    setNudgeStates(prev => ({ ...prev, [briefingCardId!]: next }));
+                    if (next.kind === 'resolved' && next.outcome) {
+                      toast.show(next.outcome, 'success');
+                    }
+                  }}
+                  onError={(msg) => toast.show(msg, 'error')}
+                  onOpenSpace={() => router.push('/(tabs)/spaces' as any)}
+                />
+              </View>
+            ) : null}
             <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
           </View>
         </View>
@@ -520,10 +709,23 @@ export default function ChatScreen() {
             </View>
           )}
 
-          <View style={[styles.bubble, item.fromMemu ? styles.bubbleMemu : styles.bubbleUser]}>
+          <View
+            style={[
+              styles.bubble,
+              item.fromMemu ? styles.bubbleMemu : styles.bubbleUser,
+              // BUG-16 — error-state bubble. Subtle amber tint so the user
+              // can see this WAS a turn they tried but Memu couldn't reach
+              // through, not a real reply they should trust.
+              item.fromMemu && item.error && styles.bubbleError,
+            ]}
+          >
             <Text
               selectable={true}
-              style={[styles.bubbleText, item.fromMemu ? styles.textMemu : styles.textUser]}
+              style={[
+                styles.bubbleText,
+                item.fromMemu ? styles.textMemu : styles.textUser,
+                item.fromMemu && item.error && styles.textError,
+              ]}
             >
               {item.text}
             </Text>
@@ -545,6 +747,20 @@ export default function ChatScreen() {
             </View>
           ) : null}
 
+          {/* BUG-15 honesty signal — render an "Unsourced" caption when this
+              Memu turn had no Spaces, no recall, no fallback context to draw
+              from. The user sees that the reply is from training, not their
+              notes. Hidden for non-Memu bubbles, briefings, sourced/fallback
+              replies, and legacy (null) messages. */}
+          {item.fromMemu && item.retrievalState === 'empty' ? (
+            <View style={styles.unsourcedRow}>
+              <Ionicons name="information-circle-outline" size={12} color={colors.onSurfaceVariant} />
+              <Text style={styles.unsourcedText}>
+                Memu had no notes for this — answered from general knowledge.
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.metaRow}>
             <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
             {isWhatsApp && item.fromMemu && (
@@ -563,7 +779,10 @@ export default function ChatScreen() {
         </View>
       </View>
     );
-  }, [toast]);
+    // nudgeStates is in the dep array so InlineActionNudge re-renders
+    // when an action transitions (open → busy → resolved). router is in
+    // the dep array because the onOpenSpace handler closes over it.
+  }, [toast, nudgeStates, router]);
 
   return (
     <View style={styles.container}>
@@ -744,9 +963,26 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: radius.sm,
     ...shadows.low,
   },
+  // Nudge bubbles need a touch more breathing room than a plain reply —
+  // the eyebrow + action row stack vertically, and the type icon needs
+  // room next to the eyebrow text. Same visual register as a Memu reply
+  // overall; the difference is the left rule + eyebrow inside.
+  bubbleNudge: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
   bubbleUser: {
     backgroundColor: colors.primary,
     borderBottomRightRadius: radius.sm,
+  },
+  // BUG-16 — pipeline-failure bubble. Subtle amber border + tinted
+  // background so the eye picks it up as "something happened here" but
+  // it doesn't feel alarming. The italic placeholder text is what tells
+  // the user what specifically failed.
+  bubbleError: {
+    backgroundColor: '#FFF7E6',
+    borderWidth: 1,
+    borderColor: '#E6B847',
   },
   bubbleText: {
     fontSize: typography.sizes.body,
@@ -758,6 +994,10 @@ const styles = StyleSheet.create({
   },
   textUser: {
     color: colors.onPrimary,
+  },
+  textError: {
+    color: '#7A5A12',
+    fontStyle: 'italic',
   },
 
   // ---- Day separator within a thread — "Today" / "Yesterday" / "Mon 4 May" ----
@@ -826,6 +1066,15 @@ const styles = StyleSheet.create({
     color: colors.onSurface,
     lineHeight: 22,
     marginBottom: spacing.sm,
+  },
+  // Phase A.3 — separates the briefing prose from the inline action
+  // buttons. Top border subtly partitions them; preserves the briefing's
+  // hero feel while making the actions feel actionable, not decorative.
+  briefingActionsRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.outline + '30',
   },
 
   timestamp: {
@@ -1011,6 +1260,26 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.bodyMedium,
     color: colors.onTertiaryContainer,
+  },
+  // BUG-15 honesty caption — subtle, low-contrast, info icon. Sits below the
+  // Memu bubble when retrievalState === 'empty'. Designed to inform without
+  // alarming; the goal is "user knows the reply was unsourced", not "Memu is
+  // broken" panic.
+  unsourcedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 2,
+    alignSelf: 'flex-start',
+    maxWidth: 320,
+  },
+  unsourcedText: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body,
+    color: colors.onSurfaceVariant,
+    fontStyle: 'italic',
+    flexShrink: 1,
   },
 
 });

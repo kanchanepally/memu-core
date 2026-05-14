@@ -42,6 +42,11 @@ import { upsertSpace } from '../spaces/store';
 import { db } from '../db/tenant';
 import { interactiveQueryTools, interactiveQueryServerTools } from './tools';
 import { formatToolSummaryFooter } from './toolSummary';
+import {
+  postCardAsMessage,
+  getOrCreateActiveConversation,
+  type StreamCardType,
+} from '../canvas/timeline';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -457,8 +462,13 @@ export async function processDocumentIngestion(
   }
 
   // Persist any time-sensitive items as stream cards on the family stream.
+  // Phase A.2 — document-extracted cards land on the Canvas timeline.
+  // Each card gets a surface message in the user's conversation so the
+  // user sees the extraction as part of their chat thread, not a
+  // mysterious orphan on the Today feed.
   let streamCardCount = 0;
   if (Array.isArray(skillOutput.stream_cards)) {
+    const conversationId = await getOrCreateActiveConversation(input.profileId);
     for (let i = 0; i < skillOutput.stream_cards.length; i++) {
       const sc = skillOutput.stream_cards[i];
       const cardType = typeof sc.card_type === 'string' ? sc.card_type : 'extraction';
@@ -466,19 +476,21 @@ export async function processDocumentIngestion(
       const cardBody = await translateToReal(typeof sc.body === 'string' ? sc.body : '');
       if (cardTitle.trim().length === 0) continue;
       try {
-        await db.query(
-          `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            input.profileId,
-            cardType,
-            cardTitle,
-            cardBody,
-            'document',
-            `${input.messageId}-doc-${i}`,
-            JSON.stringify([]),
-          ],
-        );
+        await postCardAsMessage({
+          familyId: input.profileId,
+          conversationId,
+          profileId: input.profileId,
+          channel: 'document',
+          card: {
+            type: cardType as StreamCardType,
+            title: cardTitle,
+            body: cardBody,
+            source: 'document',
+            sourceMessageId: `${input.messageId}-doc-${i}`,
+            actions: [],
+          },
+          messageType: 'action_nudge',
+        });
         streamCardCount += 1;
       } catch (err) {
         // Don't fail the whole ingestion for one bad card. Log and move on.

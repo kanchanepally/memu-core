@@ -520,75 +520,568 @@ textarea.input {
    ========================================================================== */
 
 .today-canvas {
-  max-width: 840px;
+  max-width: 920px;
   margin: 0 auto;
-  padding: var(--space-lg) var(--space-md) 120px;
+  padding: 32px var(--space-md) 120px;
   display: flex;
   flex-direction: column;
+  gap: 36px;
+}
+
+/* ─── Phase A.9 — Dashboard reshape — five concentric zones ───────────────
+   Order: header (zone 0) → now (zone 1) → noticed (zone 2) → thinking
+   (zone 3) → news (zone 4). The eye descends from "what's happening
+   today" through "what Memu noticed" to "what Memu's thinking" — a
+   semantic gradient from concrete to speculative. News sits last
+   because it's the lowest-commitment content. */
+
+/* ─── Zone 0 — Context header ──────────────────────────────────────── */
+.today-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: var(--space-lg);
+  padding-bottom: var(--space-sm);
 }
+.today-header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.today-header-date {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.today-header-greeting {
+  font-family: var(--font-headline, 'Manrope', sans-serif);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.15;
+  margin: 0;
+}
+.today-lens-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  font-family: var(--font-family);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+  flex-shrink: 0;
+}
+.today-lens-pill:hover {
+  background: var(--indigo-primary-container);
+  transform: translateY(-1px);
+}
+.today-lens-pill svg { opacity: 0.85; }
 
-/* Hero — AI insight card. Mirrors the mobile AIInsightCard with the soft
-   tertiary radial glow in the top-right (the "AI element" colour from
-   Indigo Sanctuary). Carries the synthesis or the honest empty-state. */
-.today-insight {
+/* ─── Zone scaffold (shared) ───────────────────────────────────────── */
+.zone {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   position: relative;
-  background: var(--surface-lowest);
-  border-radius: var(--radius-lg);
-  padding: var(--space-xl);
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
 }
-.today-insight::before {
-  content: '';
-  position: absolute;
-  top: -80px;
-  right: -80px;
-  width: 200px;
-  height: 200px;
-  border-radius: 100px;
-  background: var(--indigo-tertiary-container);
-  opacity: 0.5;
-  pointer-events: none;
+.zone-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--indigo-primary);
+}
+.zone-eyebrow svg { opacity: 0.85; }
+
+.zone-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.zone-empty-link {
+  margin-left: auto;
+  color: var(--indigo-primary);
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
+  font-style: normal;
 }
 
-.today-insight-header {
+/* ─── Zone 1 — What's happening ────────────────────────────────────── */
+.zone-now-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+}
+.zone-card {
+  background: var(--surface-lowest);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04), 0 0 0 1px rgba(20, 17, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.zone-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(20, 17, 40, 0.06);
+}
+.zone-card-head svg { color: var(--indigo-primary); opacity: 0.7; }
+/* Phase A.9.1 — lens footnote. Sits inline after the head label, lowercase
+   + lighter so it reads as context, not a sibling heading. Empty when the
+   lens is 'me' (no clutter). */
+.zone-card-head-meta {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.7;
+}
+.zone-now-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: var(--space-md);
-  position: relative;
+  min-height: 80px;
 }
-.today-insight-eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
+
+/* Schedule rows — chip-time + title, amber rule on clash */
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border-left: 3px solid transparent;
+  margin-left: -10px;
+  transition: background 0.15s ease;
+}
+.schedule-row:hover { background: var(--surface-low); }
+.schedule-row-clash {
+  border-left-color: var(--color-warning);
+  background: rgba(184, 136, 67, 0.06);
+}
+.schedule-row-clash:hover { background: rgba(184, 136, 67, 0.10); }
+.schedule-time {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--indigo-primary);
+  background: var(--indigo-secondary-container);
+  padding: 4px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  min-width: 60px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.schedule-title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-clash-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-warning);
   text-transform: uppercase;
-  color: var(--indigo-tertiary);
+  flex-shrink: 0;
 }
-.today-insight-greeting {
+.schedule-more {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--indigo-primary);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+/* Open-commitment rows */
+.commitment-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  margin-left: -10px;
+  margin-right: -10px;
+  transition: background 0.15s ease;
+}
+.commitment-row:hover { background: var(--surface-low); }
+.commitment-eyebrow {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--indigo-primary);
+  background: var(--indigo-secondary-container);
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.commitment-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commitment-arrow {
+  color: var(--outline);
+  font-size: 16px;
+  font-weight: 400;
+}
+.commitment-row-shopping .commitment-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--indigo-primary);
+  flex-shrink: 0;
+}
+.commitment-row-shopping .commitment-title {
+  font-weight: 500;
+}
+.commitment-more {
+  display: block;
+  padding: 8px 10px 0;
+  margin-left: -10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--indigo-primary);
+  text-decoration: none;
+}
+
+/* ─── Zone 2 — What I noticed ──────────────────────────────────────── */
+.zone-noticed-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.noticed-empty {
+  background: var(--surface-low);
+  border-radius: 14px;
+  padding: 18px 22px;
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.noticed-card {
+  background: var(--surface-lowest);
+  border-radius: 14px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--indigo-primary);
+  box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0;
+  transform: translateX(-8px);
+  animation: noticedEnter 400ms cubic-bezier(0.2, 0, 0.2, 1) forwards;
+}
+.noticed-card.nudge-tone-attention {
+  border-left-color: var(--color-warning);
+}
+@keyframes noticedEnter {
+  to { opacity: 1; transform: translateX(0); }
+}
+.noticed-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--indigo-primary);
+  margin-bottom: 2px;
+}
+.noticed-card.nudge-tone-attention .noticed-eyebrow {
+  color: var(--color-warning);
+}
+.noticed-eyebrow svg { opacity: 0.85; }
+.noticed-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.noticed-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.noticed-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.noticed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.15s ease;
+  font-family: var(--font-family);
+}
+.noticed-btn:hover { opacity: 0.85; }
+.noticed-btn-primary {
+  background: var(--indigo-primary);
+  color: white;
+}
+.noticed-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+/* ─── Zone 3 — What I'm thinking (radial glow, starter cards) ─────── */
+.zone-thinking {
+  background: radial-gradient(
+    ellipse 70% 80% at 50% 0%,
+    rgba(80, 84, 181, 0.06) 0%,
+    transparent 70%
+  );
+  padding: 8px 0 4px;
+  margin: -8px 0;
+  border-radius: 24px;
+}
+.zone-thinking-glow {
+  position: absolute;
+  top: -20px;
+  right: 8%;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(228, 215, 253, 0.55) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+.zone-thinking .zone-eyebrow,
+.zone-thinking-intro,
+.zone-thinking-grid {
+  position: relative;
+  z-index: 1;
+}
+.zone-thinking-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 600px;
+  margin: -4px 0 6px;
+}
+.zone-thinking-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.thinking-card {
+  background: var(--surface-lowest);
+  border-radius: 14px;
+  padding: 16px 16px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(80, 84, 181, 0.08);
+  box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04);
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1),
+              box-shadow 0.18s ease,
+              border-color 0.18s ease;
+  font-family: var(--font-family);
+}
+.thinking-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(80, 84, 181, 0.20);
+  box-shadow: 0 6px 18px rgba(80, 84, 181, 0.10);
+}
+.thinking-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--indigo-secondary-container);
+  color: var(--indigo-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+.thinking-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.thinking-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ─── Zone 4 — News (demoted to bottom, lower visual weight) ──────── */
+.zone-news {
+  margin-top: 4px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(20, 17, 40, 0.06);
+}
+.zone-news-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.zone-news-refreshed {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-transform: none;
+}
+.zone-news-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(20, 17, 40, 0.08);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.zone-news-refresh:hover {
+  background: var(--surface-low);
+  color: var(--indigo-primary);
+}
+
+/* ─── Privacy provenance footer ────────────────────────────────────── */
+.today-provenance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 4px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(20, 17, 40, 0.06);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.today-provenance-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  flex-shrink: 0;
+}
+.today-provenance-text { flex: 1; min-width: 0; }
+.today-provenance-text strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.today-provenance-link {
+  color: var(--indigo-primary);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 11px;
+}
+.today-provenance-link:hover { text-decoration: underline; }
+
+/* Mobile breakpoint for the new zone grid */
+@media (max-width: 760px) {
+  .today-canvas { padding: 24px var(--space-md) 120px; gap: 28px; }
+  .today-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .today-header-greeting { font-size: 26px; }
+  .zone-now-grid { grid-template-columns: 1fr; }
+  .zone-thinking-grid { grid-template-columns: 1fr; gap: 10px; }
+}
+
+/* Phase A.3/A.4 follow-up — `.today-insight*` retired. The briefing-hero
+   no longer duplicates the chat briefing on Dashboard. The compact
+   `.today-brief-pointer` below replaces it: greeting + date + a
+   one-line CTA that routes the user to chat for the canonical brief. */
+.today-brief-pointer {
+  background: var(--surface-lowest);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-low, 0 1px 3px rgba(0,0,0,0.06));
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  transition: background-color 0.15s ease;
+}
+.today-brief-pointer:hover {
+  background: var(--surface-container-low, var(--surface-lowest));
+}
+.today-brief-pointer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.today-brief-pointer-greeting {
   font-family: var(--font-headline, 'Manrope', sans-serif);
-  font-size: 24px;
-  font-weight: 800;
+  font-size: 22px;
+  font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--text-primary);
   line-height: 1.2;
 }
-.today-insight-date {
+.today-brief-pointer-date {
   font-size: 13px;
   color: var(--text-secondary);
 }
-.today-insight-body {
-  position: relative;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--text-primary);
-}
-.today-insight-body p { margin: 0 0 var(--space-sm) 0; }
-.today-insight-body p:last-child { margin-bottom: 0; }
-.today-insight-loading {
-  color: var(--text-muted);
-  font-style: italic;
+.today-brief-pointer-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-accent, #5054B5);
+  margin-top: 2px;
 }
 
 /* Section labels — uppercase eyebrow above each block */
@@ -1207,6 +1700,183 @@ textarea.input {
   margin-left: auto;
   color: var(--text-muted);
   font-size: 14px;
+}
+
+/* Phase A.5 — inline action nudge.
+   Surfaces a stream card AS a chat bubble. Same visual register as a
+   normal Memu reply (bubble shape + avatar), with title + body text
+   inside and a row of action buttons below. After the user acts the
+   buttons collapse into a "✓ Done" / "Dismissed" caption and the
+   bubble persists in chat history as a record of the resolution.
+
+   Mirrors mobile/components/InlineActionNudge.tsx. */
+.nudge-bubble {
+  display: block;
+  /* Left rule + extra inset distinguish a nudge from a plain reply at
+     a glance, even before the eyebrow registers. Tone classes override
+     the border colour below. */
+  padding-left: 12px;
+  border-left: 3px solid var(--color-accent, #5054B5);
+}
+.nudge-bubble.nudge-tone-attention {
+  border-left-color: #C26A00;
+}
+.nudge-bubble.nudge-tone-neutral {
+  border-left-color: var(--color-accent, #5054B5);
+}
+/* Type eyebrow — ALL-CAPS label above the title that names what KIND of
+   nudge this is ("SHOPPING", "REMINDER", "TASK", "CHECK THIS"...). The
+   single biggest signal that this bubble isn't a normal Memu reply. */
+.nudge-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent, #5054B5);
+  margin-bottom: 6px;
+}
+.nudge-bubble.nudge-tone-attention .nudge-eyebrow {
+  color: #C26A00;
+}
+.nudge-eyebrow svg {
+  flex-shrink: 0;
+}
+.nudge-resolved-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-accent, #5054B5);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.nudge-resolved-row.nudge-resolved-muted {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.nudge-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.nudge-body {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.nudge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.nudge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  min-height: 32px;
+  transition: opacity 0.15s ease;
+}
+.nudge-btn:hover { opacity: 0.85; }
+.nudge-btn:active { opacity: 0.7; }
+.nudge-btn-primary {
+  background: var(--color-accent, #5054B5);
+  color: white;
+}
+.nudge-btn-secondary {
+  background: var(--color-surface-variant, #f5f5f5);
+  color: var(--text-primary);
+  border-color: var(--color-outline, #e0e0e0);
+}
+.nudge-btn-ghost {
+  background: transparent;
+  color: var(--color-accent, #5054B5);
+}
+.nudge-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  font-style: italic;
+}
+.nudge-resolved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-accent, #5054B5);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.nudge-resolved-dismissed {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.nudge-bubble-resolved {
+  opacity: 0.7;
+}
+.nudge-bubble-resolved .nudge-title,
+.nudge-bubble-resolved .nudge-body {
+  opacity: 0.6;
+}
+
+/* Phase A.3 — briefing inline actions. The briefing's suggested_actions
+   now ride inside the elevated chat-briefing-card render. A subtle top
+   border partitions the action region from the prose, preserving the
+   briefing's hero feel while making the actions feel actionable. */
+.chat-briefing-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(80, 84, 181, 0.18);
+}
+
+/* BUG-16 — error-state bubble. Marks a chat turn where the pipeline
+   failed mid-flight: the user-side message persisted (so refresh shows
+   what they tried), but Memu's reply is a placeholder explaining what
+   went wrong. The amber tint + italic text mirrors the mobile
+   chat.tsx bubbleError style so the visual register is consistent
+   across surfaces. */
+.bubble.bubble-error {
+  background: #FFF7E6;
+  border: 1px solid #E6B847;
+  color: #7A5A12;
+}
+.bubble.bubble-error p,
+.bubble.bubble-error em {
+  color: #7A5A12;
+}
+
+/* BUG-15 honesty caption — mirrors the mobile chat.tsx unsourcedRow styling.
+   Surfaces when a Memu reply had no Spaces / no recall / no fallback context
+   to draw from. Subtle (italic, surface-variant colour, info icon) so it
+   informs without reading as "broken". */
+.chat-unsourced-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 2px;
+  max-width: 320px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-secondary, var(--text-muted));
+}
+.chat-unsourced-row svg {
+  flex-shrink: 0;
+  color: var(--text-secondary, var(--text-muted));
 }
 
 /* Narrow viewport: collapse the conversations column to a slide-in panel.
@@ -1858,25 +2528,34 @@ textarea.input {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
+/* Phase A.7 — nav rail is chrome, not content.
+   - 13px / 400 at rest (was 15px / 500): labels defer to icons + content
+   - 8px vertical padding (was 10px): tighter row height, closer to Linear
+   - Active state is a 3px left rule + indigo text, not a filled slab:
+     the rail becomes a persistent spatial anchor; the active item is
+     legible without a competing background fill.
+   - 1px gap (was 2px): rail reads as one continuous structure. */
 .sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   background: none;
   border: none;
+  border-left: 3px solid transparent;
   font-family: var(--font-family);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.005em;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: var(--transition);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .sidebar-nav-item:hover {
@@ -1885,16 +2564,114 @@ textarea.input {
 }
 
 .sidebar-nav-item.active {
-  background: var(--indigo-secondary-container);
+  background: transparent;
+  border-left-color: var(--indigo-primary);
   color: var(--indigo-primary);
   font-weight: 600;
 }
 
 .sidebar-nav-item svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   stroke: currentColor;
   flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.sidebar-nav-item.active svg {
+  opacity: 1;
+}
+
+/* Phase A.8 — account pill at the bottom of the sidebar. Replaces the
+   inline Settings nav row. Avatar (initial) + display name + small
+   gear hint on the right; whole pill is the tap target → Settings.
+   Sits pinned at the bottom regardless of conversation count.
+   The .sidebar-account-pill carries the same `tab-settings` id so
+   switchTab() still finds it for active-state toggling. */
+.sidebar-account-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: var(--space-sm);
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font-family: var(--font-family);
+  /* Subtle top divider — softer than the old .sidebar-divider line. */
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  padding-top: 12px;
+}
+
+.sidebar-account-pill:hover {
+  background: var(--color-surface-hover);
+}
+
+.sidebar-account-pill.active {
+  background: var(--color-surface-hover);
+  /* Match nav-item active treatment — 3px indigo rule on the left edge.
+     Sits inside the pill's left edge, not a full slab. */
+  box-shadow: inset 3px 0 0 var(--indigo-primary);
+}
+
+.sidebar-account-avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,
+    var(--indigo-secondary-container, #E2DFFF) 0%,
+    var(--indigo-tertiary-container, #E9E4F0) 100%);
+  color: var(--indigo-primary);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+}
+
+.sidebar-account-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.sidebar-account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-account-hint {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.sidebar-account-gear {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-account-pill:hover .sidebar-account-gear {
+  opacity: 1;
 }
 
 .sidebar-divider {

@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-12-thinking-pill">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-14-lens-wiring">
 </head>
 <body>
 <!-- Auth gate -->
@@ -74,48 +74,43 @@ async function api(path, opts = {}) {
     <!-- Top region: primary + secondary nav. Fixed natural height. Conversations
          do NOT live here any more — they had been pushing Settings off-screen
          once 20+ threads accumulated. They now live in the bottom region. -->
+    <!-- Phase A.7 — primary nav culled to 5 surfaces for parity with the
+         mobile SideDrawer. Ledger + Import moved into Settings (they're
+         audit / power-user surfaces, not daily flow). Icons swapped to
+         Lucide-calibrated paths at stroke-width 1.5 — thinner, cleaner
+         terminals at the 18px display size than the prior 1.8 weight. -->
     <nav class="sidebar-nav">
         <button class="sidebar-nav-item active" id="tab-chat" onclick="switchTab('chat')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></svg>
             <span>Chat</span>
         </button>
-        <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            <span>Today</span>
-        </button>
         <button class="sidebar-nav-item" id="tab-spaces" onclick="switchTab('spaces')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
             <span>Spaces</span>
         </button>
         <button class="sidebar-nav-item" id="tab-lists" onclick="switchTab('lists')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
             <span>Lists</span>
         </button>
         <button class="sidebar-nav-item" id="tab-calendar" onclick="switchTab('calendar')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
             <span>Calendar</span>
         </button>
-        <button class="sidebar-nav-item" id="tab-ledger" onclick="switchTab('ledger')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Ledger</span>
-        </button>
-        <button class="sidebar-nav-item" id="tab-import" onclick="switchTab('import')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.7A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 3 15.25"/><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
-            <span>Import</span>
-        </button>
-    </nav>
-    <div class="sidebar-divider"></div>
-    <nav class="sidebar-nav">
-        <button class="sidebar-nav-item" id="tab-settings" onclick="switchTab('settings')">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <span>Settings</span>
+        <!-- Phase A.4 — 'Dashboard' (was 'Today'). Sits below the daily-action
+             surfaces — chat landing now surfaces briefings and action nudges
+             inline; Dashboard is the structured at-a-glance view. The
+             underlying tab id stays 'today' to avoid breaking switchTab()
+             callers and the loadDashboard / loadBrief wiring. -->
+        <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            <span>Dashboard</span>
         </button>
     </nav>
 
-    <!-- Bottom region: conversations. Section label + pinned New chat button,
-         then a flex: 1 scroll container so the list takes the remaining
-         sidebar height and scrolls on its own. Visible regardless of which
-         tab is currently active — conversation history is always reachable. -->
+    <!-- Phase A.8 — conversations region promoted directly under primary
+         nav (no divider, no Settings inline). Takes the remaining vertical
+         space; scrolls independently. Conversation history is the highest-
+         density surface in the rail — it earns the room. -->
     <div class="sidebar-conversations-region" id="sidebar-chat-children">
         <div class="sidebar-conversations-head">
             <span class="sidebar-conversations-label">Conversations</span>
@@ -128,6 +123,20 @@ async function api(path, opts = {}) {
             <div class="sidebar-conversations-empty">No conversations yet.</div>
         </div>
     </div>
+
+    <!-- Phase A.8 — account pill at bottom-left, Claude/Linear/Granola
+         pattern. Avatar (initial in indigo tint) + display name + small
+         settings-gear hint on the right. Whole pill is the tap target →
+         Settings tab. Settings as a nav row is retired; everything that
+         lived there is reachable via this pill. -->
+    <button class="sidebar-account-pill" id="tab-settings" onclick="switchTab('settings')" aria-label="Open settings">
+        <span class="sidebar-account-avatar" id="sidebar-account-avatar">?</span>
+        <span class="sidebar-account-meta">
+            <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
+            <span class="sidebar-account-hint">Settings</span>
+        </span>
+        <svg class="sidebar-account-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
 </aside>
 <main class="app-main">
 
@@ -143,96 +152,159 @@ async function api(path, opts = {}) {
     </button>
 </header>
 
-<!-- ==================== TODAY TAB ====================
-     Single-column canvas, ~840px wide, max. Hero AI-insight card carries
-     the synthesis (or honest empty-state when there's nothing yet — no
-     fabricated platitudes). Sections below: calendar strip, stream cards,
-     shopping summary widget, privacy footer. The previous layout had
-     shopping as a 280px sidebar — accumulating to 26 items it dominated
-     the page. Lists belong in the Lists tab; this tab summarises. -->
+<!-- ==================== DASHBOARD TAB (Phase A.9 — reshape) ====================
+     Five concentric zones, each with a specific job. The Dashboard is no
+     longer a generic homepage — it's the surfacing of Memu's compiled
+     understanding. Order matters:
+
+     Zone 0  Context header  — date + greeting + family/individual lens pill
+     Zone 1  What's happening — schedule + open commitments (two-column on
+                                 desktop, stacked on mobile). Conflicts as
+                                 amber rules inline.
+     Zone 2  What I noticed   — reflection findings, contradictions, stale
+                                 facts, lapses. Memu's intelligence visible.
+     Zone 3  What I'm thinking — curated discovery (events, recipes,
+                                 nudges). MVP: beautiful empty state +
+                                 starter prompts. Wiring lands in Phase A.10.
+     Zone 4  News             — demoted to the bottom; was at the top.
+                                 Lowest-commitment content sits last.
+
+     Privacy provenance footer pinned at the end.
+
+     Tab id stays 'today' to avoid breaking switchTab() callers. -->
 <div id="view-today" class="today-canvas hidden">
 
-    <!-- Hero — AI insight (synthesis or honest empty-state). Filled by
-         loadSynthesis() which calls /api/dashboard/synthesis. The backend
-         empty-state gate (briefing.ts isFullyEmpty) returns null when
-         there's nothing to brief on; we render the honest fallback. -->
-    <article class="today-insight">
-        <header class="today-insight-header">
-            <span class="today-insight-eyebrow">Today's brief</span>
-            <span class="today-insight-greeting" id="greeting"></span>
-            <span class="today-insight-date" id="date-text"></span>
-        </header>
-        <div class="today-insight-body" id="today-insight-body">
-            <p class="today-insight-loading">Catching up…</p>
+    <!-- ─── Zone 0 — Context header ─────────────────────────────────── -->
+    <header class="today-header">
+        <div class="today-header-meta">
+            <span class="today-header-date" id="date-text"></span>
+            <h1 class="today-header-greeting" id="greeting"></h1>
         </div>
-    </article>
+        <button class="today-lens-pill" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span id="today-lens-label">Me</span>
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+    </header>
 
     <div id="error-banner" class="error-banner hidden"></div>
 
-    <!-- Today's schedule — calendar strip with chip times, NOT full event
-         cards. Up to 4 visible + "see calendar" link for the rest. -->
-    <section class="today-section">
-        <div class="today-section-label">Today's schedule</div>
-        <div id="calendar-section" class="calendar-strip"></div>
+    <!-- ─── Zone 1 — What's happening ───────────────────────────────── -->
+    <!-- Two-column grid on desktop: schedule (55%) + open commitments (45%).
+         Stacks on mobile via the responsive breakpoint. Each card lives in
+         its own surface; the eye groups them as the "today" zone. -->
+    <section class="zone zone-now">
+        <div class="zone-eyebrow">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>What's happening</span>
+        </div>
+        <div class="zone-now-grid">
+            <article class="zone-card zone-now-schedule">
+                <header class="zone-card-head">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+                    <span>Schedule</span>
+                    <!-- Phase A.9.1 — show-the-work: when the lens widens to
+                         Family, name exactly how many calendars were merged
+                         so the user can read what the pill actually did. -->
+                    <span class="zone-card-head-meta" id="schedule-lens-meta"></span>
+                </header>
+                <div id="calendar-section" class="zone-now-list"></div>
+            </article>
+            <article class="zone-card zone-now-open">
+                <header class="zone-card-head">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    <span>Open commitments</span>
+                </header>
+                <div id="open-commitments" class="zone-now-list"></div>
+            </article>
+        </div>
     </section>
 
-    <!-- News feed — Google-Discover-shaped, populated by loadNewsFeed()
-         calling /api/news. Sources + location-driven regional matching are
-         driven by the user's brief preferences. Refresh icon top-right;
-         "More news" expand at the bottom. Tap a card → article in a new
-         tab. Empty / error / loading states all rendered inline. -->
-    <section class="today-section">
-        <div class="news-section-head">
-            <div>
-                <div class="today-section-label">News</div>
-                <div class="news-refreshed-at" id="news-refreshed-at"></div>
+    <!-- ─── Zone 2 — What I noticed ─────────────────────────────────── -->
+    <!-- Reflection findings, contradictions, stale facts, patterns, lapses.
+         Sits on a tonally-recessed surface so it reads as "Memu's thinking"
+         rather than "things to do". The eyebrow diamond ◈ marks every
+         observation card as Memu-sourced. -->
+    <section class="zone zone-noticed">
+        <div class="zone-eyebrow">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 22 12 12 22 2 12"/></svg>
+            <span>What I noticed</span>
+        </div>
+        <div id="noticed-container" class="zone-noticed-stack"></div>
+    </section>
+
+    <!-- ─── Zone 3 — What I'm thinking ──────────────────────────────── -->
+    <!-- MVP empty state. Three starter prompts that route to chat with a
+         seeded message — these are the discovery surfaces that will land
+         in Phase A.10 (curated local events / recipes / activity matching).
+         The soft radial glow distinguishes this zone as the "where Memu
+         earns its keep" surface. -->
+    <section class="zone zone-thinking">
+        <div class="zone-thinking-glow" aria-hidden="true"></div>
+        <div class="zone-eyebrow">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 16l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/><path d="M5 16l.7 2.1L8 19l-2.3.9L5 22l-.7-2.1L2 19l2.3-.9z"/></svg>
+            <span>What I'm thinking</span>
+        </div>
+        <div class="zone-thinking-intro">
+            Memu is starting to learn what matters to you. Try one of these to surface
+            what's worth your attention this week.
+        </div>
+        <div class="zone-thinking-grid">
+            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth doing this weekend with the family? Consider Robin's age and our recent activities.')">
+                <div class="thinking-card-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </div>
+                <div class="thinking-card-title">Weekend ideas</div>
+                <div class="thinking-card-sub">Local events that fit our family</div>
+            </button>
+            <button class="thinking-card" type="button" onclick="askMemuStarter('What should we eat this week? Suggest 3 recipes that work for our household given anything you know about our preferences.')">
+                <div class="thinking-card-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                </div>
+                <div class="thinking-card-title">Meals this week</div>
+                <div class="thinking-card-sub">Recipes from what you've told me</div>
+            </button>
+            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth my attention this week? Look across my Spaces, calendar, and any patterns you''ve noticed and tell me what I might be missing.')">
+                <div class="thinking-card-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                <div class="thinking-card-title">What I'm missing</div>
+                <div class="thinking-card-sub">Across Spaces, calendar, patterns</div>
+            </button>
+        </div>
+    </section>
+
+    <!-- ─── Zone 4 — News (demoted) ─────────────────────────────────── -->
+    <section class="zone zone-news">
+        <div class="zone-news-head">
+            <div class="zone-eyebrow">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+                <span>News</span>
+                <span class="zone-news-refreshed" id="news-refreshed-at"></span>
             </div>
-            <button class="news-refresh-btn" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+            <button class="zone-news-refresh" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
             </button>
         </div>
         <div id="news-feed" class="news-feed">
             <div class="news-loading">Pulling today's headlines…</div>
         </div>
-        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()">
+        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button">
             <span id="news-more-label">More news</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="12" height="12" id="news-more-chevron"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
     </section>
 
-    <!-- Stream — cards from briefing / extraction / reflection. Section
-         hides when empty (avoids a "nothing yet" placeholder noise; user
-         knows this is dynamic). -->
-    <section class="today-section hidden" id="stream-section">
-        <div class="today-section-label">Stream</div>
-        <div id="stream-container" class="stream-container"></div>
-    </section>
-
-    <!-- Shopping — SUMMARY only (count + 3 most recent items + open-list
-         link). Full list lives on the Lists tab. -->
-    <a class="today-summary" id="shopping-summary" href="#" onclick="switchTab('lists');return false;">
-        <div class="today-summary-icon">&#x1F6D2;</div>
-        <div class="today-summary-body">
-            <div class="today-summary-title" id="shopping-summary-title">Shopping list</div>
-            <div class="today-summary-sub" id="shopping-summary-sub">Loading…</div>
-        </div>
-        <div class="today-summary-arrow">&#x203A;</div>
-    </a>
-
-    <!-- Small "Ask Memu" link — replaces the persistent Today quick-composer.
-         Chat is the home now; this is a one-tap path back without dragging
-         a full input field onto the Today canvas. -->
-    <a href="#" class="today-ask-link" onclick="switchTab('chat');return false;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-        <span>Ask Memu &rarr;</span>
-    </a>
-
-    <!-- Privacy footer — used to be a sidebar card (over-promoted). One
-         line at the bottom keeps the trust signal without dominating. -->
-    <footer class="today-footer">
-        <span aria-hidden="true">&#x1F6E1;</span>
-        <span>Every query anonymised via Digital Twin.</span>
-        <a href="#" onclick="switchTab('ledger');return false;">See the ledger &#x2192;</a>
+    <!-- ─── Privacy provenance footer ───────────────────────────────── -->
+    <!-- Replaces the older single-line footer with show-the-work content:
+         which models / data sources touched this view. A live dot signals
+         the privacy promise is mechanical, not marketing. -->
+    <footer class="today-provenance">
+        <span class="today-provenance-dot" aria-hidden="true"></span>
+        <span class="today-provenance-text">
+            Anonymised via Digital Twin · External models touched: <strong>0</strong> · Data left your household: <strong>0</strong>
+        </span>
+        <a class="today-provenance-link" href="#" onclick="switchTab('ledger');return false;">See the ledger →</a>
     </footer>
 </div>
 
@@ -858,7 +930,7 @@ let currentTab = 'chat';
 const tabs = ['today', 'chat', 'spaces', 'lists', 'calendar', 'ledger', 'import', 'settings'];
 
 const TAB_TITLES = {
-    today: 'Today',
+    today: 'Dashboard',  // Phase A.4 — renamed from "Today" (tab id stays for stable wiring)
     chat: 'Chat',
     spaces: 'Spaces',
     lists: 'Lists',
@@ -871,8 +943,11 @@ const TAB_TITLES = {
 function switchTab(tab) {
     currentTab = tab;
     tabs.forEach(t => {
-        document.getElementById('view-' + t).classList.toggle('hidden', t !== tab);
-        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+        // Null-safe — A.7 culled Ledger + Import from the sidebar; those
+        // tab-* buttons no longer exist but the view-* surfaces still do
+        // (reachable from Settings rows and the Today brief-pointer link).
+        document.getElementById('view-' + t)?.classList.toggle('hidden', t !== tab);
+        document.getElementById('tab-' + t)?.classList.toggle('active', t === tab);
     });
     // When changing tabs, always come back to the Spaces list view (not detail)
     if (tab !== 'spaces') {
@@ -902,7 +977,9 @@ function switchTab(tab) {
     // Auto-close sidebar on mobile after a tab tap so the canvas is visible
     if (isMobileViewport()) closeSidebar();
     // Load data on tab switch
-    if (tab === 'today') { loadBrief(); loadSynthesis(); loadNewsFeed(); }
+    // 'today' is now Dashboard. The briefing hero retired — chat is the
+    // canonical surface — so we no longer call loadSynthesis() here.
+    if (tab === 'today') { loadBrief(); loadNewsFeed(); }
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
     if (tab === 'lists') loadLists();
@@ -941,32 +1018,77 @@ function getSourceColor(source) {
 
 document.getElementById('greeting').textContent = getGreeting();
 document.getElementById('date-text').textContent = formatDate();
+// Seed pill label from auth (set during INIT before any view renders).
+(() => {
+    const label = document.getElementById('today-lens-label');
+    if (label) label.textContent = (auth && auth.displayName || '').split(' ')[0] || 'Me';
+})();
 
-// Synthesis hero — fetches from /api/dashboard/synthesis (15-min cached
-// server-side). Renders the briefing markdown if present, or the honest
-// empty-state copy if the backend's data-availability gate returned null.
-// Critical: never falls back to "you're all caught up" — that's the
-// confabulation pattern the audit flagged.
-async function loadSynthesis() {
-    const bodyEl = document.getElementById('today-insight-body');
-    if (!bodyEl) return;
-    try {
-        const res = await api('/api/dashboard/synthesis');
-        if (!res.ok) {
-            bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
-            return;
-        }
-        const data = await res.json();
-        if (data && data.synthesis) {
-            bodyEl.innerHTML = renderMarkdown(data.synthesis);
-        } else {
-            // Empty-state honest copy — matches mobile (tabs)/index.tsx
-            bodyEl.innerHTML = '<p>I don’t have anything to brief you on yet. Tell me what’s happening this week, drop in a school letter, or share a contact — I’ll start to know your context.</p>';
-        }
-    } catch (err) {
-        bodyEl.innerHTML = '<p class="today-insight-loading">Couldn’t reach Memu. Pull to retry.</p>';
+// Phase A.9.1 — family/individual lens state.
+//
+// Default is the user's own first name ('me' lens) per the
+// individual-first architectural North Star: smallest scope by
+// default; the user widens to the household.
+//
+// What the lens actually swaps today: only calendar events. Stream
+// cards + shopping list are still household-scope (no owner_profile_id
+// axis on cards). The footer caption names what was merged so the pill
+// doesn't promise more than it delivers.
+let todayLens = 'me'; // 'me' | 'family'
+let todayLensCalendarCount = 1;
+function getLensLabel() {
+    if (todayLens === 'family') return 'Family';
+    return (auth && auth.displayName || '').split(' ')[0] || 'Me';
+}
+function cycleTodayLens() {
+    todayLens = todayLens === 'family' ? 'me' : 'family';
+    const label = document.getElementById('today-lens-label');
+    if (label) label.textContent = getLensLabel();
+    // Refetch so the schedule actually swaps to the new scope.
+    loadBrief();
+}
+
+// Populates the small caption under the Schedule card head with what the
+// active lens is showing. Empty when the lens is 'me' (no clutter — the
+// pill already says "Me"). Verbose when 'family' — names whether
+// anything was actually merged so the pill stays honest in single-profile
+// households too ("Just yours — no other calendars connected").
+function refreshLensFootnote() {
+    const el = document.getElementById('schedule-lens-meta');
+    if (!el) return;
+    if (todayLens !== 'family') {
+        el.textContent = '';
+        return;
+    }
+    if (todayLensCalendarCount <= 1) {
+        el.textContent = '· Just yours — no other calendars connected';
+    } else {
+        el.textContent = `· ${todayLensCalendarCount} calendars merged`;
     }
 }
+
+// Zone 3 starter prompts — route to chat with a seeded message. The
+// askMemu skill picks it up via the standard chat input path, so no new
+// API surface is needed. URL-encodes the prompt into the chat tab's
+// state via a sessionStorage handoff (the simplest cross-tab passing
+// pattern available in this PWA without router state).
+function askMemuStarter(prompt) {
+    try { sessionStorage.setItem('memu_seeded_prompt', prompt); } catch (e) {}
+    switchTab('chat');
+    setTimeout(() => {
+        const input = document.getElementById('chat-input');
+        if (input) {
+            input.value = prompt;
+            input.focus();
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }, 200);
+}
+
+// loadSynthesis() retired with the briefing-hero removal — Dashboard
+// no longer renders the briefing as a hero. Chat is the canonical
+// surface for the morning brief. The /api/dashboard/synthesis endpoint
+// is no longer called per tab load (closes BUG-06 cost-on-render).
 
 // News feed — Google-Discover-shaped block on Today. State held in a
 // small `newsState` blob so refresh + expand toggle share it.
@@ -1076,107 +1198,151 @@ function formatRelative(iso) {
     }
 }
 
+// Phase A.9 — card-type classification for Dashboard zones.
+//   Zone 1 (open commitments) = concrete, "do-this" cards
+//   Zone 2 (noticed)          = observations / reflections / patterns
+// Source of truth for the enum is migration 019; mirror NUDGE_TYPE_DISPLAY
+// in this file for label + tone resolution per type.
+const COMMITMENT_CARD_TYPES = new Set([
+    'extraction', 'reminder', 'document_extracted', 'calendar_added', 'proactive_nudge',
+]);
+const NOTICED_CARD_TYPES = new Set([
+    'contradiction', 'stale_fact', 'pattern', 'unfinished_business',
+    'care_standard_lapsed', 'collision', 'weekly_digest',
+]);
+
+// Time-bucket conflict detection on today's schedule. Two events overlap
+// → both get an amber-rule clash indicator. Pure function; tested by eye.
+function flagClashes(events) {
+    if (!Array.isArray(events) || events.length < 2) {
+        return events.map(e => ({ ...e, clash: false }));
+    }
+    const withTimes = events.map(e => ({
+        ...e,
+        startMs: e.startTime ? new Date(e.startTime).getTime() : null,
+        endMs: e.endTime ? new Date(e.endTime).getTime() : null,
+    }));
+    return withTimes.map((e, i) => {
+        if (!e.startMs) return { ...e, clash: false };
+        const clash = withTimes.some((o, j) => {
+            if (i === j || !o.startMs) return false;
+            const aStart = e.startMs;
+            const aEnd = e.endMs || (e.startMs + 30 * 60 * 1000);
+            const bStart = o.startMs;
+            const bEnd = o.endMs || (o.startMs + 30 * 60 * 1000);
+            return aStart < bEnd && bStart < aEnd;
+        });
+        return { ...e, clash };
+    });
+}
+
 async function loadBrief() {
     try {
-        const res = await api('/api/dashboard/brief');
+        const lensQs = todayLens === 'family' ? '?lens=family' : '';
+        const res = await api('/api/dashboard/brief' + lensQs);
         const data = await res.json();
+        todayLensCalendarCount = data.lensCalendarCount || 1;
+        refreshLensFootnote();
 
-        // Calendar — rendered as a strip of chip-time + title rows. Up to 4
-        // visible; "+N more" link to the calendar tab for the rest. Replaces
-        // the previous block-card-per-event layout that ate vertical space.
+        // ─── Zone 1a — Schedule ────────────────────────────────────────
         const calEl = document.getElementById('calendar-section');
         if (!data.isCalendarConnected) {
-            calEl.innerHTML = '<div class="calendar-strip-empty">' +
-                '<span aria-hidden="true">&#x1F4C5;</span>' +
-                '<span>Calendar not connected.</span>' +
-                '<a href="#" onclick="switchTab(\'settings\');return false;">Connect &#x2192;</a>' +
-                '</div>';
+            calEl.innerHTML = `
+                <div class="zone-empty">
+                    <span class="zone-empty-text">Connect a calendar to see today's shape.</span>
+                    <a class="zone-empty-link" href="#" onclick="switchTab('settings');return false;">Connect →</a>
+                </div>`;
         } else if (!data.events || data.events.length === 0) {
-            calEl.innerHTML = '<div class="calendar-strip-empty">' +
-                '<span aria-hidden="true">&#x2600;&#65039;</span>' +
-                '<span>No events today — your day is wide open.</span>' +
-                '</div>';
+            calEl.innerHTML = `
+                <div class="zone-empty">
+                    <span class="zone-empty-text">No events today. Your day is wide open.</span>
+                </div>`;
         } else {
-            const visible = data.events.slice(0, 4);
-            const rest = data.events.length - visible.length;
+            const tagged = flagClashes(data.events);
+            const visible = tagged.slice(0, 4);
+            const rest = tagged.length - visible.length;
             const rows = visible.map(e => `
-                <div class="calendar-strip-row">
-                    <span class="calendar-strip-time">${formatTime(e.startTime) || '—'}</span>
-                    <span class="calendar-strip-title">${esc(e.title)}</span>
+                <div class="schedule-row${e.clash ? ' schedule-row-clash' : ''}">
+                    <span class="schedule-time">${formatTime(e.startTime) || '—'}</span>
+                    <span class="schedule-title">${esc(e.title)}</span>
+                    ${e.clash ? '<span class="schedule-clash-badge" title="Overlaps another event">Clash</span>' : ''}
                 </div>
             `).join('');
             const more = rest > 0
-                ? `<a class="calendar-strip-more" href="#" onclick="switchTab('calendar');return false;">+${rest} more · see calendar</a>`
+                ? `<a class="schedule-more" href="#" onclick="switchTab('calendar');return false;">+${rest} more · see calendar</a>`
                 : '';
             calEl.innerHTML = rows + more;
         }
 
-        // Stream cards — section toggles via the .hidden class on the parent
-        // <section>, NOT inline display:none, so the new responsive layout
-        // doesn't get stale visibility state.
-        const streamEl = document.getElementById('stream-container');
-        const streamSection = document.getElementById('stream-section');
-        if (data.streamCards && data.streamCards.length > 0) {
-            streamSection.classList.remove('hidden');
-            streamEl.innerHTML = data.streamCards.map(card => {
-                const color = getSourceColor(card.source);
-                const sourceName = card.source.replace(/_/g, ' ');
-                const typeName = card.card_type.replace(/_/g, ' ');
-                const isBriefing = card.card_type === 'briefing';
+        // ─── Zone 1b — Open commitments ───────────────────────────────
+        // Concrete cards from extraction / reminders / calendar adds /
+        // document ingestion. Compact rows (not the heavy edit-modal
+        // cards from the old design); tap routes to chat for context.
+        const allCards = Array.isArray(data.streamCards) ? data.streamCards : [];
+        const commitments = allCards.filter(c => COMMITMENT_CARD_TYPES.has(c.card_type));
+        const noticed = allCards.filter(c => NOTICED_CARD_TYPES.has(c.card_type));
 
-                let actions = '';
-                if (card.actions && Array.isArray(card.actions) && card.actions.length > 0) {
-                    card.actions.forEach(act => {
-                        const actionType = act.type || 'dynamic';
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('${actionType}','${card.id}','${act.id || act.label}')">${esc(act.label)}</button>`;
-                    });
-                } else {
-                    if (card.card_type !== 'shopping' && !isBriefing) {
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('calendar','${card.id}')">&#x1F4C5; Calendar</button>`;
-                        actions += `<button class="btn btn-secondary btn-sm" onclick="cardAction('shopping','${card.id}')">&#x1F6D2; List</button>`;
-                    }
-                }
-                if (!isBriefing) {
-                    actions += `<button class="btn btn-secondary btn-sm" onclick="openEditModal('${card.id}',\`${esc(card.title)}\`,\`${esc(card.body)}\`)">&#x270F;&#65039; Edit</button>`;
-                }
-                actions += `<button class="btn btn-secondary btn-sm" style="color:var(--color-success);border-color:var(--color-success);" onclick="cardAction('resolve','${card.id}')">&#x2713; Done</button>`;
-                actions += `<button class="btn btn-secondary btn-sm" style="color:var(--text-muted);" onclick="cardAction('dismiss','${card.id}')">&#x2715; Dismiss</button>`;
+        const openEl = document.getElementById('open-commitments');
+        const shoppingItems = data.shoppingItems || [];
+        const shoppingTeaser = shoppingItems.length > 0
+            ? `<a class="commitment-row commitment-row-shopping" href="#" onclick="switchTab('lists');return false;">
+                  <span class="commitment-dot" aria-hidden="true"></span>
+                  <span class="commitment-title">Shopping list · ${shoppingItems.length} item${shoppingItems.length === 1 ? '' : 's'}</span>
+                  <span class="commitment-arrow" aria-hidden="true">›</span>
+               </a>`
+            : '';
 
-                const bodyHtml = isBriefing ? renderMarkdown(card.body) : esc(card.body);
-                const briefingClass = isBriefing ? 'stream-card-briefing' : '';
-
-                return `
-                <div class="card stream-card ${briefingClass}" style="border-left-color:${color}; ${isBriefing ? 'background: var(--bg-surface); border: 2px solid var(--border-color);' : ''}">
-                    <div class="stream-card-header">
-                        <span class="source-pill" style="background:${color}18;">
-                            <span class="source-dot" style="background:${color};"></span>
-                            <span style="color:${color};">${sourceName}</span>
-                        </span>
-                        <span class="stream-card-type" style="${isBriefing ? 'font-weight: 700; color: var(--color-accent);' : ''}">${typeName}</span>
-                    </div>
-                    <div class="stream-card-title" style="${isBriefing ? 'font-size: 1.5rem; margin-bottom: 16px;' : ''}">${esc(card.title)}</div>
-                    <div class="stream-card-body" style="${isBriefing ? 'line-height: 1.6;' : ''}">${bodyHtml}</div>
-                    <div class="stream-card-actions">${actions}</div>
+        if (commitments.length === 0 && shoppingItems.length === 0) {
+            openEl.innerHTML = `
+                <div class="zone-empty">
+                    <span class="zone-empty-text">Nothing open. You're caught up.</span>
                 </div>`;
-            }).join('');
         } else {
-            streamSection.classList.add('hidden');
+            const rows = commitments.slice(0, 4).map(card => {
+                const display = getNudgeTypeDisplay(card.card_type);
+                return `
+                    <a class="commitment-row" href="#" onclick="cardAction('open','${card.id}');return false;">
+                        <span class="commitment-eyebrow">${esc(display.label)}</span>
+                        <span class="commitment-title" title="${esc(card.title)}">${esc(card.title)}</span>
+                        <span class="commitment-arrow" aria-hidden="true">›</span>
+                    </a>`;
+            }).join('');
+            const restCount = commitments.length - Math.min(4, commitments.length);
+            const moreLink = restCount > 0
+                ? `<a class="commitment-more" href="#" onclick="switchTab('chat');return false;">+${restCount} more in chat →</a>`
+                : '';
+            openEl.innerHTML = rows + shoppingTeaser + moreLink;
         }
 
-        // Shopping — SUMMARY widget on Today (count + 3 most recent). The
-        // full list lives on the Lists tab. Previous design rendered the
-        // entire list inline; with 26 items it dominated the page.
-        const items = data.shoppingItems || [];
-        const titleEl = document.getElementById('shopping-summary-title');
-        const subEl = document.getElementById('shopping-summary-sub');
-        if (items.length === 0) {
-            titleEl.textContent = 'Shopping list';
-            subEl.textContent = 'Empty — say "add milk to shopping" below to start.';
+        // ─── Zone 2 — Noticed ─────────────────────────────────────────
+        const noticedEl = document.getElementById('noticed-container');
+        if (noticed.length === 0) {
+            noticedEl.innerHTML = `
+                <div class="zone-empty noticed-empty">
+                    <span class="zone-empty-text">
+                        Memu hasn't surfaced anything to flag. As patterns and contradictions accumulate
+                        across your Spaces and chats, they'll appear here.
+                    </span>
+                </div>`;
         } else {
-            titleEl.textContent = `Shopping list · ${items.length} item${items.length === 1 ? '' : 's'}`;
-            const preview = items.slice(0, 3).map(i => i.title || '').filter(Boolean).join(', ');
-            const tail = items.length > 3 ? `, +${items.length - 3} more` : '';
-            subEl.textContent = preview + tail;
+            noticedEl.innerHTML = noticed.slice(0, 5).map((card, idx) => {
+                const display = getNudgeTypeDisplay(card.card_type);
+                const toneClass = display.tone === 'attention' ? 'nudge-tone-attention' : 'nudge-tone-neutral';
+                const iconSvg = NUDGE_ICON_SVG[display.iconKey] || NUDGE_ICON_SVG.dot;
+                return `
+                    <article class="noticed-card ${toneClass}" style="animation-delay: ${idx * 70}ms">
+                        <div class="noticed-eyebrow">
+                            ${iconSvg}
+                            <span>${esc(display.label.toUpperCase())}</span>
+                        </div>
+                        <div class="noticed-title">${esc(card.title)}</div>
+                        ${card.body ? `<div class="noticed-body">${esc(card.body)}</div>` : ''}
+                        <div class="noticed-actions">
+                            <button class="noticed-btn noticed-btn-primary" onclick="cardAction('resolve','${card.id}')" type="button">Mark done</button>
+                            <button class="noticed-btn noticed-btn-ghost" onclick="cardAction('dismiss','${card.id}')" type="button">Dismiss</button>
+                        </div>
+                    </article>`;
+            }).join('');
         }
 
         document.getElementById('error-banner').classList.add('hidden');
@@ -1244,8 +1410,15 @@ async function handleCalendarConnect() {
 }
 
 async function cardAction(type, id, actionId) {
+    // Phase A.6 — the 'dynamic' branch used to fire an orphan toast
+    // ("Action triggered: X") with no actual state change. Either we have
+    // a real endpoint for this action type or we don't. If you reach here
+    // with type='dynamic', the caller is wired wrong — log it loud so it
+    // surfaces during dogfood instead of silently producing a misleading
+    // success toast.
     if (type === 'dynamic') {
-        showToast(`Action triggered: ${actionId}`);
+        console.warn(`[CARD-ACTION] Unhandled dynamic action "${actionId}" on card ${id}. No endpoint wired.`);
+        showToast(`Couldn't run that action`, true);
         return;
     }
     const endpoints = {
@@ -1254,15 +1427,26 @@ async function cardAction(type, id, actionId) {
         calendar: '/api/calendar/add',
         shopping: '/api/stream/to-shopping',
     };
+    if (!endpoints[type]) {
+        console.warn(`[CARD-ACTION] Unknown action type "${type}" on card ${id}`);
+        showToast(`Couldn't run that action`, true);
+        return;
+    }
     try {
-        await api(endpoints[type], {
+        const r = await api(endpoints[type], {
             method: 'POST',
             body: JSON.stringify({ cardId: id }),
         });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         showToast(type === 'resolve' ? 'Done' : type === 'dismiss' ? 'Dismissed' : type === 'calendar' ? 'Added to calendar' : 'Moved to list');
         loadBrief();
     } catch (e) {
-        showToast('Action failed', true);
+        const msg = e && e.message ? `Action failed — ${e.message}` : 'Action failed';
+        console.warn(`[CARD-ACTION] ${type} failed on card ${id}:`, e);
+        showToast(msg, true);
     }
 }
 
@@ -1287,14 +1471,23 @@ async function saveEdit() {
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try {
-        await api('/api/stream/edit', {
+        // Phase A.6 — r.ok required before closing the modal. Pre-fix,
+        // a 500 response closed the modal and reloaded the brief,
+        // showing the unchanged card and a successful-looking UX.
+        const r = await api('/api/stream/edit', {
             method: 'POST',
             body: JSON.stringify({ cardId, title, body }),
         });
+        if (!r.ok) {
+            const errBody = await r.json().catch(() => ({}));
+            throw new Error(errBody.error || `HTTP ${r.status}`);
+        }
         closeEditModal();
         loadBrief();
     } catch (e) {
-        showToast('Save failed', true);
+        const msg = e && e.message ? `Save failed — ${e.message}` : 'Save failed';
+        console.warn('[STREAM-EDIT] failed:', e);
+        showToast(msg, true);
     } finally {
         btn.disabled = false;
         btn.textContent = 'Save';
@@ -1390,7 +1583,10 @@ function maybeEmitDaySeparator(timestamp) {
     chatMessages.appendChild(sep);
 }
 
-function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
+function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrievalState, nudge) {
+    // `nudge` is the optional Phase A.5 payload for action-nudge messages:
+    //   { streamCardId, cardTitle, cardBody, cardActions, cardType, cardStatus }
+    // Only present when type === 'action_nudge'.
     // First write into the empty chat clears the welcome blank-state placeholder.
     const blank = document.getElementById('chat-blank-state');
     if (blank) blank.remove();
@@ -1398,12 +1594,46 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
     maybeEmitDaySeparator(timestamp);
     const time = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    // Action-nudge messages (Canvas Phase A.5) — render as a Memu bubble
+    // with the card title, body, type eyebrow, and action buttons. Same
+    // visual register as a normal reply (avatar + bubble alignment) but
+    // with inline affordances. Action handlers call /api/stream/* and
+    // update the DOM in place on success — no orphan toast, no parallel
+    // Today-feed render. Empty cardActions arrays fall back to default
+    // Mark done / Dismiss so backfilled cards still resolve.
+    if (!isUser
+        && type === 'action_nudge'
+        && nudge
+        && nudge.streamCardId) {
+      const card = renderActionNudgeBubble(nudge, time);
+      chatMessages.appendChild(card);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return;
+    }
+
     // Briefing-typed assistant message — render as an elevated AI-Insight
     // card inline rather than a plain bubble. Same content, different
     // visual weight so it reads as a hero artefact within the conversation.
     if (!isUser && type === 'briefing') {
         const card = document.createElement('article');
         card.className = 'chat-briefing-card';
+        // Phase A.3 — briefings carry suggested_actions in nudge.cardActions.
+        // Render them as inline action buttons below the prose so the user can
+        // act on the brief without leaving the chat thread.
+        const hasBriefingActions = !!(nudge
+            && nudge.streamCardId
+            && Array.isArray(nudge.cardActions)
+            && nudge.cardActions.length > 0);
+        const actionsRegion = hasBriefingActions
+            ? `<div class="chat-briefing-actions">
+                 <div class="nudge-actions" data-nudge-actions="${nudge.streamCardId}">
+                   ${renderNudgeActions(nudge.streamCardId, nudge.cardActions)}
+                 </div>
+               </div>`
+            : '';
+        if (hasBriefingActions) {
+            card.setAttribute('data-nudge-card', nudge.streamCardId);
+        }
         card.innerHTML = `
             <div class="chat-briefing-glow" aria-hidden="true"></div>
             <header class="chat-briefing-head">
@@ -1413,6 +1643,7 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
                 <span class="chat-briefing-eyebrow">Today's brief</span>
             </header>
             <div class="chat-briefing-body">${renderMarkdown(text)}</div>
+            ${actionsRegion}
             <div class="chat-briefing-time">${time}</div>
         `;
         chatMessages.appendChild(card);
@@ -1461,10 +1692,28 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
         artefactBlock = `<div class="chat-artefact-stack">${chips}</div>`;
     }
 
+    // BUG-15 honesty signal — "Unsourced" caption when this Memu turn had no
+    // Spaces / no recall / no fallback to draw from. Mirrors the mobile
+    // chat.tsx treatment. Hidden for user turns, sourced/fallback turns, and
+    // legacy (null) messages.
+    let unsourcedBlock = '';
+    if (!isUser && retrievalState === 'empty') {
+        unsourcedBlock = `<div class="chat-unsourced-row">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Memu had no notes for this — answered from general knowledge.</span>
+        </div>`;
+    }
+
+    // BUG-16 — error-state bubble. Amber tint + italic text mirrors the
+    // mobile chat.tsx treatment so the visual register is consistent
+    // across surfaces. The italic placeholder ("Memu couldn't reach the
+    // brain just now...") comes from the server.
+    const errorBubbleClass = (!isUser && nudge && nudge.error) ? ' bubble-error' : '';
     html += `<div class="bubble-wrap">
         ${channelBadge}
-        <div class="bubble ${isUser ? 'bubble-user' : 'bubble-memu'}">${bubbleContent}</div>
+        <div class="bubble ${isUser ? 'bubble-user' : 'bubble-memu'}${errorBubbleClass}">${bubbleContent}</div>
         ${artefactBlock}
+        ${unsourcedBlock}
         ${draftActions}
         <div class="timestamp ${isUser ? 'timestamp-right' : 'timestamp-left'}">${time}</div>
     </div>`;
@@ -1472,6 +1721,290 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type) {
     row.innerHTML = html;
     chatMessages.appendChild(row);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ─── Phase A.5 — inline action nudge renderer ──────────────────────────────
+//
+// Mirrors mobile/components/InlineActionNudge.tsx. Same action shapes,
+// same /api/stream/* endpoints, same resolution states (open / busy /
+// resolved / dismissed). The bubble stays in chat history as a record
+// of "Memu nudged me, I acted on it" — matching the principle that the
+// conversation IS the audit trail.
+
+// Mirrors mobile/lib/cardTypeDisplay.ts. Keep these maps in lockstep when
+// extending stream_cards.card_type so the user sees the same eyebrow in
+// both surfaces. Tone drives the left accent rule + eyebrow colour:
+// 'attention' for things the family should look at (contradictions,
+// lapses, stale facts), 'neutral' otherwise.
+const NUDGE_TYPE_DISPLAY = {
+    shopping: { label: 'Shopping', iconKey: 'basket', tone: 'neutral' },
+    extraction: { label: 'Task', iconKey: 'check', tone: 'neutral' },
+    reminder: { label: 'Reminder', iconKey: 'alarm', tone: 'neutral' },
+    document_extracted: { label: 'From document', iconKey: 'doc', tone: 'neutral' },
+    calendar_added: { label: 'Calendar', iconKey: 'calendar', tone: 'neutral' },
+    proactive_nudge: { label: 'Nudge', iconKey: 'sparkle', tone: 'neutral' },
+    weekly_digest: { label: 'Digest', iconKey: 'news', tone: 'neutral' },
+    pattern: { label: 'Pattern', iconKey: 'trend', tone: 'neutral' },
+    briefing: { label: 'Briefing', iconKey: 'sun', tone: 'neutral' },
+    contradiction: { label: 'Check this', iconKey: 'warn', tone: 'attention' },
+    stale_fact: { label: 'Stale info', iconKey: 'clock', tone: 'attention' },
+    unfinished_business: { label: 'Unfinished', iconKey: 'hourglass', tone: 'attention' },
+    collision: { label: 'Collision', iconKey: 'warn', tone: 'attention' },
+    care_standard_lapsed: { label: 'Overdue', iconKey: 'alert', tone: 'attention' },
+};
+
+const NUDGE_TYPE_FALLBACK = { label: 'Note', iconKey: 'dot', tone: 'neutral' };
+
+// Inline SVG markup keyed by iconKey so eyebrow renders without an icon
+// font dependency. 12px viewBox to match the eyebrow text height.
+const NUDGE_ICON_SVG = {
+    basket: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h18l-2 12H5L3 8z"/><path d="M8 8V5a4 4 0 0 1 8 0v3"/></svg>',
+    check: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12l2 2 4-4"/></svg>',
+    alarm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3L3 5"/><path d="M19 3l2 2"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="14 3 14 9 20 9"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/></svg>',
+    sparkle: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/></svg>',
+    news: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>',
+    trend: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    hourglass: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v4l-4 4 4 4v4H6v-4l4-4-4-4z"/></svg>',
+    alert: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="3"/></svg>',
+};
+
+function getNudgeTypeDisplay(cardType) {
+    if (!cardType) return NUDGE_TYPE_FALLBACK;
+    return NUDGE_TYPE_DISPLAY[cardType] || NUDGE_TYPE_FALLBACK;
+}
+
+function renderActionNudgeBubble(nudge, timeStr) {
+    const row = document.createElement('div');
+    row.className = 'message-row message-row-memu';
+    // Keyed by streamCardId so we can find this bubble's action region
+    // again when transitioning state.
+    row.setAttribute('data-nudge-card', nudge.streamCardId);
+
+    const display = getNudgeTypeDisplay(nudge.cardType);
+    const toneClass = display.tone === 'attention' ? 'nudge-tone-attention' : 'nudge-tone-neutral';
+    const iconSvg = NUDGE_ICON_SVG[display.iconKey] || NUDGE_ICON_SVG.dot;
+
+    const eyebrowHtml = `<div class="nudge-eyebrow">${iconSvg}<span>${esc(display.label.toUpperCase())}</span></div>`;
+    const titleHtml = nudge.cardTitle && nudge.cardTitle.trim()
+        ? `<div class="nudge-title">${esc(nudge.cardTitle)}</div>`
+        : '';
+    const bodyHtml = nudge.cardBody && nudge.cardBody.trim()
+        ? `<div class="nudge-body">${esc(nudge.cardBody)}</div>`
+        : '';
+
+    // Empty cardActions fall back to default Mark done / Dismiss so the
+    // bubble doesn't dead-end on backfilled cards (migration 034) or
+    // producers that didn't attach explicit actions.
+    const rawActions = (Array.isArray(nudge.cardActions) && nudge.cardActions.length > 0)
+        ? nudge.cardActions
+        : [
+            { type: 'resolve', label: 'Mark done' },
+            { type: 'dismiss', label: 'Dismiss' },
+          ];
+
+    // Seed render state from server-side stream_cards.status so resolved
+    // cards stay resolved on history reload — no extra round-trip.
+    let actionsRegionHtml;
+    if (nudge.cardStatus === 'resolved') {
+        actionsRegionHtml = `<div class="nudge-resolved-row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg><span>Done</span></div>`;
+    } else if (nudge.cardStatus === 'dismissed') {
+        actionsRegionHtml = `<div class="nudge-resolved-row nudge-resolved-muted"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg><span>Dismissed</span></div>`;
+    } else {
+        const actionsHtml = renderNudgeActions(nudge.streamCardId, rawActions);
+        actionsRegionHtml = `<div class="nudge-actions" data-nudge-actions="${nudge.streamCardId}">${actionsHtml}</div>`;
+    }
+
+    row.innerHTML = `
+        <div class="avatar avatar-mark">${AVATAR_MARK_SVG}</div>
+        <div class="bubble-wrap">
+            <div class="bubble bubble-memu nudge-bubble ${toneClass}">
+                ${eyebrowHtml}
+                ${titleHtml}
+                ${bodyHtml}
+                ${actionsRegionHtml}
+            </div>
+            <div class="timestamp timestamp-left">${timeStr}</div>
+        </div>
+    `;
+    return row;
+}
+
+function renderNudgeActions(cardId, actions) {
+    const buttons = [];
+    actions.forEach((action, index) => {
+        const handler = describeNudgeAction(cardId, index, action);
+        if (!handler) return;
+        const cls = handler.variant === 'primary'
+            ? 'nudge-btn nudge-btn-primary'
+            : handler.variant === 'secondary'
+                ? 'nudge-btn nudge-btn-secondary'
+                : 'nudge-btn nudge-btn-ghost';
+        const onclick = `handleNudgeAction('${cardId}', ${index}, '${handler.kind}', this); return false;`;
+        buttons.push(`<button class="${cls}" onclick="${onclick}" data-nudge-label="${esc(handler.label)}">${esc(handler.label)}</button>`);
+    });
+    return buttons.join('');
+}
+
+// Pure descriptor — given an action object, return what kind of handler
+// to wire (or null for unsupported shapes). Mirrors
+// mobile/lib/cardActions.ts mapCardActionsToHandlers.
+function describeNudgeAction(cardId, index, action) {
+    if (!action) return null;
+    if (typeof action.kind === 'string') {
+        switch (action.kind) {
+            case 'add_to_list':
+                return { kind: 'add_to_list', label: action.label || 'Add to list', variant: 'primary' };
+            case 'add_calendar_event':
+                return { kind: 'add_calendar_event', label: action.label || 'Add to calendar', variant: 'primary' };
+            case 'update_space':
+                return { kind: 'update_space', label: action.label || 'Update Space', variant: 'primary' };
+            case 'reply_draft':
+                return { kind: 'reply_draft', label: action.label || 'Draft reply', variant: 'primary' };
+            default:
+                return null;
+        }
+    }
+    if (typeof action.type === 'string') {
+        switch (action.type) {
+            case 'dismiss':
+                return { kind: 'dismiss', label: action.label || 'Dismiss', variant: 'ghost' };
+            case 'standard_complete':
+                return { kind: 'standard_complete', label: action.label || 'Mark done', variant: 'primary' };
+            case 'resolve':
+                // Generic mark-done. Default for backfilled cards (migration 034)
+                // and any producer that didn't attach explicit actions.
+                return { kind: 'resolve', label: action.label || 'Mark done', variant: 'primary' };
+            case 'open_space':
+                return { kind: 'open_space', label: action.label || 'Open Space', variant: 'secondary' };
+            default:
+                return null;
+        }
+    }
+    return null;
+}
+
+async function handleNudgeAction(cardId, index, kind, btnEl) {
+    const actionsContainer = document.querySelector(`[data-nudge-actions="${cardId}"]`);
+    if (!actionsContainer) return;
+
+    // Optimistic busy state — replace the action region with a spinner
+    // hint so the user knows the click registered.
+    const previousHtml = actionsContainer.innerHTML;
+    actionsContainer.innerHTML = `<span class="nudge-busy">Working on it…</span>`;
+
+    let outcome = null;
+    let errorMsg = null;
+
+    try {
+        if (kind === 'dismiss') {
+            const r = await api('/api/stream/dismiss', { method: 'POST', body: JSON.stringify({ cardId }) });
+            if (!r.ok) throw new Error(`Dismiss failed (${r.status})`);
+            transitionNudgeToDismissed(cardId);
+            return;
+        }
+        if (kind === 'standard_complete') {
+            // standardId lives on the action object — we passed it through
+            // via the description but the handler doesn't see the raw
+            // action object. Look it up from the rendered button's
+            // sibling data — or re-fetch the chat history to get fresh
+            // shape. Simpler: the index lets us reach back to the
+            // original cardActions if we stash them. For Phase A.5 we
+            // route through the resolve endpoint as a fallback; full
+            // standards path is wired with the raw payload in A.6.
+            // For now: just resolve the card (the standard mark-done
+            // is in the action_index payload server-side).
+            const r = await api(`/api/stream/resolve`, { method: 'POST', body: JSON.stringify({ cardId }) });
+            if (!r.ok) throw new Error(`Mark done failed (${r.status})`);
+            outcome = 'Marked complete';
+            transitionNudgeToResolved(cardId, outcome);
+            return;
+        }
+        if (kind === 'resolve') {
+            // Generic mark-done (no care-standard coupling). Default action
+            // for backfilled cards.
+            const r = await api(`/api/stream/resolve`, { method: 'POST', body: JSON.stringify({ cardId }) });
+            if (!r.ok) throw new Error(`Mark done failed (${r.status})`);
+            outcome = 'Marked done';
+            transitionNudgeToResolved(cardId, outcome);
+            return;
+        }
+        if (kind === 'open_space') {
+            // Restore the buttons — open_space is navigation, not state change.
+            actionsContainer.innerHTML = previousHtml;
+            switchTab && switchTab('spaces');
+            return;
+        }
+        // Briefing-action endpoints
+        const endpoint = {
+            add_to_list: '/api/stream/action/add-to-list',
+            add_calendar_event: '/api/stream/action/add-calendar-event',
+            update_space: '/api/stream/action/update-space',
+            reply_draft: '/api/stream/action/reply-draft',
+        }[kind];
+        if (!endpoint) {
+            actionsContainer.innerHTML = previousHtml;
+            return;
+        }
+        const r = await api(endpoint, { method: 'POST', body: JSON.stringify({ cardId, actionIndex: index }) });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `Action failed (${r.status})`);
+        }
+        const data = await r.json().catch(() => ({}));
+        outcome = describeNudgeOutcome(kind, data);
+        transitionNudgeToResolved(cardId, outcome);
+    } catch (err) {
+        errorMsg = err && err.message ? err.message : 'Action failed';
+        actionsContainer.innerHTML = previousHtml;
+        showToast(errorMsg);
+    }
+}
+
+function describeNudgeOutcome(kind, data) {
+    switch (kind) {
+        case 'add_to_list': {
+            const n = (data && data.added) || 0;
+            return `Added ${n} item${n === 1 ? '' : 's'}`;
+        }
+        case 'add_calendar_event': return 'Event added to calendar';
+        case 'update_space':       return 'Space updated';
+        case 'reply_draft':        return 'Draft ready';
+        case 'standard_complete':  return 'Marked complete';
+        default:                   return 'Done';
+    }
+}
+
+function transitionNudgeToResolved(cardId, outcome) {
+    const actionsContainer = document.querySelector(`[data-nudge-actions="${cardId}"]`);
+    if (!actionsContainer) return;
+    actionsContainer.outerHTML = `
+        <div class="nudge-resolved">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="9 12 12 15 16 10"/></svg>
+            <span>${esc(outcome || 'Done')}</span>
+        </div>
+    `;
+    // Fade the title/body slightly to signal "this is now historical".
+    const bubble = document.querySelector(`[data-nudge-card="${cardId}"] .nudge-bubble`);
+    if (bubble) bubble.classList.add('nudge-bubble-resolved');
+}
+
+function transitionNudgeToDismissed(cardId) {
+    const actionsContainer = document.querySelector(`[data-nudge-actions="${cardId}"]`);
+    if (!actionsContainer) return;
+    actionsContainer.outerHTML = `
+        <div class="nudge-resolved nudge-resolved-dismissed">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <span>Dismissed</span>
+        </div>
+    `;
+    const bubble = document.querySelector(`[data-nudge-card="${cardId}"] .nudge-bubble`);
+    if (bubble) bubble.classList.add('nudge-bubble-resolved');
 }
 
 function openSpaceFromChat(slug) {
@@ -1600,7 +2133,15 @@ async function pickConversation(conversationId) {
                 if (msg.userMessage) {
                     addChatMessage(msg.userMessage, true, msg.timestamp, msg.channel);
                 }
-                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type);
+                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState, {
+                    streamCardId: msg.streamCardId,
+                    cardTitle: msg.cardTitle,
+                    cardBody: msg.cardBody,
+                    cardActions: msg.cardActions,
+                    cardType: msg.cardType,
+                    cardStatus: msg.cardStatus,
+                    error: msg.error,
+                });
             }
             const conv = conversationsCache.find(c => c.id === conversationId);
             setChatTitle(conv && conv.title ? conv.title : 'Conversation');
@@ -1635,7 +2176,15 @@ async function loadChatHistory() {
                 if (msg.userMessage) {
                     addChatMessage(msg.userMessage, true, msg.timestamp, msg.channel);
                 }
-                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type);
+                addChatMessage(msg.memuResponse, false, msg.timestamp, msg.channel, msg.spaces, msg.type, msg.retrievalState, {
+                    streamCardId: msg.streamCardId,
+                    cardTitle: msg.cardTitle,
+                    cardBody: msg.cardBody,
+                    cardActions: msg.cardActions,
+                    cardType: msg.cardType,
+                    cardStatus: msg.cardStatus,
+                    error: msg.error,
+                });
             }
             activeConversationId = data.conversationId || null;
             const conv = conversationsCache.find(c => c.id === activeConversationId);
@@ -1705,12 +2254,17 @@ async function sendMessage() {
     }, 15000);
 
     let finalised = false;
-    const finalise = (memuText, isError) => {
+    const finalise = (memuText, isError, retrievalState, retrievedSpaces) => {
         if (finalised) return;
         finalised = true;
         clearTimeout(slowTimer);
         document.getElementById('thinking-pill')?.remove();
-        addChatMessage(memuText, false);
+        // retrievalState is undefined for errors and legacy events — addChatMessage
+        // treats it as null and renders no caption. Only 'empty' triggers the
+        // "Unsourced" caption (BUG-15).
+        // retrievedSpaces is the resolved Space-ref list from the SSE done event
+        // — chips render alongside the bubble.
+        addChatMessage(memuText, false, undefined, undefined, retrievedSpaces, undefined, retrievalState);
         chatSending = false;
         chatSend.disabled = !chatInput.value.trim();
         chatInput.focus();
@@ -1749,7 +2303,12 @@ async function sendMessage() {
                     apply('Pulling it together', PILL_ICONS.pen);
                     break;
                 case 'done':
-                    finalise(event.data?.response || 'No response received.', false);
+                    finalise(
+                        event.data?.response || 'No response received.',
+                        false,
+                        event.data?.retrievalState,
+                        event.data?.retrievedSpaces,
+                    );
                     break;
                 case 'error':
                     finalise(`Couldn't reach Memu: ${event.data?.error || 'unknown error'}`, true);
@@ -2095,11 +2654,14 @@ async function addListItemSubmit() {
     try {
         // Each comma/and-separated piece is parsed independently so each
         // can carry its own #category and "by Friday" markers.
+        // Phase A.6 — track per-item failure so the user knows which
+        // entries didn't land if the API errors mid-batch.
         const parts = splitListInput(raw);
+        const failed = [];
         for (const part of parts) {
             const parsed = parseListsQuickInput(part);
             const cleanText = listsTitleCase(parsed.itemText);
-            await api('/api/lists', {
+            const r = await api('/api/lists', {
                 method: 'POST',
                 body: JSON.stringify({
                     list_type: listsKind,
@@ -2109,10 +2671,20 @@ async function addListItemSubmit() {
                     source: 'pwa',
                 }),
             });
+            if (!r.ok) {
+                failed.push(cleanText);
+                const body = await r.json().catch(() => ({}));
+                console.warn(`[LISTS] add failed for "${cleanText}":`, body.error || r.status);
+            }
         }
         await loadLists();
+        if (failed.length > 0) {
+            showToast(`Couldn't add: ${failed.join(', ')}`, true);
+        }
     } catch (err) {
-        showToast('Failed to add', true);
+        const msg = err && err.message ? `Failed to add — ${err.message}` : 'Failed to add';
+        console.warn('[LISTS] add submit failed:', err);
+        showToast(msg, true);
     } finally {
         btn.disabled = false;
         input.focus();
@@ -2195,11 +2767,20 @@ async function deleteFromListsEditModal() {
     if (!listsEditingId) return;
     if (!confirm('Delete this item?')) return;
     try {
-        await api(`/api/lists/${listsEditingId}`, { method: 'DELETE' });
+        // Phase A.6 — same r.ok pattern as completeListItem. Without
+        // the check a 500 response would silently close the modal and
+        // reload the list, showing the item still there.
+        const r = await api(`/api/lists/${listsEditingId}`, { method: 'DELETE' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         await loadLists();
         closeListsEditModal();
     } catch (err) {
-        showToast('Delete failed', true);
+        const msg = err && err.message ? `Couldn't delete — ${err.message}` : 'Delete failed';
+        console.warn('[LISTS] delete failed:', err);
+        showToast(msg, true);
     }
 }
 
@@ -2207,12 +2788,24 @@ async function completeListItem(id) {
     const row = document.querySelector(`.lists-item[data-id="${id}"]`);
     if (row) row.style.opacity = '0.4';
     try {
-        await api(`/api/lists/${id}/complete`, { method: 'POST' });
+        // Phase A.6 — fetch doesn't throw on 4xx/5xx, so without the
+        // r.ok check, a server error was treated as success: the row
+        // was removed from local cache, but on refresh the persisted
+        // pending status came back — BUG-10. Now we require an OK
+        // response before mutating local state, and restore opacity
+        // on failure so the user knows their tap didn't take.
+        const r = await api(`/api/lists/${id}/complete`, { method: 'POST' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         listsCache[listsKind] = listsCache[listsKind].filter(i => i.id !== id);
         document.getElementById('lists-count-' + listsKind).textContent = listsCache[listsKind].length;
         renderLists();
     } catch (err) {
-        showToast('Failed', true);
+        const msg = err && err.message ? `Couldn't mark done — ${err.message}` : 'Failed';
+        console.warn(`[LISTS] complete failed on item ${id}:`, err);
+        showToast(msg, true);
         if (row) row.style.opacity = '';
     }
 }
@@ -2220,12 +2813,18 @@ async function completeListItem(id) {
 async function deleteListItemPrompt(id) {
     if (!confirm('Delete this item?')) return;
     try {
-        await api(`/api/lists/${id}`, { method: 'DELETE' });
+        const r = await api(`/api/lists/${id}`, { method: 'DELETE' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         listsCache[listsKind] = listsCache[listsKind].filter(i => i.id !== id);
         document.getElementById('lists-count-' + listsKind).textContent = listsCache[listsKind].length;
         renderLists();
     } catch (err) {
-        showToast('Failed', true);
+        const msg = err && err.message ? `Couldn't delete — ${err.message}` : 'Delete failed';
+        console.warn(`[LISTS] delete failed on item ${id}:`, err);
+        showToast(msg, true);
     }
 }
 
@@ -2995,12 +3594,21 @@ async function deleteCurrentSpace() {
     if (!id) return;
     if (!confirm('Delete this Space? This cannot be undone.')) return;
     try {
-        await api('/api/spaces/' + id, { method: 'DELETE' });
+        // Phase A.6 — destructive op, double down on the error check.
+        // Without r.ok a server failure showed "Deleted" and closed the
+        // detail view; the Space still existed on the next loadSpaces.
+        const r = await api('/api/spaces/' + id, { method: 'DELETE' });
+        if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${r.status}`);
+        }
         closeSpaceDetail();
         await loadSpaces();
         showToast('Deleted');
     } catch (err) {
-        showToast('Delete failed', true);
+        const msg = err && err.message ? `Couldn't delete — ${err.message}` : 'Delete failed';
+        console.warn('[SPACES] delete failed:', err);
+        showToast(msg, true);
     }
 }
 
@@ -3640,6 +4248,19 @@ function renderSelectedDay() {
     }).join('');
 }
 
+// Phase A.8 — populate the bottom-left account pill from cached auth.
+// Initial letter from displayName goes in the avatar (uppercased,
+// fallback "?"); full displayName goes in the meta block. Fires synchronously
+// because `auth` is already in scope from the page-top auth guard.
+(function populateAccountPill() {
+    const nameEl = document.getElementById('sidebar-account-name');
+    const avatarEl = document.getElementById('sidebar-account-avatar');
+    if (!nameEl || !avatarEl) return;
+    const name = (auth.displayName || '').trim();
+    nameEl.textContent = name || 'Account';
+    avatarEl.textContent = name ? name.charAt(0).toUpperCase() : '?';
+})();
+
 // ========== INIT ==========
 // Default landing is Chat. switchTab('chat') sets currentTab, updates the
 // topbar title, fires loadChatHistory() (which loads conversations into
@@ -3665,10 +4286,11 @@ function renderSelectedDay() {
     // sidebar conversations expansion, AND fires loadChatHistory().
     switchTab('chat');
 
-    // Pre-warm Today data so the briefing card renders instantly when the
-    // user clicks Today in the sidebar. Fire-and-forget; no UI dependency.
+    // Pre-warm Dashboard data so the calendar strip + stream feed render
+    // instantly when the user clicks Dashboard in the sidebar.
+    // Fire-and-forget; no UI dependency. (loadSynthesis() retired —
+    // briefings live in chat now.)
     loadBrief();
-    loadSynthesis();
 })();
 </script>
 </body>

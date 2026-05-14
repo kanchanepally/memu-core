@@ -15,7 +15,7 @@ import { formatToolSummaryFooter } from './toolSummary';
 import { scrapeUrlContent } from './browser';
 import { db, enterCollectiveContext } from '../db/tenant';
 import { processSynthesisUpdate } from './synthesis';
-import { retrieveForQuery, buildContextBlock } from '../spaces/retrieval';
+import { retrieveForQuery, buildContextBlock, deriveRetrievalState, type RetrievalState } from '../spaces/retrieval';
 import { recordRetrievalProvenance } from '../spaces/provenance';
 
 const HISTORY_LIMIT = 10; // Last N message pairs for multi-turn conversation
@@ -121,6 +121,34 @@ export interface PipelineOptions {
   onProgress?: (event: PipelineProgressEvent) => void;
 }
 
+/**
+ * The full pipeline result. The string `response` is what's rendered in the
+ * chat bubble. The extra fields tell the UI what kind of turn this was so it
+ * can surface (a) an "Unsourced" caption when the answer came from training
+ * rather than Spaces, and (b) source chips for the Spaces that grounded the
+ * reply. Both ride on the same `deriveRetrievalState` decision the prompt
+ * builder used — by design, never two parallel decisions about emptiness.
+ *
+ * `retrievedSpaces` is the resolved {id, name, slug, category} shape rather
+ * than raw URIs — UI consumers (mobile + PWA) render chips directly without
+ * a second round-trip to resolve. URIs are still what's persisted on the
+ * messages row; the resolution happens here, where we already have the
+ * full Space objects loaded by retrieval.
+ */
+export interface PipelineSpaceRef {
+  id: string;
+  uri: string;
+  name: string;
+  slug: string;
+  category: string;
+}
+
+export interface PipelineResult {
+  response: string;
+  retrievalState: RetrievalState;
+  retrievedSpaces: PipelineSpaceRef[];
+}
+
 export async function processIntelligencePipeline(
   profileId: string,
   content: string,
@@ -128,7 +156,7 @@ export async function processIntelligencePipeline(
   messageId: string = 'unknown',
   visibility: Visibility = 'family',
   options: PipelineOptions = {},
-): Promise<string> {
+): Promise<PipelineResult> {
   const onProgress = options.onProgress;
   const emit = (event: PipelineProgressEvent) => {
     if (!onProgress) return;
@@ -145,6 +173,19 @@ export async function processIntelligencePipeline(
   const anonymousMsg = await translateToAnonymous(content);
   console.log(`[IN -> Translated]: ${anonymousMsg}`);
 
+  // BUG-16 — persist the user side IMMEDIATELY. Survives any downstream
+  // pipeline failure: refresh sees the user's message, the renderer
+  // dispatches by metadata.error to show "Memu couldn't respond — try
+  // again". Pre-fix, the audit row was a single INSERT at the bottom of
+  // the pipeline and a mid-flight throw left the user with no record of
+  // their turn (2026-05-12 Garden Space update lost on refresh).
+  await persistUserTurn(profileId, content, anonymousMsg, channel, messageId);
+
+  // From here on, every error path must call markTurnFailed so the
+  // user-side row gets a placeholder response. The wrappers below cover
+  // the two early-return paths (list fast-path) and the main pipeline.
+  try {
+
   // 1.5 Deterministic list-command fast path. "Add milk to the shopping list"
   // and friends skip retrieval/LLM — the LLM was inventing "added it" replies
   // while extraction sometimes missed the user-directed command. Audit is
@@ -155,8 +196,12 @@ export async function processIntelligencePipeline(
   if (listResult) {
     console.log(`[LIST -> ${listResult.kind}]: ${listResult.items.length} item(s)`);
     const anonymousResponse = await translateToAnonymous(listResult.response);
-    await storeMessageAudit(profileId, content, anonymousMsg, anonymousResponse, listResult.response, channel, messageId);
-    return listResult.response;
+    // List-command fast path: no retrieval ran (we skipped straight to a
+    // deterministic handler). State is 'sourced' — the result is grounded
+    // in a concrete list operation, not in training data. The badge stays
+    // off for these turns.
+    await completeAssistantTurn(messageId, anonymousResponse, listResult.response, undefined, 'sourced', undefined);
+    return { response: listResult.response, retrievalState: 'sourced', retrievedSpaces: [] };
   }
 
   // 2. Synthesis-first retrieval — Story 2.1. Direct addressing and
@@ -302,32 +347,29 @@ export async function processIntelligencePipeline(
   const toolFooter = formatToolSummaryFooter(dispatchResult.toolCalls);
   const realResponse = toolFooter ? `${realResponseBase}${toolFooter}` : realResponseBase;
 
-  // 5d. Empty-Context Honesty Gate (Slice 3)
-  // The honesty guarantee lives in skills/interactive_query/SKILL.md Rule 11
-  // — Claude is told not to confabulate from training weights when the context
-  // block is empty. We log when that condition holds so the privacy ledger /
-  // future UI can surface it, but we do NOT inject a user-facing marker:
-  //   (a) no consumer existed for it (it would render literally in chat), and
-  //   (b) Slice 2's fallback (onboarding answers + 2 person/routine spaces)
-  //       counts as context, so the gate must respect that or it contradicts
-  //       the very fallback it's meant to coexist with.
-  const hasFallback =
-    (retrieval.fallbackSpaces?.length ?? 0) > 0 || !!retrieval.fallbackOnboardingText;
-  const isEmptyContext =
-    retrieval.spaces.length === 0 &&
-    retrieval.embeddingContexts.length === 0 &&
-    !hasFallback;
+  // 5d. Empty-Context Honesty Gate — BUG-15 (2026-05-13).
+  // The honesty guarantee is now structural at the prompt level: when retrieval
+  // is empty, `buildContextBlock` emits an explicit `=== RETRIEVAL: EMPTY ===`
+  // marker that Rule 11 of interactive_query/SKILL.md keys off. The marker is
+  // load-bearing — Claude sees a concrete signal, not an absent prompt segment.
+  //
+  // We compute the state once (single source of truth in `deriveRetrievalState`)
+  // and log it so the privacy ledger / UI badge can filter by it. No separate
+  // empty-detection logic is allowed to grow elsewhere — if you find yourself
+  // checking `spaces.length === 0` outside this module, you're drifting.
+  const retrievalState = deriveRetrievalState(retrieval);
   const noToolsCalled = !dispatchResult.toolCalls || dispatchResult.toolCalls.length === 0;
-  if (isEmptyContext && noToolsCalled) {
-    console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (no spaces, no embeddings, no fallback, no tools).`);
+  if (retrievalState === 'empty' && noToolsCalled) {
+    console.log(`[HONESTY-GATE] ${profileId}: empty-context turn (state=empty, no tools fired). Marker injected, Rule 11 applies.`);
   }
 
-  // 6. Immutable Message Storage (Audit Trail) — includes tool call provenance
-  // so /api/chat/history can surface Space artefacts as inline chips beneath
-  // Memu's bubble (replaces the substring-matching fallback).
-  await storeMessageAudit(
-    profileId, content, anonymousMsg, claudeResponse, realResponse, channel, messageId,
-    dispatchResult.toolCalls,
+  // 6. Audit Trail completion — BUG-16 two-phase. The user side was
+  // persisted at the top of the pipeline; here we fill in the response
+  // fields, tool call log, and retrieval state. UPDATE rather than
+  // INSERT so the row id stays stable for the chat history endpoint.
+  await completeAssistantTurn(
+    messageId, claudeResponse, realResponse,
+    dispatchResult.toolCalls, retrievalState, retrieval.provenance.spaceUris,
   );
 
   // 6b. Provenance record — what retrieval path answered this message.
@@ -352,7 +394,32 @@ export async function processIntelligencePipeline(
   });
 
   emit({ type: 'done' });
-  return realResponse;
+  // Resolve the retrieval-touched Spaces to the {id, uri, name, slug, category}
+  // shape the UI renders. retrieval.spaces is the array of full Space objects
+  // that fed the prompt — they're already in memory, no extra DB hop.
+  const retrievedSpaces: PipelineSpaceRef[] = retrieval.spaces.map(sp => ({
+    id: sp.id,
+    uri: sp.uri,
+    name: sp.name,
+    slug: sp.slug,
+    category: sp.category,
+  }));
+  return {
+    response: realResponse,
+    retrievalState,
+    retrievedSpaces,
+  };
+
+  } catch (err) {
+    // BUG-16 — pipeline failed mid-flight. The user-side row is already
+    // persisted (persistUserTurn at top); attach a placeholder response so
+    // the chat renderer can show "Memu couldn't respond" instead of an
+    // empty thread on refresh. Then re-throw so the endpoint's error path
+    // (SSE 'error' event, blocking 500 response) still fires.
+    const message = err instanceof Error ? err.message : String(err);
+    await markTurnFailed(messageId, message);
+    throw err;
+  }
 }
 
 export async function handleIncomingMessage(sock: WASocket, msg: proto.IWebMessageInfo) {
@@ -497,18 +564,68 @@ async function lookupPrimaryProfile(): Promise<{ id: string; collectiveId: strin
   }
 }
 
-async function storeMessageAudit(
+/**
+ * BUG-16 three-phase persistence.
+ *
+ * Pre-fix, storeMessageAudit was a single INSERT at the end of the
+ * pipeline carrying BOTH the user message and Claude's response. If
+ * anything in the pipeline threw between top and bottom — a network
+ * blip, an OAuth token expiry, a transient RLS issue — the audit row
+ * was never written, the user refreshed, and their message vanished
+ * along with any sign they'd tried. (2026-05-12 Garden Space update.)
+ *
+ * Now the audit lifecycle is:
+ *
+ *   1. persistUserTurn(...)        — INSERT user-side row at pipeline top.
+ *                                    Returns the row id (caller-supplied
+ *                                    or generated). Survives all later
+ *                                    failures.
+ *   2a. completeAssistantTurn(...) — UPDATE on success with response
+ *                                    fields, tool log, retrieval state.
+ *   2b. markTurnFailed(...)        — UPDATE on failure with an error
+ *                                    placeholder in
+ *                                    content_response_translated and
+ *                                    metadata.error=true. The chat
+ *                                    renderer reads metadata.error and
+ *                                    surfaces "Memu couldn't respond —
+ *                                    try again" so the user sees the
+ *                                    record of their attempt and the
+ *                                    failure mode.
+ *
+ * Refresh always shows the user's turn. They keep their context;
+ * they know what they tried; they know it failed.
+ */
+
+async function persistUserTurn(
   profileId: string,
   original: string,
   translated: string,
-  claudeRaw: string,
-  realResp: string,
   channel: string,
   messageId: string,
-  toolCalls?: Array<{ name: string; ok: boolean; error?: string; output?: Record<string, unknown> }>,
-) {
+): Promise<{ messageId: string; conversationId: string }> {
   const convId = await getOrCreateConversation(profileId);
+  await db.query(
+    `INSERT INTO messages
+       (id, conversation_id, profile_id, role,
+        content_original, content_translated, channel)
+     VALUES ($1, $2, $3, 'user', $4, $5, $6)`,
+    [messageId, convId, profileId, original, translated, channel],
+  );
+  await db.query(
+    'UPDATE conversations SET message_count = message_count + 1 WHERE id = $1',
+    [convId],
+  );
+  return { messageId, conversationId: convId };
+}
 
+async function completeAssistantTurn(
+  messageId: string,
+  claudeRaw: string,
+  realResp: string,
+  toolCalls?: Array<{ name: string; ok: boolean; error?: string; output?: Record<string, unknown> }>,
+  retrievalState?: RetrievalState,
+  retrievedSpaceUris?: string[],
+) {
   // Persist the tool-call log on the message row. Used by /api/chat/history
   // to derive Space artefact chips: createSpace / updateSpace / findSpaces
   // outputs carry URIs that resolve to the actual Spaces touched. Storing
@@ -518,19 +635,56 @@ async function storeMessageAudit(
     ? toolCalls.map(c => ({ name: c.name, ok: c.ok, error: c.error, output: c.output }))
     : null;
 
+  // retrievedSpaceUris captures Spaces that retrieval pulled to ground the
+  // answer — complementary to actions_executed (which only logs tool calls).
+  // /api/chat/history unions both to render source chips on the reply.
+  const retrievedUris = retrievedSpaceUris && retrievedSpaceUris.length > 0
+    ? retrievedSpaceUris
+    : null;
+
   await db.query(
-    `INSERT INTO messages
-    (id, conversation_id, profile_id, role, content_original, content_translated, content_response_raw, content_response_translated, channel, actions_executed)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    `UPDATE messages
+        SET content_response_raw = $2,
+            content_response_translated = $3,
+            actions_executed = $4,
+            retrieval_state = $5,
+            retrieved_space_uris = $6
+      WHERE id = $1`,
     [
-      messageId, convId, profileId, 'user', original, translated, claudeRaw, realResp, channel,
+      messageId,
+      claudeRaw,
+      realResp,
       actionsExecuted ? JSON.stringify(actionsExecuted) : null,
+      retrievalState ?? null,
+      retrievedUris,
     ],
   );
+}
 
-  // Update conversation message count
-  await db.query(
-    'UPDATE conversations SET message_count = message_count + 1 WHERE id = $1',
-    [convId]
-  );
+/**
+ * Mark a turn as failed. The user-side row stays; we write a
+ * placeholder response so the chat renderer can show "Memu couldn't
+ * respond" with the underlying reason. Best-effort: if THIS write
+ * fails we just log — the turn becomes a user-message-only row, which
+ * the renderer treats as an unresolved turn (rather than crashing
+ * the failure path).
+ *
+ * `errorMessage` is the structured cause from upstream (e.g. the
+ * Error.message). It's stored verbatim — the renderer wraps it in a
+ * "Memu couldn't reach the brain just now: <message>" frame so the
+ * user knows what went wrong AND that retrying might work.
+ */
+async function markTurnFailed(messageId: string, errorMessage: string): Promise<void> {
+  try {
+    const placeholder = `_Memu couldn't reach the brain just now. ${errorMessage}_`;
+    await db.query(
+      `UPDATE messages
+          SET content_response_translated = $2,
+              metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+        WHERE id = $1`,
+      [messageId, placeholder, JSON.stringify({ error: true, errorMessage })],
+    );
+  } catch (err) {
+    console.error('[ORCH] markTurnFailed failed:', err);
+  }
 }

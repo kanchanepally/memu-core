@@ -9,6 +9,7 @@ import { processSynthesisUpdate } from './synthesis';
 import { interactiveQueryTools } from './tools';
 import { fetchWeatherLine, fetchNewsBrief } from './ambient';
 import { getBriefPreferences } from '../preferences/brief';
+import { postCardAsMessage, type StreamCardAction } from '../canvas/timeline';
 
 const MAX_BRIEFING_PARAGRAPHS = 4;
 const COLLISION_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -226,10 +227,17 @@ export async function runUnifiedBriefing(
     ]);
 
     // 4. Domain health header — at-a-glance sphere status.
+    // Suppressed entirely when nothing actionable: an "all domains green"
+    // ticker for a family with zero seeded care_standards is noise
+    // dressed up as signal. The briefing reads better without it.
+    // Only render the header when at least one domain is amber or red.
+    // The empty string trips the skill's "if domain_header is empty, omit it"
+    // branch (added in this same commit to briefing/SKILL.md v3).
     const domainStates = await listDomainStates(profileId);
-    const domainHeaderRaw = domainStates.length === 0
-      ? "Today's domains:\n(no standards seeded yet)"
-      : renderDomainHealthHeader(domainStates);
+    const hasActionableDomainSignal = domainStates.some(d => d.health !== 'green');
+    const domainHeaderRaw = hasActionableDomainSignal
+      ? renderDomainHealthHeader(domainStates)
+      : '';
 
     // 5. Twin invariant: every field that reaches the LLM is anonymised.
     // The Twin guard would refuse the call in throw mode anyway; doing it
@@ -379,39 +387,49 @@ export async function runUnifiedBriefing(
       ? await deepTranslateToReal(parsed.suggested_actions)
       : [];
 
-    // Idempotency: one briefing card per (family_id, UTC date). A second
-    // insert in the same day (cron + manual run-now collision, or two cron
-    // ticks after a server restart) produced the duplicate cards visible
-    // in the 2026-05-12 screenshot. Application-level check first, with
-    // migration 030's partial unique index `uniq_briefing_card_per_family_per_day`
-    // as the DB-level safety net.
+    // Phase A.3 — briefing is one timeline entry, not a dual-write across
+    // stream_cards (Today feed) and messages (chat). postCardAsMessage
+    // writes both rows atomically AND links them via stream_card_id; the
+    // suggested_actions ride on metadata.cardActions so the chat renderer
+    // can show inline action buttons within the briefing bubble.
+    //
+    // Idempotency: one briefing PER day. Check messages — since briefings
+    // now write a message row with metadata.type='briefing' for the UTC
+    // day, "is there a briefing today" is a single source-of-truth query.
+    // Migration 030's partial unique index on stream_cards stays as a
+    // DB-level safety net (the card row is still created).
     const existing = await db.query<{ id: string }>(
-      `SELECT id FROM stream_cards
-        WHERE family_id = $1
-          AND card_type = 'briefing'
-          AND (created_at AT TIME ZONE 'UTC')::date = (NOW() AT TIME ZONE 'UTC')::date
-        LIMIT 1`,
+      `SELECT m.id FROM messages m
+       WHERE m.profile_id = $1
+         AND m.metadata->>'type' = 'briefing'
+         AND (m.created_at AT TIME ZONE 'UTC')::date = (NOW() AT TIME ZONE 'UTC')::date
+       LIMIT 1`,
       [profileId],
     );
 
     if (existing.rows.length > 0) {
-      console.log(`[BRIEFING] Briefing card already exists for ${profileId} today; idempotent skip.`);
+      console.log(`[BRIEFING] Briefing already exists for ${profileId} today; idempotent skip.`);
     } else {
-      await db.query(
-        `INSERT INTO stream_cards (id, family_id, title, body, card_type, source, status, actions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          `card-briefing-${Date.now()}`,
-          profileId,
-          'Chief of Staff Briefing',
-          realBriefing,
-          'briefing',
-          'briefing',
-          'active',
-          JSON.stringify(realActions),
-        ],
-      );
-      console.log(`[BRIEFING] Persisted briefing card with ${realActions.length} suggested action(s).`);
+      const { cardId, messageId } = await postCardAsMessage({
+        familyId: profileId,
+        // conversationId is unused when conversationMode='fresh' — the
+        // helper creates a new conversation inside the transaction. Pass
+        // empty string to satisfy the typed input; the value is ignored.
+        conversationId: '',
+        profileId,
+        channel: 'briefing',
+        card: {
+          type: 'briefing',
+          title: 'Chief of Staff Briefing',
+          body: realBriefing,
+          source: 'briefing',
+          actions: realActions as StreamCardAction[],
+        },
+        messageType: 'briefing',
+        messageBodyOverride: realBriefing,
+        conversationMode: 'fresh',
+      });
+      console.log(`[BRIEFING] Posted briefing (card=${cardId}, msg=${messageId}) with ${realActions.length} suggested action(s).`);
     }
     // See comment above — cache regardless of channel so push and app share.
     synthesisCache.set(cacheKey, { briefing: realBriefing, expiresAt: Date.now() + 15 * 60 * 1000 });
@@ -465,22 +483,8 @@ export async function pushMorningBriefingToMobile(profileId: string): Promise<st
     }
     console.log(`[BRIEFING PUSH] Briefing generated for ${profileId} — length=${briefing.length} chars.`);
 
-    // Post the briefing as the first chat message of a fresh conversation
-    // so it lands on the user's chat timeline alongside everything else.
-    // The chat-as-home model treats the morning briefing as just another
-    // assistant turn — tagged metadata.type='briefing' so the renderers
-    // apply elevated AIInsightCard styling inline. A new conversation
-    // each morning means tapping the push notification lands the user on
-    // a clean thread; replies create a follow-up turn naturally.
-    try {
-      await postBriefingAsChatMessage(profileId, briefing);
-    } catch (err) {
-      // Non-fatal — push still goes out, stream_cards row still persists
-      // (handled inside runUnifiedBriefing). The chat-message post is the
-      // newest of the three persistence paths; if it fails the user still
-      // gets the briefing through Today / push.
-      console.error(`[BRIEFING CHAT-MESSAGE] Failed to post for ${profileId}:`, err);
-    }
+    // Phase A.3 — chat-message persistence now happens inside
+    // `runUnifiedBriefing` via postCardAsMessage. No separate call here.
 
     const tokens = await getTokensForProfile(profileId);
     if (tokens.length === 0) {
@@ -507,61 +511,8 @@ export async function pushMorningBriefingToMobile(profileId: string): Promise<st
   }
 }
 
-/**
- * Insert the morning briefing as a server-generated assistant chat
- * message into a fresh conversation for today. Idempotent within a UTC
- * day — a second call within the same day finds the existing briefing
- * conversation and skips re-inserting.
- *
- * The chat-history endpoint surfaces this as the first message of the
- * day's thread; mobile + PWA renderers apply elevated styling when they
- * see metadata.type === 'briefing'.
- */
-async function postBriefingAsChatMessage(profileId: string, briefingMarkdown: string): Promise<void> {
-  // Idempotency: if a briefing message already exists for this profile
-  // today, do not insert a second one. A failed push retry that calls
-  // pushMorningBriefingToMobile twice in the same morning should not
-  // produce duplicate chat entries.
-  const existing = await db.query(
-    `SELECT m.id FROM messages m
-     WHERE m.profile_id = $1
-       AND m.metadata->>'type' = 'briefing'
-       AND m.created_at >= date_trunc('day', NOW())
-     LIMIT 1`,
-    [profileId],
-  );
-  if (existing.rows.length > 0) {
-    console.log(`[BRIEFING CHAT-MESSAGE] Already posted today for ${profileId}; skipping.`);
-    return;
-  }
-
-  // Fresh conversation each morning. Tapping the push lands the user on
-  // a clean thread with the briefing visible; follow-up replies build the
-  // day's conversation forward from there.
-  const conv = await db.query<{ id: string }>(
-    `INSERT INTO conversations (profile_id) VALUES ($1) RETURNING id`,
-    [profileId],
-  );
-  const convId = conv.rows[0].id;
-
-  await db.query(
-    `INSERT INTO messages
-       (id, conversation_id, profile_id, role,
-        content_response_translated, channel, metadata)
-     VALUES ($1, $2, $3, 'assistant', $4, 'briefing', $5)`,
-    [
-      `briefing-msg-${Date.now()}`,
-      convId,
-      profileId,
-      briefingMarkdown,
-      JSON.stringify({ type: 'briefing' }),
-    ],
-  );
-
-  await db.query(
-    `UPDATE conversations SET message_count = 1 WHERE id = $1`,
-    [convId],
-  );
-
-  console.log(`[BRIEFING CHAT-MESSAGE] Posted briefing into conversation ${convId} for ${profileId}.`);
-}
+// Phase A.3 — `postBriefingAsChatMessage` was retired. The briefing's
+// chat-message persistence now happens atomically inside `runUnifiedBriefing`
+// via `postCardAsMessage` (canvas/timeline.ts), keyed by stream_card_id
+// for source-of-truth alignment. The chat-history idempotency query in
+// runUnifiedBriefing replaces the one this function used to do.

@@ -1,6 +1,12 @@
 import { db } from '../db/tenant';
 import { translateToAnonymous, translateToReal } from '../twin/translator';
 import { dispatch } from '../skills/router';
+import {
+  postCardAsMessage,
+  getOrCreateActiveConversation,
+  type StreamCardType,
+  type StreamCardSource,
+} from '../canvas/timeline';
 
 /**
  * Map a callsite-supplied channel string to a value the
@@ -57,20 +63,58 @@ export async function processGroupMessageExtraction(
       const realTitle = await translateToReal(extraction.title);
       const realBody = await translateToReal(extraction.body);
 
-      await db.query(
-        `INSERT INTO stream_cards (family_id, card_type, title, body, source, source_message_id, actions)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          familyId,
-          extraction.card_type || 'extraction',
-          realTitle,
-          realBody,
-          source,
-          messageId,
-          JSON.stringify(extraction.actions || [])
-        ]
+      // Dedup against any same-titled card in the last 7 days — active OR
+      // dismissed/resolved. Without this, every casual mention of the same
+      // task across chats minted a fresh stream card, and a card the user
+      // had explicitly dismissed kept reappearing as soon as they mentioned
+      // it again. Hareesh raised this 2026-05-13 ("it still has bunch of
+      // items that i either closed or said delete… i still get those in
+      // streams as to do").
+      //
+      // We dedupe on (family_id, lower(title)) within 7 days. Card type is
+      // not part of the key — if extraction reclassifies the same title
+      // under a different card_type, that's still the same item from the
+      // user's perspective.
+      const dupeRes = await db.query<{ id: string; status: string }>(
+        `SELECT id, status FROM stream_cards
+          WHERE family_id = $1
+            AND LOWER(title) = LOWER($2)
+            AND created_at > NOW() - INTERVAL '7 days'
+          LIMIT 1`,
+        [familyId, realTitle],
       );
-      console.log(`[EXTRACTION STREAM CARD CREATED]: ${realTitle} (source=${source})`);
+      if (dupeRes.rows.length > 0) {
+        const existing = dupeRes.rows[0];
+        console.log(
+          `[EXTRACTION] Skip dupe — "${realTitle}" already on this family's stream (status=${existing.status}, id=${existing.id}, within 7d).`,
+        );
+        continue;
+      }
+
+      // Phase A.2 — extracted cards land on the Canvas timeline. Dual-write
+      // through postCardAsMessage so the stream_card AND its surface
+      // assistant message commit atomically. The chat surface gets an
+      // inline action nudge bubble; the Today/Dashboard view continues
+      // to see the same card via the stream_cards table.
+      const conversationId = await getOrCreateActiveConversation(senderProfileId);
+      const result = await postCardAsMessage({
+        familyId,
+        conversationId,
+        profileId: senderProfileId,
+        channel,
+        card: {
+          type: (extraction.card_type || 'extraction') as StreamCardType,
+          title: realTitle,
+          body: realBody,
+          source: source as StreamCardSource,
+          sourceMessageId: messageId,
+          actions: Array.isArray(extraction.actions) ? extraction.actions : [],
+        },
+        messageType: 'action_nudge',
+      });
+      console.log(
+        `[EXTRACTION STREAM CARD CREATED]: "${realTitle}" (card=${result.cardId}, msg=${result.messageId}, source=${source})`,
+      );
     }
   } catch (err) {
     console.error('[EXTRACTION ERROR]', err);

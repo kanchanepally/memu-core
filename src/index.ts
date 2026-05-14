@@ -2,8 +2,8 @@ import 'dotenv/config'; // Load env variables immediately before other imports
 
 import Fastify from 'fastify';
 import pino from 'pino';
-import { testConnection, pool } from './db/connection';
-import { db, enterCollectiveContext } from './db/tenant';
+import { testConnection, pool, assertRuntimeRoleNotSuperuser } from './db/connection';
+import { db, enterCollectiveContext, bindCollectiveContext, currentCollectiveId } from './db/tenant';
 import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
@@ -218,6 +218,26 @@ server.addHook('preHandler', async (request, reply) => {
   return requireCollective(request, reply);
 });
 
+// Re-bind the ALS tenant context at the latest possible preHandler slot
+// (TD-05). On the Z2 standalone deploy 2026-05-13, the context that
+// requireCollective.bindCollectiveContext() entered via AsyncLocalStorage
+// .enterWith() didn't propagate into the route handler — every chat turn
+// failed with NOT NULL violations on `collective_id` for conversations,
+// privacy_ledger, and downstream tool calls (updateSpace / addToList).
+//
+// Re-binding here, in a fresh preHandler that runs AFTER requireCollective
+// resolves, refreshes the ALS frame at the latest async boundary before
+// the route handler runs. Idempotent if the original bind held; a fix
+// if it didn't. Root cause likely a Fastify-Node async-resource interplay
+// where requireCollective's await of queryAsBootstrap before the enterWith
+// causes the bound store to be popped by the time control returns to the
+// route handler. Investigation deferred — TD-05.
+server.addHook('preHandler', async (request) => {
+  if (isUnauthenticatedRoute(request.url)) return;
+  const collectiveId = (request as any).collectiveId as string | undefined;
+  if (collectiveId) bindCollectiveContext(collectiveId);
+});
+
 // After auth, bind the resolved profileId into the request logger so every
 // log line under that request carries it. Critical for beta debug — when a
 // user reports a problem and we have only the timestamp, we want to be able
@@ -335,10 +355,24 @@ server.post('/api/message', async (request, reply) => {
 
   try {
     const profileId = (request as any).profileId;
+    // Belt-and-braces ALS re-bind at handler entry. The latest-preHandler
+    // re-bind above should be sufficient, but pipelines that await heavily
+    // (chat, especially the SSE variant) span enough async slots that
+    // entering one more time at the root of the handler's own async tree
+    // is cheap insurance. TD-05.
+    const collectiveId = (request as any).collectiveId;
+    if (collectiveId) bindCollectiveContext(collectiveId);
+    if (!currentCollectiveId()) {
+      server.log.warn({ profileId, collectiveId }, '[ALS] tenant context still null at /api/message entry');
+    }
     const messageId = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const visibility = body.visibility === 'personal' ? 'personal' : 'family';
-    const responseText = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId, visibility);
-    return { response: responseText };
+    const result = await processIntelligencePipeline(profileId, body.content, 'mobile', messageId, visibility);
+    return {
+      response: result.response,
+      retrievalState: result.retrievalState,
+      retrievedSpaces: result.retrievedSpaces,
+    };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Pipeline failed' });
@@ -375,6 +409,13 @@ server.post('/api/message/stream', async (request, reply) => {
   const profileId = (request as any).profileId;
   if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
 
+  // Belt-and-braces ALS re-bind — see /api/message handler. TD-05.
+  const collectiveId = (request as any).collectiveId;
+  if (collectiveId) bindCollectiveContext(collectiveId);
+  if (!currentCollectiveId()) {
+    server.log.warn({ profileId, collectiveId }, '[ALS] tenant context still null at /api/message/stream entry');
+  }
+
   // SSE setup. Take over the raw response — Fastify reply.hijack()
   // releases the framework's serialisation so we can write chunked events.
   reply.raw.setHeader('Content-Type', 'text/event-stream');
@@ -409,7 +450,7 @@ server.post('/api/message/stream', async (request, reply) => {
     const messageId = `mobile-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const visibility = body.visibility === 'personal' ? 'personal' : 'family';
 
-    const responseText = await processIntelligencePipeline(
+    const result = await processIntelligencePipeline(
       profileId,
       body.content,
       'mobile',
@@ -428,7 +469,11 @@ server.post('/api/message/stream', async (request, reply) => {
     );
 
     if (!aborted) {
-      sse('done', { response: responseText });
+      sse('done', {
+        response: result.response,
+        retrievalState: result.retrievalState,
+        retrievedSpaces: result.retrievedSpaces,
+      });
     }
   } catch (err) {
     server.log.error(err);
@@ -1384,25 +1429,67 @@ server.get('/api/memory/recent', async (request, reply) => {
 });
 
 // Today's Brief + Stream Cards — uses authenticated profile
+//
+// Phase A.9.1 — `?lens=me|family` (default `me`).
+//   me      → caller's own calendar only (current behaviour, the smallest
+//             individual scope; individual-first per the architectural
+//             North Star).
+//   family  → merged events across every profile in the caller's
+//             collective that has a linked Google Calendar.
+//
+// Honest scope of the lens today: only calendar events swap. Stream
+// cards and the shopping list are still household-scoped — they don't
+// yet carry a `owner_profile_id` axis, so "lens=me" can't filter them
+// without lying. The PWA + mobile provenance footer name this gap
+// explicitly so the pill doesn't promise more than it delivers.
 server.get('/api/dashboard/brief', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
+    const q = (request.query as Record<string, string | undefined>) || {};
+    const lens: 'me' | 'family' = q.lens === 'family' ? 'family' : 'me';
 
-    // 1. Fetch upcoming Calendar Events (Next 7 days)
-    const events = await fetchUpcomingEvents(profileId);
-    
+    // 1. Fetch upcoming Calendar Events (Next 7 days).
+    //    lens=me     → just this profile.
+    //    lens=family → every profile in the same collective with a
+    //                  linked google_calendar channel. Each profile is
+    //                  fetched independently so a dead OAuth refresh on
+    //                  one calendar (Rach's) doesn't poison the others
+    //                  (Hareesh's). fetchUpcomingEvents already returns
+    //                  [] on degraded connections via
+    //                  fetchUpcomingEventsDetailed.
+    let calendarProfiles: string[] = [profileId];
+    if (lens === 'family') {
+      const peers = await db.query(
+        `SELECT DISTINCT p.id
+           FROM profiles p
+           JOIN profile_channels pc ON pc.profile_id = p.id
+          WHERE p.collective_id = (SELECT collective_id FROM profiles WHERE id = $1)
+            AND pc.channel = 'google_calendar'`,
+        [profileId]
+      );
+      if (peers.rows.length > 0) {
+        calendarProfiles = peers.rows.map(r => r.id);
+      }
+    }
+
+    const eventsArrays = await Promise.all(
+      calendarProfiles.map(pid => fetchUpcomingEvents(pid))
+    );
+    const events = eventsArrays.flat();
+
     // Nori Dashboard pattern: Today vs Future
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
-    
-    const todayEvents = [];
-    const futureEvents = [];
+
+    type BriefEvent = { title: string; startTime: string; endTime: string | null };
+    const todayEvents: BriefEvent[] = [];
+    const futureEvents: BriefEvent[] = [];
 
     for (const e of events) {
       const startTime = e.start?.dateTime || e.start?.date || null;
       if (!startTime) continue;
-      
-      const evt = {
+
+      const evt: BriefEvent = {
         title: e.summary || 'Busy',
         startTime,
         endTime: e.end?.dateTime || e.end?.date || null
@@ -1414,14 +1501,41 @@ server.get('/api/dashboard/brief', async (request, reply) => {
         futureEvents.push(evt);
       }
     }
-    
-    // Check if the calendar is linked
-    const linkRes = await db.query(`SELECT 1 FROM profile_channels WHERE profile_id = $1 AND channel = 'google_calendar'`, [profileId]);
+
+    // Sort merged family events by start so the schedule UI renders in
+    // chronological order regardless of which profile they came from.
+    if (lens === 'family' && calendarProfiles.length > 1) {
+      const byStart = (a: BriefEvent, b: BriefEvent) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      todayEvents.sort(byStart);
+      futureEvents.sort(byStart);
+    }
+
+    // Check if the calendar is linked. For lens=family this asks "does
+    // anyone in the household have a calendar linked" — the empty-state
+    // copy in the UI already reads as a household-level prompt, so this
+    // matches user expectation.
+    const linkRes = await db.query(
+      `SELECT 1 FROM profile_channels
+         WHERE profile_id = ANY($1::text[]) AND channel = 'google_calendar'`,
+      [calendarProfiles]
+    );
     const isCalendarConnected = linkRes.rows.length > 0;
-    
-    // 2. Fetch Active Stream Cards (excluding shopping)
+
+    // 2. Fetch Active Stream Cards
+    //    - excluded 'shopping' — separate UI (shopping pill / list view)
+    //    - excluded 'briefing' — Phase A.3, briefings are messages, not feed
+    //      cards. The chat surface is the canonical place for the morning
+    //      brief; the Today/Dashboard view shows actionable items, not a
+    //      duplicate briefing render. The card row still exists (it backs
+    //      the briefing's suggested-action endpoints) but it is not
+    //      surfaced here.
     const streamRes = await db.query(
-      `SELECT * FROM stream_cards WHERE family_id = $1 AND status = 'active' AND card_type != 'shopping' ORDER BY created_at DESC`, 
+      `SELECT * FROM stream_cards
+        WHERE family_id = $1
+          AND status = 'active'
+          AND card_type NOT IN ('shopping', 'briefing')
+        ORDER BY created_at DESC`,
       [profileId]
     );
 
@@ -1440,7 +1554,13 @@ server.get('/api/dashboard/brief', async (request, reply) => {
       futureEvents,
       streamCards: streamRes.rows,
       shoppingItems: shoppingRes.rows,
-      isCalendarConnected
+      isCalendarConnected,
+      lens,
+      // How many calendars contributed events. Lets the UI honestly
+      // label the schedule ("Family · 2 calendars merged") so the lens
+      // doesn't look like it's doing nothing when only one profile in
+      // the household has a calendar linked.
+      lensCalendarCount: calendarProfiles.length,
     };
   } catch (err) {
     server.log.error(err);
@@ -2260,31 +2380,55 @@ server.post('/api/stream/action/update-space', async (request, reply) => {
 
   try {
     const existing = await findSpaceBySlug(profileId, payload.category as SpaceCategory, payload.slug);
-    if (!existing) {
-      return reply.code(404).send({ error: `Space not found: ${payload.category}/${payload.slug}` });
-    }
-    const space = await upsertSpace({
-      familyId: existing.familyId,
-      category: existing.category,
-      slug: existing.slug,
-      name: existing.name,
-      bodyMarkdown: payload.body_markdown,
-      description: existing.description,
-      domains: existing.domains,
-      people: existing.people,
-      visibility: existing.visibility,
-      confidence: Math.min(1, existing.confidence + 0.05),
-      sourceReferences: [...existing.sourceReferences, `briefing-action:${cardId}`],
-      tags: existing.tags,
-      actorProfileId: profileId,
-    });
+    // The briefing skill suggests "fill in weekly rhythm" / "fill in current focus"
+    // for Spaces that the user hasn't seeded yet — slug + category come from the
+    // onboarding catalogue. Pre-2026-05-13 this 404'd because findSpaceBySlug
+    // didn't find a row, leaving the user stuck on a CTA they couldn't act on.
+    // Create-on-missing instead: use the suggested body_markdown verbatim and
+    // synthesise the metadata that upsertSpace needs.
+    const space = existing
+      ? await upsertSpace({
+          familyId: existing.familyId,
+          category: existing.category,
+          slug: existing.slug,
+          name: existing.name,
+          bodyMarkdown: payload.body_markdown,
+          description: existing.description,
+          domains: existing.domains,
+          people: existing.people,
+          visibility: existing.visibility,
+          confidence: Math.min(1, existing.confidence + 0.05),
+          sourceReferences: [...existing.sourceReferences, `briefing-action:${cardId}`],
+          tags: existing.tags,
+          actorProfileId: profileId,
+        })
+      : await upsertSpace({
+          familyId: profileId,
+          category: payload.category as SpaceCategory,
+          slug: payload.slug,
+          name: humaniseSlug(payload.slug),
+          bodyMarkdown: payload.body_markdown,
+          description: '',
+          visibility: 'family',
+          confidence: 0.6,
+          sourceReferences: [`briefing-action:${cardId}`],
+          tags: ['briefing'],
+          actorProfileId: profileId,
+        });
     await resolveCard(cardId, profileId);
-    return { success: true, uri: space.uri };
+    return { success: true, uri: space.uri, created: !existing };
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'update-space failed' });
   }
 });
+
+function humaniseSlug(slug: string): string {
+  return slug
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim() || 'Untitled Space';
+}
 
 // reply_draft is a no-op endpoint — the user clicked Copy in the inline preview
 // and the draft was copied to their clipboard client-side. We resolve the card
@@ -2561,13 +2705,23 @@ server.get('/api/chat/history', async (request, reply) => {
     //      IS NULL, content_response_translated IS NOT NULL, metadata.type='briefing'.
     // We accept either as long as content_response_translated exists; client-side
     // shape depends on whether userMessage is non-empty.
+    // Phase A.5 follow-up — JOIN stream_cards so the renderer can show a
+    // type label ("SHOPPING", "REMINDER", "TASK") on nudge bubbles. Card
+    // type is the source of truth on stream_cards; the message's metadata
+    // doesn't carry it because the producer (postCardAsMessage) stored
+    // title/body/actions there and not type. LEFT JOIN so chat turns
+    // without a linked card (the normal case) still return.
     const msgRes = await db.query(
-      `SELECT id, conversation_id, content_original, content_response_translated,
-              channel, created_at, actions_executed, metadata
-       FROM messages
-       WHERE conversation_id = $1
-         AND content_response_translated IS NOT NULL
-       ORDER BY created_at DESC
+      `SELECT m.id, m.conversation_id, m.content_original, m.content_response_translated,
+              m.channel, m.created_at, m.actions_executed, m.metadata, m.retrieval_state,
+              m.retrieved_space_uris, m.stream_card_id,
+              sc.card_type AS stream_card_type,
+              sc.status AS stream_card_status
+       FROM messages m
+       LEFT JOIN stream_cards sc ON sc.id = m.stream_card_id
+       WHERE m.conversation_id = $1
+         AND m.content_response_translated IS NOT NULL
+       ORDER BY m.created_at DESC
        LIMIT $2`,
       [convId, limit]
     );
@@ -2631,15 +2785,47 @@ server.get('/api/chat/history', async (request, reply) => {
       return out;
     };
 
+    // Resolve a URI list (from retrieved_space_uris) to Space refs, deduped
+    // against an already-resolved set so retrieval-touched chips don't double
+    // up with tool-touched ones.
+    const resolveUrisToSpaceRefs = (uris: unknown, alreadySeen: Set<string>): Array<{ id: string; name: string; slug: string; category: string }> => {
+      if (!Array.isArray(uris)) return [];
+      const out: Array<{ id: string; name: string; slug: string; category: string }> = [];
+      for (const uri of uris) {
+        if (typeof uri !== 'string') continue;
+        const sp = byUri.get(uri);
+        if (sp && !alreadySeen.has(sp.id)) {
+          out.push({ id: sp.id, name: sp.name, slug: sp.slug, category: sp.category });
+          alreadySeen.add(sp.id);
+        }
+      }
+      return out;
+    };
+
     const messages = ordered.map((row: any) => {
       const text = row.content_response_translated || '';
       let spaces: Array<{ id: string; name: string; slug: string; category: string }> = [];
 
       const actions = row.actions_executed;
-      if (Array.isArray(actions) && actions.length > 0) {
-        spaces = extractSpaceRefsFromActions(actions);
+      const retrievedUris = row.retrieved_space_uris;
+      const haveStructured = (Array.isArray(actions) && actions.length > 0) ||
+        (Array.isArray(retrievedUris) && retrievedUris.length > 0);
+
+      if (haveStructured) {
+        // PRECISE path — union of tool-touched (createSpace/updateSpace/
+        // findSpaces) AND retrieval-touched Spaces. Tool-touched go first
+        // because they represent active intent ("Memu wrote to this");
+        // retrieval-touched fill remaining slots ("Memu read this to answer").
+        // Deduped on Space id so a Space that's both tool-touched and
+        // retrieval-touched only shows once.
+        const seenIds = new Set<string>();
+        const toolRefs = extractSpaceRefsFromActions(actions || []);
+        for (const r of toolRefs) seenIds.add(r.id);
+        const retrievedRefs = resolveUrisToSpaceRefs(retrievedUris, seenIds);
+        spaces = [...toolRefs, ...retrievedRefs];
       } else {
-        // Fallback for legacy messages — substring match.
+        // FALLBACK for legacy messages where neither column was populated.
+        // Substring-match the response against existing Space titles.
         const seen = new Set<string>();
         for (const sp of matchableByName) {
           if (sp.pattern.test(text) && !seen.has(sp.id)) {
@@ -2658,7 +2844,30 @@ server.get('/api/chat/history', async (request, reply) => {
         channel: row.channel,
         timestamp: row.created_at,
         spaces: spaces.slice(0, 5),
-        type: metadata?.type ?? null,                 // 'briefing' for elevated render
+        // Canvas timeline (Phase A.1): renderer dispatches on `type`.
+        // 'briefing' renders with the elevated AI-Insight bubble (existing);
+        // 'action_nudge' renders the inline action UI (A.5); plain text
+        // falls through to a normal bubble.
+        type: metadata?.type ?? null,
+        // Card linkage: present on action_nudge messages, lets the renderer
+        // resolve actions on tap. The full action list rides on
+        // metadata.cardActions / cardTitle / cardBody to avoid an extra
+        // join here — postCardAsMessage stores them denormalised on purpose.
+        streamCardId: row.stream_card_id ?? null,
+        cardTitle: metadata?.cardTitle ?? null,
+        cardBody: metadata?.cardBody ?? null,
+        cardActions: Array.isArray(metadata?.cardActions) ? metadata.cardActions : null,
+        // From the LEFT JOIN — type tag the renderer turns into the eyebrow
+        // label (e.g. "SHOPPING", "REMINDER", "TASK"). Null when this row
+        // isn't linked to a stream_card (normal chat turns).
+        cardType: row.stream_card_type ?? null,
+        cardStatus: row.stream_card_status ?? null,
+        retrievalState: row.retrieval_state ?? null,  // 'sourced'|'fallback'|'empty'|null; null = legacy
+        // BUG-16 — when the pipeline failed mid-flight, the row carries
+        // metadata.error=true and content_response_translated holds an
+        // italic placeholder. The renderer styles this distinctly so the
+        // user knows it was an attempted turn, not a real Memu reply.
+        error: metadata?.error === true,
       };
     });
 
@@ -3125,6 +3334,12 @@ const start = async () => {
     // Initialize required external services
     await testConnection();
     await runMigrations();
+    // TD-01 — after migrations have had a chance to create the
+    // memu_app role + apply RLS, verify the runtime pool is actually
+    // bound to a non-superuser role. Hosted (Hetzner) sets
+    // MEMU_REQUIRE_NOSUPERUSER=true so this fails loud rather than
+    // silently leaking across tenants.
+    await assertRuntimeRoleNotSuperuser();
 
     // Validate prompt skills on the way up so a broken SKILL.md crashes boot,
     // not the first LLM call in production.

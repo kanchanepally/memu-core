@@ -134,8 +134,24 @@ export async function checkServerHealth(serverUrl: string): Promise<ApiResponse<
 // ==========================================
 
 // Chat with Memu
+/**
+ * `retrievalState` tells the UI what fed this reply:
+ *  - 'sourced'   → compiled Spaces matched. Bubble may render source chips (FEAT-03).
+ *  - 'fallback'  → no Space matched but fallback context (onboarding summary,
+ *                  embedding recall) carried the turn. Reply is loosely grounded.
+ *  - 'empty'     → nothing retrieved. Bubble renders an "Unsourced" caption so
+ *                  the reader knows the reply isn't from their notes (BUG-15).
+ *  - null/missing → legacy turn (pre-FEAT-02) or server didn't supply. Render nothing.
+ */
+export type RetrievalState = 'sourced' | 'fallback' | 'empty';
+
 export interface ChatResponse {
   response: string;
+  retrievalState?: RetrievalState;
+  /** Spaces that grounded this reply (retrieval-touched). UI renders as chips.
+   *  Defined as ChatMessageSpaceRef[] so streaming `done` events and chat
+   *  history can share one renderer — see line ~750. */
+  retrievedSpaces?: ChatMessageSpaceRef[];
 }
 
 export type Visibility = 'personal' | 'family';
@@ -245,10 +261,18 @@ export interface BriefResponse {
   streamCards: StreamCard[];
   shoppingItems: StreamCard[];
   isCalendarConnected: boolean;
+  // Phase A.9.1 — server echoes the active lens back so the client can
+  // confirm what shape of data it got (and label the provenance footer
+  // accurately even on the first paint, before the user toggles).
+  lens?: 'me' | 'family';
+  lensCalendarCount?: number;
 }
 
-export async function getTodayBrief(): Promise<ApiResponse<BriefResponse>> {
-  return request<BriefResponse>('/api/dashboard/brief');
+export async function getTodayBrief(
+  lens: 'me' | 'family' = 'me',
+): Promise<ApiResponse<BriefResponse>> {
+  const qs = lens === 'family' ? '?lens=family' : '';
+  return request<BriefResponse>(`/api/dashboard/brief${qs}`);
 }
 
 export async function getSynthesis(): Promise<ApiResponse<{ synthesis: string | null }>> {
@@ -438,7 +462,7 @@ export type StreamEvent =
   | { name: 'routing'; data: { provider?: string; model?: string } }
   | { name: 'tool_use'; data: { tool?: string } }
   | { name: 'synthesising'; data: Record<string, unknown> }
-  | { name: 'done'; data: { response?: string } }
+  | { name: 'done'; data: { response?: string; retrievalState?: RetrievalState; retrievedSpaces?: ChatMessageSpaceRef[] } }
   | { name: 'error'; data: { error?: string } };
 
 export interface StreamHandle {
@@ -751,9 +775,46 @@ export interface ChatHistoryMessage {
   spaces?: ChatMessageSpaceRef[];
   /**
    * Server-tagged type. 'briefing' marks the morning briefing turn for
-   * elevated rendering. Plain turns leave this null/absent.
+   * elevated rendering. 'action_nudge' marks a stream-card surface
+   * (Canvas timeline, Phase A.1/A.2). Plain turns leave this null/absent.
    */
-  type?: 'briefing' | null;
+  type?: 'briefing' | 'action_nudge' | null;
+  /**
+   * Card linkage (Phase A.1/A.2). Present on 'action_nudge' messages so
+   * the renderer can dispatch the inline action UI. The cardActions
+   * array is the raw shape from stream_cards.actions — see the server
+   * type RawCardAction in src/canvas/timeline.ts. The mobile mapper
+   * (lib/cardActions.ts) consumes it.
+   */
+  streamCardId?: string | null;
+  cardTitle?: string | null;
+  cardBody?: string | null;
+  cardActions?: Array<Record<string, unknown>> | null;
+  /**
+   * stream_cards.card_type — used by the chat renderer to show a type
+   * eyebrow ("SHOPPING", "REMINDER", "TASK", etc.) on nudge bubbles so
+   * the user can scan what each one is for at a glance. Null on rows
+   * without a linked card (normal chat turns).
+   */
+  cardType?: string | null;
+  /**
+   * stream_cards.status — 'active' | 'resolved' | 'dismissed'. Mirrors
+   * server resolution state into history loads so a card the user
+   * resolved on Today still renders as resolved in the chat thread.
+   */
+  cardStatus?: string | null;
+  /**
+   * What retrieval found for this turn. See `RetrievalState`. null for
+   * legacy messages (pre-FEAT-02) — UI treats null as "unknown, render nothing".
+   */
+  retrievalState?: RetrievalState | null;
+  /**
+   * BUG-16 — this turn failed mid-pipeline. The memuResponse field
+   * carries a placeholder ("_Memu couldn't reach the brain..._") and the
+   * chat renderer styles the bubble distinctly so the user knows it
+   * wasn't a real reply.
+   */
+  error?: boolean;
 }
 
 export interface ChatHistoryResponse {

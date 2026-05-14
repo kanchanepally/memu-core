@@ -30,6 +30,22 @@ import { getOnboardingState } from '../onboarding/state';
 
 export type RetrievalPath = 'direct' | 'catalogue' | 'embedding' | 'none';
 
+/**
+ * The user-and-LLM-facing summary of what retrieval found for a turn.
+ *
+ *   - 'sourced'  — at least one compiled Space matched (direct or catalogue path).
+ *                  The reply is grounded in stored family understanding.
+ *   - 'fallback' — no Space matched, but embeddings or onboarding-summary
+ *                  fallback gave something. The reply is grounded but loosely.
+ *   - 'empty'    — nothing retrieved at all. The reply is unsourced.
+ *
+ * Single source of truth — derived from RetrievalResult and consumed by:
+ *   (a) the prompt builder (renders an explicit EMPTY marker for the LLM)
+ *   (b) the chat API response shape (so the UI can show an "unsourced" badge)
+ *   (c) the privacy ledger (so audit can filter by sourced/unsourced turns)
+ */
+export type RetrievalState = 'sourced' | 'fallback' | 'empty';
+
 export interface Provenance {
   path: RetrievalPath;
   spaceUris: string[];
@@ -42,6 +58,18 @@ export interface RetrievalResult {
   fallbackSpaces?: Space[];
   fallbackOnboardingText?: string;
   provenance: Provenance;
+}
+
+export function deriveRetrievalState(result: Pick<RetrievalResult, 'spaces' | 'embeddingContexts' | 'fallbackSpaces' | 'fallbackOnboardingText'>): RetrievalState {
+  if (result.spaces.length > 0) return 'sourced';
+  if (
+    (result.fallbackSpaces && result.fallbackSpaces.length > 0) ||
+    !!result.fallbackOnboardingText ||
+    result.embeddingContexts.length > 0
+  ) {
+    return 'fallback';
+  }
+  return 'empty';
 }
 
 export interface RetrieveInput {
@@ -234,6 +262,17 @@ export function renderEmbeddingsForPrompt(contexts: string[]): string {
  * Build the final context block that the orchestrator passes to the
  * interactive_query skill. Prefer compiled Spaces; only show raw
  * embedding hits when we had nothing else.
+ *
+ * **Critical: never returns an empty string.** When retrieval produced
+ * nothing, this emits an explicit `=== RETRIEVAL: EMPTY ===` block so
+ * the model has a *structural* signal that it has no family context for
+ * this turn — not a silent gap that Rule 11 has to notice in the
+ * prompt's whitespace.
+ *
+ * This is the LLM-facing half of BUG-15 (confabulation from emptiness).
+ * The UI-facing half (an "Unsourced" badge below the bubble) reads the
+ * same state via `deriveRetrievalState` so the two surfaces can never
+ * disagree about whether a turn was sourced.
  */
 export function buildContextBlock(result: RetrievalResult): string {
   if (result.spaces.length > 0) {
@@ -246,7 +285,7 @@ export function buildContextBlock(result: RetrievalResult): string {
 
   const parts: string[] = [];
   const hasFallback = (result.fallbackSpaces && result.fallbackSpaces.length > 0) || !!result.fallbackOnboardingText;
-  
+
   if (hasFallback) {
     const fallbackParts: string[] = [];
     if (result.fallbackOnboardingText) {
@@ -268,6 +307,18 @@ export function buildContextBlock(result: RetrievalResult): string {
       renderEmbeddingsForPrompt(result.embeddingContexts),
       '=========================================='
     );
+  }
+
+  if (parts.length === 0) {
+    return [
+      '=== RETRIEVAL: EMPTY ===',
+      'No compiled Spaces, no recalled facts, no household summary apply to this query.',
+      'Per Rule 11 of your prompt: if the user is asking about personal facts, family',
+      'members, past events, or their own context, do NOT answer from training — say',
+      "\"I don't have notes on that yet\" or similar. General knowledge, reasoning,",
+      'coding, and creative questions are still fine to answer normally.',
+      '=========================',
+    ].join('\n');
   }
 
   return parts.join('\n\n');
