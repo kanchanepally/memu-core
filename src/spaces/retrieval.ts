@@ -22,11 +22,12 @@
  */
 
 import { dispatch } from '../skills/router';
-import { retrieveRelevantContext, type Visibility as RagVisibility } from '../intelligence/context';
+import { embedText, retrieveRelevantContext, type Visibility as RagVisibility } from '../intelligence/context';
 import { getCatalogue, matchBySlug, renderCatalogueForPrompt, resolveWikilinks, type CatalogueEntry } from './catalogue';
 import { findSpaceByUri } from './store';
 import type { Space } from './model';
 import { getOnboardingState } from '../onboarding/state';
+import { db } from '../db/tenant';
 
 export type RetrievalPath = 'direct' | 'catalogue' | 'embedding' | 'none';
 
@@ -182,14 +183,65 @@ interface MatcherReturn {
  * is already visibility-filtered, so any URI the LLM returns is safe
  * to load for this viewer.
  */
+/**
+ * Phase 1 of Build Spec 1 — vector-shortlist the catalogue against the
+ * query embedding before handing to the LLM matcher. Returns up to
+ * `topK` catalogue entries ranked by cosine similarity to the query.
+ *
+ * Behaviour:
+ *  - If catalogue.length ≤ topK, returns catalogue unchanged (no point
+ *    shortlisting; the matcher already sees everything).
+ *  - Otherwise, queries synthesis_pages for the top-K URIs by cosine
+ *    distance, filtered to the visible catalogue's URIs (RLS scope +
+ *    catalogue's pre-applied visibility check make this safe).
+ *  - Spaces whose `embedding` is NULL (mid-backfill, or freshly-written
+ *    before a future indexer fires) fall through and are appended to
+ *    fill the topK so recall isn't punished during the migration.
+ *
+ * MUST run inside an active collective context — db.query is
+ * RLS-scoped via the request pipeline.
+ */
+async function shortlistByEmbedding(
+  catalogue: CatalogueEntry[],
+  query: string,
+  topK = 20,
+): Promise<CatalogueEntry[]> {
+  if (catalogue.length <= topK) return catalogue;
+  const queryVec = await embedText(query);
+  const queryStr = `[${queryVec.join(',')}]`;
+  const uris = catalogue.map(e => e.uri);
+  const rows = await db.query<{ uri: string }>(
+    `SELECT uri
+       FROM synthesis_pages
+      WHERE uri = ANY($1)
+        AND embedding IS NOT NULL
+      ORDER BY embedding <=> $2::vector
+      LIMIT $3`,
+    [uris, queryStr, topK],
+  );
+  const ranked = new Set(rows.rows.map(r => r.uri));
+  // Stable order: keep catalogue's order but only the shortlisted URIs.
+  // Anything embedding-NULL falls through and is appended afterwards
+  // so the matcher still sees them (recall safety net during backfill).
+  const inShortlist = catalogue.filter(e => ranked.has(e.uri));
+  if (inShortlist.length >= topK) return inShortlist;
+  const notRanked = catalogue.filter(e => !ranked.has(e.uri));
+  return [...inShortlist, ...notRanked.slice(0, topK - inShortlist.length)];
+}
+
 async function askCatalogueMatcher(
   input: RetrieveInput,
   catalogue: CatalogueEntry[],
 ): Promise<CatalogueEntry[]> {
   if (catalogue.length === 0) return [];
 
-  const cataloguePrompt = renderCatalogueForPrompt(catalogue);
-  const uriLookup = new Map(catalogue.map(e => [e.uri, e]));
+  // Phase 1: vector-shortlist before the LLM. Cuts prompt size + improves
+  // recall by surfacing semantically-relevant Spaces even when their
+  // name/description doesn't keyword-match the query.
+  const shortlisted = await shortlistByEmbedding(catalogue, input.query);
+
+  const cataloguePrompt = renderCatalogueForPrompt(shortlisted);
+  const uriLookup = new Map(shortlisted.map(e => [e.uri, e]));
 
   const userMessage = [
     'You are the Memu retrieval matcher. Given the user query and the catalogue of',
