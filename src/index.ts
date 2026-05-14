@@ -3540,6 +3540,53 @@ const start = async () => {
       }
     }, { timezone: 'Europe/London' });
 
+    // Phase 0 of Build Spec 1 — nightly retrieval-eval replay per collective.
+    // 05:15 Europe/London sits after the 04:30 households sweep and well
+    // before the 07:00 morning briefing. Best-effort: any per-collective
+    // failure is logged but doesn't poison subsequent collectives.
+    cron.schedule('15 5 * * *', async () => {
+      server.log.info('Running nightly retrieval-eval replay');
+      try {
+        const { loadGoldenQueries } = await import('./eval/golden');
+        const { replayAll } = await import('./eval/replay');
+        const { renderRecallCard, readPreviousRecallPercent, writeRecallCard } = await import('./eval/card');
+        const { resolve } = await import('node:path');
+
+        const dir = resolve(process.cwd(), 'eval/golden');
+        const queries = loadGoldenQueries(dir);
+        if (queries.length === 0) {
+          server.log.warn('[EVAL] no golden queries — skipping nightly recall card');
+          return;
+        }
+
+        const collectives = await db.queryWithoutTenant<{ id: string; primary_admin_profile_id: string }>(
+          `SELECT id, primary_admin_profile_id FROM collectives WHERE status = 'active'`,
+        );
+
+        for (const hh of collectives.rows) {
+          try {
+            await enterCollectiveContext(hh.id, async () => {
+              const summary = await replayAll(queries, {
+                collectiveId: hh.id,
+                viewerProfileId: hh.primary_admin_profile_id,
+              });
+              const previous = await readPreviousRecallPercent();
+              const card = renderRecallCard(summary, previous);
+              await writeRecallCard(hh.id, hh.primary_admin_profile_id, card);
+              server.log.info(
+                { collectiveId: hh.id, recallPercent: summary.recallPercent, passed: summary.passed, total: summary.total },
+                '[EVAL] recall card written',
+              );
+            });
+          } catch (err) {
+            server.log.error({ err, collectiveId: hh.id }, '[EVAL] per-collective replay failed');
+          }
+        }
+      } catch (err) {
+        server.log.error({ err }, '[EVAL] nightly sweep failed');
+      }
+    }, { timezone: 'Europe/London' });
+
   } catch (err) {
     server.log.error(err);
     process.exit(1);
