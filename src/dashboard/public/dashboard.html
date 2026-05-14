@@ -1209,6 +1209,7 @@ const COMMITMENT_CARD_TYPES = new Set([
 const NOTICED_CARD_TYPES = new Set([
     'contradiction', 'stale_fact', 'pattern', 'unfinished_business',
     'care_standard_lapsed', 'collision', 'weekly_digest',
+    'eval_recall',
 ]);
 
 // Time-bucket conflict detection on today's schedule. Two events overlap
@@ -1751,6 +1752,7 @@ const NUDGE_TYPE_DISPLAY = {
     unfinished_business: { label: 'Unfinished', iconKey: 'hourglass', tone: 'attention' },
     collision: { label: 'Collision', iconKey: 'warn', tone: 'attention' },
     care_standard_lapsed: { label: 'Overdue', iconKey: 'alert', tone: 'attention' },
+    eval_recall: { label: 'Recall', iconKey: 'trend', tone: 'neutral' },
 };
 
 const NUDGE_TYPE_FALLBACK = { label: 'Note', iconKey: 'dot', tone: 'neutral' };

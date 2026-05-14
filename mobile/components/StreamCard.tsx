@@ -33,6 +33,7 @@ const typeIcons: Record<string, React.ComponentProps<typeof Ionicons>['name']> =
   note: 'document-text-outline',
   fact: 'bulb-outline',
   briefing: 'newspaper-outline',
+  eval_recall: 'analytics-outline',
 };
 
 const sourceColor = (src?: string) => {

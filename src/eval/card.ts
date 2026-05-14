@@ -75,9 +75,13 @@ export async function writeRecallCard(
        WHERE card_type = 'eval_recall'
          AND DATE(created_at) = CURRENT_DATE`,
   );
+  // Explicit Dismiss-only actions — informational card, no semantic
+  // "Mark done" affordance. The PWA's nudge fallback would otherwise
+  // synthesise Mark-done + Dismiss for any card with empty actions.
+  const actions = JSON.stringify([{ type: 'dismiss', label: 'Dismiss' }]);
   await db.query(
-    `INSERT INTO stream_cards (family_id, collective_id, card_type, title, body, source, status)
-     VALUES ($1, $2, 'eval_recall', $3, $4, 'proactive', 'active')`,
-    [adminProfileId, collectiveId, card.title, card.body],
+    `INSERT INTO stream_cards (family_id, collective_id, card_type, title, body, source, status, actions)
+     VALUES ($1, $2, 'eval_recall', $3, $4, 'proactive', 'active', $5::jsonb)`,
+    [adminProfileId, collectiveId, card.title, card.body, actions],
   );
 }
