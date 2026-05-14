@@ -1618,6 +1618,82 @@ server.get('/api/spaces/graph', async (request, reply) => {
   }
 });
 
+// Phase 6 of Build Spec 1 — manual connections between Spaces.
+//
+// POST creates a `manual` row in space_connections; DELETE removes it.
+// Both endpoints validate that both URIs exist within the active
+// collective (RLS scopes the SELECT; a cross-collective URI returns
+// zero rows and the request is rejected with 422).
+//
+// The canonical ordering of the URI pair (a < b) is enforced by the
+// schema's CHECK constraint — we order in the handler too so the
+// resulting row matches whether the user called with (A,B) or (B,A).
+
+function validateConnectionInput(body: unknown):
+  | { ok: true; a: string; b: string }
+  | { ok: false; reason: string } {
+  if (!body || typeof body !== 'object') return { ok: false, reason: 'body must be an object' };
+  const b = body as Record<string, unknown>;
+  const uriA = b.spaceUriA;
+  const uriB = b.spaceUriB;
+  if (typeof uriA !== 'string' || !uriA.trim()) return { ok: false, reason: 'spaceUriA required' };
+  if (typeof uriB !== 'string' || !uriB.trim()) return { ok: false, reason: 'spaceUriB required' };
+  if (uriA === uriB) return { ok: false, reason: 'cannot connect a Space to itself' };
+  // Canonical-order so the row matches the schema CHECK and the
+  // UNIQUE constraint collapses (A,B) and (B,A) calls.
+  const [a, bb] = uriA < uriB ? [uriA, uriB] : [uriB, uriA];
+  return { ok: true, a, b: bb };
+}
+
+server.post('/api/spaces/connections', async (request, reply) => {
+  try {
+    const validated = validateConnectionInput(request.body);
+    if (!validated.ok) {
+      return reply.code(400).send({ error: validated.reason });
+    }
+    // Verify both endpoints exist in the active collective (RLS-scoped).
+    const lookup = await db.query<{ uri: string }>(
+      `SELECT uri FROM synthesis_pages WHERE uri = ANY($1)`,
+      [[validated.a, validated.b]],
+    );
+    if (lookup.rows.length < 2) {
+      return reply.code(422).send({
+        error: 'one or both Spaces not found in this collective',
+        reason: 'space_not_in_collective',
+      });
+    }
+    await db.query(
+      `INSERT INTO space_connections (space_uri_a, space_uri_b, source_mechanism, confidence)
+       VALUES ($1, $2, 'manual', 1.00)
+       ON CONFLICT (collective_id, space_uri_a, space_uri_b, source_mechanism)
+       DO UPDATE SET last_seen_at = NOW(), status = 'active'`,
+      [validated.a, validated.b],
+    );
+    return reply.code(201).send({ ok: true, spaceUriA: validated.a, spaceUriB: validated.b });
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to create manual connection' });
+  }
+});
+
+server.delete('/api/spaces/connections', async (request, reply) => {
+  try {
+    const validated = validateConnectionInput(request.body);
+    if (!validated.ok) {
+      return reply.code(400).send({ error: validated.reason });
+    }
+    const result = await db.query(
+      `DELETE FROM space_connections
+        WHERE space_uri_a = $1 AND space_uri_b = $2 AND source_mechanism = 'manual'`,
+      [validated.a, validated.b],
+    );
+    return reply.send({ ok: true, deleted: result.rowCount ?? 0 });
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to delete manual connection' });
+  }
+});
+
 // Create a new Space manually. Routes through upsertSpace so the DB row
 // + on-disk markdown + git history stay in lock-step (and so the v2
 // parent_space_uri field lands cleanly via the canvas create flow).
