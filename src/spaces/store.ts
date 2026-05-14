@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import matter from 'gray-matter';
 import { db } from '../db/tenant';
 import { embedText } from '../intelligence/context';
+import { persistWikilinkEdges } from './wikilinks';
 import {
   buildSpaceUri,
   slugify,
@@ -397,6 +398,15 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
         projectInsertValue,
       ],
     );
+
+    // Phase 6 of Build Spec 1 — persist wikilink edges from the body.
+    // Runs after the synthesis_pages write so the source Space is
+    // guaranteed to exist, and inside the same transaction so a
+    // failure here rolls back the Space write too (consistent state
+    // is more important than partial graph coverage). RLS scopes the
+    // target resolution to the active collective — cross-collective
+    // [[targets]] silently resolve to nothing.
+    await persistWikilinkEdges(client, uri, input.bodyMarkdown);
 
     await client.query(
       `INSERT INTO spaces_log (family_id, space_uri, event, summary, actor_profile_id)

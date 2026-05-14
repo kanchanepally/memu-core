@@ -31,6 +31,7 @@
 import { db } from '../db/tenant';
 import { canSee, resolveVisibility, type FamilyRoster, type SpaceCategory, type SpaceDomain, type Visibility } from '../spaces/model';
 import { loadRoster } from '../spaces/catalogue';
+import { extractWikilinkTargets } from '../spaces/wikilinks';
 
 export type GraphFacet = 'category' | 'domain' | 'person' | 'tag' | 'none';
 export type GraphVisibility = 'mine' | 'shared' | 'all';
@@ -128,8 +129,6 @@ export function nodeSize(bodyMarkdown: string, lastUpdated: Date | string): { wi
   };
 }
 
-const WIKILINK_RE = /\[\[([^\]\n]+?)\]\]/g;
-
 /**
  * 200 chars of plaintext for hover preview / search. Strips markdown
  * scaffolding (heading hashes, emphasis markers, list bullets, code
@@ -177,19 +176,6 @@ function buildWikilinkIndex(spaces: GraphSpace[]): Map<string, string> {
     if (titleKey && !index.has(titleKey)) index.set(titleKey, s.id);
   }
   return index;
-}
-
-function extractWikilinkTargets(body: string): string[] {
-  if (!body) return [];
-  const targets = new Set<string>();
-  for (const m of body.matchAll(WIKILINK_RE)) {
-    const raw = m[1].trim();
-    if (!raw) continue;
-    const pipeIdx = raw.indexOf('|');
-    const target = pipeIdx >= 0 ? raw.slice(0, pipeIdx).trim() : raw;
-    if (target) targets.add(target.toLowerCase());
-  }
-  return [...targets];
 }
 
 function pairKey(a: string, b: string): string {
