@@ -83,7 +83,19 @@ BEGIN
   END IF;
 END $$;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON projects TO memu_app;
+-- The memu_app NOSUPERUSER role only exists on Hosted-tier deploys
+-- (per migration 036 — created when MEMU_APP_DB_PASSWORD is set).
+-- Standalone deploys (Z2) run Postgres as the `memu` superuser and
+-- have no memu_app role; an unconditional GRANT crashes the
+-- migration runner there with "role memu_app does not exist".
+--
+-- Guard the GRANT on the role's existence so both deploy modes work.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'memu_app') THEN
+    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON projects TO memu_app';
+  END IF;
+END $$;
 
 COMMENT ON TABLE projects IS
   'Phase 4 of Build Spec 1. Lightweight grouping inside a collective. A project is a FILTER over the collective''s one shared pool — not a separate context pool. Several projects in a collective share its members, anonymisation registry, and knowledge graph by design.';
