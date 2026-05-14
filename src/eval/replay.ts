@@ -1,5 +1,5 @@
-import { deriveRetrievalState, retrieveForQuery, type RetrievalResult, type RetrievalPath } from '../spaces/retrieval';
-import type { GoldenQuery, ReplayDiff } from './types';
+import { deriveRetrievalState, retrieveForQuery, type RetrievalResult, type RetrievalPath, type RetrievalState } from '../spaces/retrieval';
+import type { GoldenQuery, ReplayDiff, ReplayResult } from './types';
 
 const PATH_VALUES: readonly RetrievalPath[] = ['direct', 'catalogue', 'embedding', 'none'];
 
@@ -52,4 +52,47 @@ export async function replayQuery(query: GoldenQuery, ctx: ReplayContext): Promi
     query: query.query,
   });
   return diffRetrieval(query, result);
+}
+
+const ALL_STATES: RetrievalState[] = ['sourced', 'fallback', 'empty'];
+
+export function summariseReplay(collectiveId: string, ranAt: Date, diffs: ReplayDiff[]): ReplayResult {
+  const total = diffs.length;
+  const passed = diffs.filter(d => d.passed).length;
+  const recallPercent = total === 0 ? 100 : Math.round((passed / total) * 1000) / 10;
+  const byState: ReplayResult['byState'] = {
+    sourced: { total: 0, passed: 0 },
+    fallback: { total: 0, passed: 0 },
+    empty: { total: 0, passed: 0 },
+  };
+  for (const d of diffs) {
+    const bucket = byState[d.actualRetrievalState];
+    bucket.total += 1;
+    if (d.passed) bucket.passed += 1;
+  }
+  // Ensure every state present (idempotent over the ALL_STATES list).
+  for (const s of ALL_STATES) {
+    byState[s] ??= { total: 0, passed: 0 };
+  }
+  return {
+    collectiveId,
+    ranAt,
+    total,
+    passed,
+    failed: total - passed,
+    recallPercent,
+    byState,
+    diffs,
+  };
+}
+
+export async function replayAll(
+  queries: GoldenQuery[],
+  ctx: ReplayContext,
+): Promise<ReplayResult> {
+  const diffs: ReplayDiff[] = [];
+  for (const q of queries) {
+    diffs.push(await replayQuery(q, ctx));
+  }
+  return summariseReplay(ctx.collectiveId, new Date(), diffs);
 }

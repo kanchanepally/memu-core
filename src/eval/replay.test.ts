@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { diffRetrieval } from './replay';
-import type { GoldenQuery } from './types';
+import { diffRetrieval, summariseReplay } from './replay';
+import type { GoldenQuery, ReplayDiff } from './types';
 import type { RetrievalResult } from '../spaces/retrieval';
 
 function golden(over: Partial<GoldenQuery>): GoldenQuery {
@@ -90,5 +90,53 @@ describe('diffRetrieval', () => {
     // expected 'empty' but actual 'fallback' — mismatch
     expect(d.stateMismatch).toBe(true);
     expect(d.passed).toBe(false);
+  });
+});
+
+describe('summariseReplay', () => {
+  function diff(over: Partial<ReplayDiff>): ReplayDiff {
+    return {
+      id: 'q', query: 'q',
+      passed: true,
+      expectedSpaceUris: [], actualSpaceUris: [],
+      expectedRetrievalState: 'sourced',
+      actualRetrievalPath: 'catalogue', actualRetrievalState: 'sourced',
+      missingUris: [], extraUris: [], stateMismatch: false,
+      ...over,
+    };
+  }
+
+  it('computes recall and by-state breakdown', () => {
+    const diffs: ReplayDiff[] = [
+      diff({ id: 'a', passed: true, actualRetrievalState: 'sourced' }),
+      diff({ id: 'b', passed: true, actualRetrievalState: 'sourced' }),
+      diff({ id: 'c', passed: false, actualRetrievalState: 'fallback' }),
+      diff({ id: 'd', passed: false, actualRetrievalState: 'empty' }),
+    ];
+    const r = summariseReplay('coll-1', new Date('2026-05-14T05:00:00Z'), diffs);
+    expect(r.total).toBe(4);
+    expect(r.passed).toBe(2);
+    expect(r.failed).toBe(2);
+    expect(r.recallPercent).toBe(50);
+    expect(r.byState.sourced).toEqual({ total: 2, passed: 2 });
+    expect(r.byState.fallback).toEqual({ total: 1, passed: 0 });
+    expect(r.byState.empty).toEqual({ total: 1, passed: 0 });
+    expect(r.collectiveId).toBe('coll-1');
+  });
+
+  it('handles empty input (0 / 0 → 100%)', () => {
+    const r = summariseReplay('coll-1', new Date(), []);
+    expect(r.total).toBe(0);
+    expect(r.recallPercent).toBe(100);
+  });
+
+  it('rounds recall to one decimal place', () => {
+    const diffs = [
+      diff({ id: 'a', passed: true }),
+      diff({ id: 'b', passed: true }),
+      diff({ id: 'c', passed: false }),
+    ];
+    const r = summariseReplay('coll-1', new Date(), diffs);
+    expect(r.recallPercent).toBe(66.7);
   });
 });
