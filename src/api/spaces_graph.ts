@@ -31,7 +31,6 @@
 import { db } from '../db/tenant';
 import { canSee, resolveVisibility, type FamilyRoster, type SpaceCategory, type SpaceDomain, type Visibility } from '../spaces/model';
 import { loadRoster } from '../spaces/catalogue';
-import { extractWikilinkTargets } from '../spaces/wikilinks';
 
 export type GraphFacet = 'category' | 'domain' | 'person' | 'tag' | 'none';
 export type GraphVisibility = 'mine' | 'shared' | 'all';
@@ -75,7 +74,7 @@ export interface GraphNode {
   nodeHeight: number;
 }
 
-export type GraphEdgeType = 'wikilink' | 'shared_person' | 'shared_tag' | 'shared_domain' | 'parent_child';
+export type GraphEdgeType = 'wikilink' | 'manual' | 'proposed' | 'shared_person' | 'shared_tag' | 'shared_domain' | 'parent_child';
 
 export interface GraphEdge {
   source: string;
@@ -92,6 +91,8 @@ export interface GraphResult {
 const EDGE_WEIGHTS: Record<GraphEdgeType, number> = {
   parent_child: 2.0,
   wikilink: 1.0,
+  manual: 1.0,        // user-affirmed connection — same weight as wikilink
+  proposed: 0.7,      // semantic similarity (deferred sub-phase 6.5)
   shared_person: 0.5,
   shared_tag: 0.4,
   shared_domain: 0.3,
@@ -161,23 +162,6 @@ export function countWords(body: string): number {
   return matches ? matches.length : 0;
 }
 
-/**
- * Build the wikilink-resolution index once per derivation. Spec-aligned:
- * `[[slug]]` matches by slug, `[[Title]]` matches by title (case-folded).
- * Same rule as `resolveWikilinks` in src/spaces/catalogue.ts so the
- * canvas and the prompt-side resolution stay coherent.
- */
-function buildWikilinkIndex(spaces: GraphSpace[]): Map<string, string> {
-  const index = new Map<string, string>();
-  for (const s of spaces) {
-    const slugKey = s.slug.toLowerCase().trim();
-    if (!index.has(slugKey)) index.set(slugKey, s.id);
-    const titleKey = s.title.toLowerCase().trim();
-    if (titleKey && !index.has(titleKey)) index.set(titleKey, s.id);
-  }
-  return index;
-}
-
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}::${b}` : `${b}::${a}`;
 }
@@ -233,7 +217,6 @@ export function deriveGraph(spaces: GraphSpace[], opts: DeriveGraphOptions = {})
     };
   });
 
-  const wikilinkIndex = buildWikilinkIndex(spaces);
   const edgesByKey = new Map<string, GraphEdge>();
 
   const upsert = (a: string, b: string, type: GraphEdgeType, weight = EDGE_WEIGHTS[type]) => {
@@ -258,13 +241,12 @@ export function deriveGraph(spaces: GraphSpace[], opts: DeriveGraphOptions = {})
     if (parentId) upsert(s.id, parentId, 'parent_child');
   }
 
-  for (const s of spaces) {
-    const targets = extractWikilinkTargets(s.bodyMarkdown);
-    for (const t of targets) {
-      const targetId = wikilinkIndex.get(t);
-      if (targetId && targetId !== s.id) upsert(s.id, targetId, 'wikilink');
-    }
-  }
+  // Phase 6: wikilink edges are no longer derived here — they're
+  // persisted in space_connections at upsertSpace time and merged
+  // into the result by loadGraphForViewer. Manual + proposed edges
+  // come from the same source. Shared-{person,tag,domain} edges
+  // remain in-memory derived because the arrays ARE their source of
+  // truth (per spec §9.3).
 
   for (let i = 0; i < spaces.length; i++) {
     const a = spaces[i];
@@ -347,6 +329,28 @@ export interface LoadGraphOptions {
   focusUri?: string;
 }
 
+interface PersistedConnectionRow {
+  space_uri_a: string;
+  space_uri_b: string;
+  source_mechanism: 'wikilink' | 'manual' | 'proposed';
+  confidence: string;
+}
+
+/**
+ * Phase 6 — load persisted edges from space_connections for the active
+ * collective. RLS scopes the SELECT. Status filter excludes user-
+ * dismissed edges. The caller filters by visible Space URIs before
+ * adding to the GraphResult.
+ */
+async function loadPersistedConnections(): Promise<PersistedConnectionRow[]> {
+  const res = await db.query<PersistedConnectionRow>(
+    `SELECT space_uri_a, space_uri_b, source_mechanism, confidence::text AS confidence
+       FROM space_connections
+      WHERE status = 'active'`,
+  );
+  return res.rows;
+}
+
 export async function loadGraphForViewer(
   familyId: string,
   viewerProfileId: string,
@@ -354,7 +358,7 @@ export async function loadGraphForViewer(
   visibility: GraphVisibility,
   opts: LoadGraphOptions = {},
 ): Promise<GraphResult> {
-  const [roster, rows] = await Promise.all([
+  const [roster, rows, persistedEdges] = await Promise.all([
     loadRoster(familyId),
     db.query<GraphRow>(
       `SELECT id, uri, slug, title, category, description, domains, people, tags,
@@ -363,6 +367,7 @@ export async function loadGraphForViewer(
         ORDER BY last_updated_at DESC`,
       [familyId],
     ),
+    loadPersistedConnections(),
   ]);
 
   const spaces: GraphSpace[] = rows.rows
@@ -402,5 +407,33 @@ export async function loadGraphForViewer(
     }
   }
 
-  return deriveGraph(filtered, { facet });
+  const result = deriveGraph(filtered, { facet });
+
+  // Phase 6: merge persisted edges (wikilink + manual + proposed) into
+  // the derived ones. Filter by URI → id maps built from the visible
+  // Spaces — any persisted edge whose endpoint is hidden from this
+  // viewer drops silently.
+  const uriToId = new Map<string, string>();
+  for (const node of result.nodes) uriToId.set(node.uri, node.id);
+
+  for (const edge of persistedEdges) {
+    const idA = uriToId.get(edge.space_uri_a);
+    const idB = uriToId.get(edge.space_uri_b);
+    if (!idA || !idB || idA === idB) continue;
+    // Canonical order: smaller id first (matches deriveGraph's pair
+    // logic — keeps the wire format consistent).
+    const [source, target] = idA < idB ? [idA, idB] : [idB, idA];
+    const weight = Math.max(
+      Number(edge.confidence) * EDGE_WEIGHTS[edge.source_mechanism],
+      0,
+    );
+    result.edges.push({
+      source,
+      target,
+      type: edge.source_mechanism,
+      weight,
+    });
+  }
+
+  return result;
 }
