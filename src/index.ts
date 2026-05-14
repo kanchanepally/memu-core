@@ -1694,6 +1694,14 @@ server.delete('/api/spaces/connections', async (request, reply) => {
   }
 });
 
+// Phase 5 of Build Spec 1 — workspace API. List the caller's
+// workspace(s); list + create projects within it. Workspace creation
+// + switching are deferred until multi-collective membership lands
+// (the /api/workspaces POST returns 501 with a clear note). Fastify
+// queues plugin registration; resolved by server.listen() later.
+import { workspaceRoutes } from './api/workspaces';
+server.register(workspaceRoutes);
+
 // Create a new Space manually. Routes through upsertSpace so the DB row
 // + on-disk markdown + git history stay in lock-step (and so the v2
 // parent_space_uri field lands cleanly via the canvas create flow).
