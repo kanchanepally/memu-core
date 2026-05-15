@@ -1,50 +1,47 @@
 /**
- * Phase 5 of Build Spec 1 — workspace API (backend), 1:1-era subset.
+ * Phase 5 of Build Spec 1 — workspace API (backend).
  *
  * ## What ships here
  *
- *   GET    /api/workspaces                — list caller's workspace (one row)
+ *   GET    /api/workspaces                — list caller's workspaces
+ *                                            (every active membership)
+ *   POST   /api/workspaces                — create new Collective + own
+ *                                            it as 'owner' (Story 3.1)
  *   GET    /api/workspaces/:id/projects   — list projects in workspace
  *   POST   /api/workspaces/:id/projects   — create a project
  *
- * Projects are per-collective and multiple-per-collective works today
- * (Phase 4 / migration 041). These three endpoints are real,
- * shippable surfaces under the current 1:1 model.
+ * ## Multi-Collective Membership status
  *
- * ## What is one coherent deferred slice
+ * Story 3.1 (this commit): POST /api/workspaces is real. A caller
+ * can create a new Collective and is automatically an owner
+ * membership of it. listWorkspaces (Story 2.1) already widened to
+ * read from collective_memberships, so the new workspace appears in
+ * the caller's list immediately. ensureWorkspaceMatchesCaller
+ * widened to membership-check so the project endpoints accept any
+ * workspaceId the caller is an active member of (not just the
+ * profile's home collective).
  *
- * Spec 1 §8's "create new workspace + switch between workspaces +
- * auto-create personal workspace on registration" — all three —
- * derive their meaning from multi-collective membership (one profile
- * belonging to multiple collectives with role-on-relation). Today
- * every profile belongs to exactly one collective via
- * `profiles.collective_id` (1:1; see memory
- * project-memu-phase3-interim-role-on-profile).
+ * Story 3.2 (next): active-Collective switching — the implicit
+ * per-request collective_id (used by every endpoint that doesn't
+ * carry an explicit workspaceId) becomes settable. Until then,
+ * `profile.collective_id` remains the implicit home and is
+ * unchanged by 3.1's create flow.
  *
- * Pulling any one of these three forward without the others creates
- * permanent drift with no clean migration back. Concrete example:
- * changing registration to auto-create `type='personal'` while
- * existing collectives stay `type='household'` produces a
- * registration-date split that no later reconciliation can resolve
- * honestly. See memory
- * feedback-no-pull-forward-ahead-of-unblocking-slice for the
- * principle. They ship together with the multi-collective slice,
- * or they don't ship.
+ * Story 3.3 (later): auto-create a personal Collective for every
+ * user (existing + new). Migration reconciles existing profiles;
+ * registration auto-creates type='personal'. NOT pulled forward —
+ * see feedback memory no-pull-forward-ahead-of-unblocking-slice.
  *
- * Until then:
- *
- *   POST /api/workspaces           — 501, names the deferred slice
- *   (no POST /workspaces/:id/switch route exists; client-side
- *    "switch" UI defers in lockstep — Phase 5 Story 5.3 must NOT
- *    surface a live "switch workspaces" affordance hitting these
- *    501s; show a disabled / "coming soon" treatment instead.)
- *
- * RLS scopes every read/write; a workspaceId in the URL that doesn't
- * match the caller's collective returns 404 because RLS hides it.
+ * RLS still scopes every read/write. The project endpoints
+ * explicitly enterCollectiveContext on the URL workspace so they
+ * operate inside its tenant context regardless of which collective
+ * is the caller's implicit home.
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { db } from '../db/tenant';
+import crypto from 'crypto';
+import { pool } from '../db/connection';
+import { db, enterCollectiveContext } from '../db/tenant';
 
 interface AuthedRequest extends FastifyRequest {
   profileId?: string;
@@ -107,6 +104,51 @@ export function validateProjectCreate(input: unknown): ProjectCreateValidation {
 }
 
 // ---------------------------------------------------------------------------
+// Story 3.1 — POST /api/workspaces validator
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceCreateInput {
+  name: string;
+  type: WorkspaceType;
+  parentCollectiveId?: string | null;
+}
+
+export type WorkspaceCreateValidation =
+  | { ok: true; name: string; type: WorkspaceType; parentCollectiveId: string | null }
+  | { ok: false; reason: 'name_required' | 'type_required' | 'type_invalid' | 'household_reserved' };
+
+/**
+ * Validate a POST /api/workspaces body. Pure — testable without DB.
+ *
+ * Type rules:
+ *   - Must be one of WORKSPACE_TYPES.
+ *   - `household` is REJECTED. A household Collective is the auth-
+ *     time root created by registerPrimaryCollectiveAndProfile; users
+ *     don't create new households via this API. (They could in
+ *     principle, but the household role and ownership semantics are
+ *     entangled with `profiles.collective_id` in the 1:1 era, and
+ *     opening that door would invite drift.)
+ *   - `personal` is allowed here in Story 3.1, even though the
+ *     auto-personal-on-registration flow is Story 3.3. A user who
+ *     explicitly creates one now gets a perfectly real personal
+ *     Collective; 3.3's job is making it automatic for everyone.
+ */
+export function validateWorkspaceCreate(input: unknown): WorkspaceCreateValidation {
+  if (!input || typeof input !== 'object') return { ok: false, reason: 'name_required' };
+  const b = input as Record<string, unknown>;
+  const name = typeof b.name === 'string' ? b.name.trim() : '';
+  if (!name) return { ok: false, reason: 'name_required' };
+  if (typeof b.type !== 'string' || !b.type) return { ok: false, reason: 'type_required' };
+  if (!isWorkspaceType(b.type)) return { ok: false, reason: 'type_invalid' };
+  if (b.type === 'household') return { ok: false, reason: 'household_reserved' };
+  const parentCollectiveId =
+    typeof b.parentCollectiveId === 'string' && b.parentCollectiveId.trim()
+      ? b.parentCollectiveId.trim()
+      : null;
+  return { ok: true, name: name.slice(0, 120), type: b.type, parentCollectiveId };
+}
+
+// ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
 
@@ -129,16 +171,24 @@ interface ProjectRow {
 }
 
 async function listWorkspaces(profileId: string) {
-  // Single-membership today — return the caller's collective alongside
-  // their role on profiles.role. RLS scopes to that collective; we
-  // explicitly read the caller's row first to recover the collective_id
-  // and role in one query.
-  const res = await db.query<WorkspaceRow & { role: string }>(
-    `SELECT c.id, c.name, c.type, c.parent_collective_id, c.status, p.role
-       FROM profiles p
-       JOIN collectives c ON c.id = p.collective_id
-      WHERE p.id = $1
-      LIMIT 1`,
+  // Story 2.1: read from the collective_memberships relationship
+  // rather than profiles.role. status='active' filters out
+  // invited/left rows. Single-membership today still returns one
+  // row; the same query widens cleanly when Story 3.2 lifts the
+  // 1:1 constraint and a profile may have multiple active
+  // memberships.
+  //
+  // queryAsBootstrap is needed because the auth path enters this
+  // before requireCollective has bound a context (the caller is
+  // discovering which collective(s) they belong to). Bootstrap is
+  // a READ-only escape hatch on profiles + collective_memberships;
+  // writes still gate on collective match.
+  const res = await db.queryAsBootstrap<WorkspaceRow & { role: string }>(
+    `SELECT c.id, c.name, c.type, c.parent_collective_id, c.status, cm.role
+       FROM collective_memberships cm
+       JOIN collectives c ON c.id = cm.collective_id
+      WHERE cm.profile_id = $1 AND cm.status = 'active'
+      ORDER BY c.created_at ASC`,
     [profileId],
   );
   return res.rows.map(r => ({
@@ -152,17 +202,115 @@ async function listWorkspaces(profileId: string) {
 }
 
 async function ensureWorkspaceMatchesCaller(profileId: string, workspaceId: string): Promise<boolean> {
-  // RLS already restricts the SELECT, but we want to distinguish 404
-  // ("workspace exists but not yours") from 403. Since 1:1 membership
-  // means the caller's profile.collective_id IS their workspace, any
-  // workspaceId that doesn't match is "not yours" — 404 is the right
-  // shape (the workspace might exist in another collective; from
-  // here it's indistinguishable from non-existent).
-  const res = await db.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM profiles WHERE id = $1 AND collective_id = $2`,
+  // Story 3.1: widened from profiles.collective_id (the 1:1 home
+  // pointer) to collective_memberships (the relationship). A caller
+  // is a "member" of any Collective they have an active membership
+  // row in, regardless of which one is their implicit home. After
+  // Story 3.1, a user can have ≥2 active memberships (their home
+  // plus any workspace they create), and project ops must work
+  // against any of them.
+  //
+  // queryAsBootstrap so the read works even before per-workspace
+  // context is entered. status='active' filters out invited/left.
+  const res = await db.queryAsBootstrap<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM collective_memberships
+      WHERE profile_id = $1 AND collective_id = $2 AND status = 'active'`,
     [profileId, workspaceId],
   );
   return Number(res.rows[0]?.count ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Story 3.1 — create a new Collective + owner membership
+// ---------------------------------------------------------------------------
+
+interface WorkspaceCreateResult {
+  id: string;
+  name: string;
+  type: WorkspaceType;
+  parentCollectiveId: string | null;
+  status: string;
+  role: 'owner';
+}
+
+/**
+ * Create a new Collective with the caller as the owner-membership.
+ *
+ * Transaction shape:
+ *   1. Pre-generate collective_id as UUID in JS so we can specify it
+ *      on both the collectives INSERT and the membership INSERT.
+ *   2. SET LOCAL memu.collective_id to the pre-generated id so the
+ *      WITH CHECK on collective_memberships passes (the policy
+ *      requires collective_id = current_setting('memu.collective_id')).
+ *   3. INSERT INTO collectives — Tier-C, no RLS, no FK problem (the
+ *      caller's profile already exists).
+ *   4. INSERT INTO collective_memberships — role='owner', status=
+ *      'active'. The session var matches the new collective so the
+ *      WITH CHECK passes.
+ *
+ * After commit, the caller has TWO active memberships: their home
+ * (created at first registration) plus this new one. listWorkspaces
+ * (Story 2.1) sees both.
+ *
+ * Uses raw pool.connect() rather than db.transaction because we need
+ * the transaction-local SET LOCAL to a collective_id that's not in
+ * any AsyncLocalStorage context yet — the new one is being bootstrapped.
+ */
+async function createWorkspace(
+  ownerProfileId: string,
+  validated: { name: string; type: WorkspaceType; parentCollectiveId: string | null },
+): Promise<WorkspaceCreateResult> {
+  const collectiveId = crypto.randomUUID();
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Switch the session var so the membership INSERT's WITH CHECK
+    // passes against the about-to-exist collective. SET LOCAL —
+    // discarded on COMMIT, doesn't leak when the connection returns
+    // to the pool.
+    await client.query("SELECT set_config('memu.collective_id', $1, true)", [collectiveId]);
+
+    // Collective insert. Tier-C, no RLS gate. parent_collective_id is
+    // optional — used by the Pod model when a workspace nests under
+    // another (e.g. a project workspace inside a household). Caller-
+    // chosen; we don't validate the FK target's existence beyond the
+    // FK itself.
+    await client.query(
+      `INSERT INTO collectives (id, type, name, parent_collective_id, primary_admin_profile_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [collectiveId, validated.type, validated.name, validated.parentCollectiveId, ownerProfileId],
+    );
+
+    // Owner membership. role='owner' is the role that creates +
+    // configures the Collective; existing households use 'admin' as
+    // the alias for their primary admin, but new-Collective owners
+    // get 'owner' so the role distinction is explicit. Both are
+    // adult-bucket per the spec's role-to-bucket mapping.
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, 'owner', 'active')`,
+      [collectiveId, ownerProfileId],
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return {
+    id: collectiveId,
+    name: validated.name,
+    type: validated.type,
+    parentCollectiveId: validated.parentCollectiveId,
+    status: 'active',
+    role: 'owner',
+  };
 }
 
 async function listProjects(workspaceId: string) {
@@ -228,20 +376,40 @@ export async function workspaceRoutes(server: FastifyInstance) {
     }
   });
 
-  server.post('/api/workspaces', async (_request: AuthedRequest, reply: FastifyReply) => {
-    return reply.code(501).send({
-      error: 'workspace creation is part of a deferred slice',
-      reason: 'multi_collective_membership_not_shipped',
-      deferred_with: [
-        'workspace switching (POST /api/workspaces/:id/switch — not implemented)',
-        'auto-created personal workspace on profile registration',
-      ],
-      unblocked_by: 'the multi-collective membership slice of Build Spec 1: profiles can belong to multiple collectives, with role moving from profiles.role onto the membership relation (person × collective × role). Today profile→collective is 1:1 via profiles.collective_id; creating a second workspace without that model would either silently re-point a profile or create an orphan.',
-      why_not_partial: 'Shipping create-only (without switch + auto-personal) would let a user create a workspace they can never enter. Shipping auto-personal-on-registration without multi-collective creates permanent registration-date drift between old (type=household) and new (type=personal) users with no clean reconciliation. The three pieces only make sense together.',
-      ui_guidance: "Frontends MUST NOT surface a live 'create workspace' button that hits this 501. Show a disabled affordance with 'coming with multi-workspace support' or hide entirely until the slice ships.",
-    });
+  // Story 3.1 — real workspace creation. Caller becomes owner of the
+  // new Collective. The new workspace appears in their next GET
+  // /api/workspaces immediately (Story 2.1 widened the list to read
+  // from collective_memberships).
+  //
+  // No role check: any authenticated user can create a workspace they
+  // own. The spec is silent on per-user creation quotas; rate
+  // limiting is an operator concern (and a Tier-1 hosted concern,
+  // not a Z2 standalone concern).
+  server.post('/api/workspaces', async (request: AuthedRequest, reply: FastifyReply) => {
+    try {
+      const profileId = request.profileId as string;
+      if (!profileId) return reply.code(401).send({ error: 'not authenticated' });
+      const validated = validateWorkspaceCreate(request.body);
+      if (!validated.ok) {
+        return reply.code(400).send({ error: validated.reason });
+      }
+      const workspace = await createWorkspace(profileId, validated);
+      return reply.code(201).send({ workspace });
+    } catch (err) {
+      server.log.error(err);
+      return reply.code(500).send({ error: 'Failed to create workspace' });
+    }
   });
 
+  // Project endpoints operate against the URL workspaceId. Because the
+  // caller's implicit collective context (from requireCollective) is
+  // their HOME, not necessarily the URL workspace, we enter the URL
+  // workspace's context explicitly for the duration of the project
+  // operation. ensureWorkspaceMatchesCaller has already confirmed the
+  // caller has an active membership in the URL workspace, so this is
+  // not a privilege escalation — it's the per-request "operate inside
+  // this collective" pattern that Story 3.2's switch-flow will later
+  // make implicit for non-project endpoints too.
   server.get('/api/workspaces/:id/projects', async (request: AuthedRequest, reply: FastifyReply) => {
     try {
       const profileId = request.profileId as string;
@@ -250,7 +418,7 @@ export async function workspaceRoutes(server: FastifyInstance) {
       if (!await ensureWorkspaceMatchesCaller(profileId, id)) {
         return reply.code(404).send({ error: 'workspace not found' });
       }
-      const projects = await listProjects(id);
+      const projects = await enterCollectiveContext(id, () => listProjects(id));
       return reply.send({ projects });
     } catch (err) {
       server.log.error(err);
@@ -271,7 +439,7 @@ export async function workspaceRoutes(server: FastifyInstance) {
         return reply.code(400).send({ error: validated.reason });
       }
       try {
-        const project = await createProject(id, validated);
+        const project = await enterCollectiveContext(id, () => createProject(id, validated));
         return reply.code(201).send({ project });
       } catch (err: any) {
         if (err?.code === '23505') {

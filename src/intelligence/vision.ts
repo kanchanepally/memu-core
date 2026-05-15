@@ -151,7 +151,18 @@ export async function processVisualDocumentExtraction(
       return;
     }
 
-    const adultRes = await db.query("SELECT id FROM profiles WHERE role = 'adult' LIMIT 1");
+    // Story 2.2: role lives on collective_memberships. We pick the
+    // first adult-level member of the active collective (RLS-scoped)
+    // as the family_id anchor for vision cards, preserving the
+    // pre-spec behaviour where stream cards attach to an adult.
+    const adultRes = await db.query(
+      `SELECT cm.profile_id AS id
+         FROM collective_memberships cm
+        WHERE cm.status = 'active'
+          AND cm.role IN ('owner', 'admin', 'adult')
+        ORDER BY cm.created_at ASC
+        LIMIT 1`,
+    );
     const familyId = adultRes.rows.length > 0 ? adultRes.rows[0].id : profileId;
 
     // Phase A.2 — WhatsApp document-vision cards land on the Canvas

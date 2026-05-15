@@ -44,9 +44,8 @@ export interface VerifiedBearer {
   slug: string;
   /** Memu profiles.id of the matching profile. */
   profileId: string;
-  /** Display name + role, returned for convenience. */
+  /** Display name, returned for convenience. */
   displayName: string;
-  role: string;
   /**
    * JWK thumbprint from the access token's `cnf.jkt` claim, if the token
    * was issued as DPoP-bound. When present, the route handler MUST verify
@@ -97,7 +96,6 @@ interface ProfileLookupRow {
   id: string;
   webid_slug: string | null;
   display_name: string;
-  role: string;
 }
 
 /**
@@ -115,8 +113,14 @@ export function parseWebIdSlug(webid: string): string | null {
 }
 
 async function loadProfileBySlug(slug: string): Promise<ProfileLookupRow | null> {
+  // Multi-Collective Membership spec, Story 2.1: role is no longer
+  // a property of the profile (it's a property of each membership).
+  // The bearer-verify path has no Collective context at this point,
+  // so a role here would be ambiguous anyway. Removed from the
+  // SELECT. Callers that need a role look it up later via
+  // collective_memberships once the active-Collective context is set.
   const res = await pool.query<ProfileLookupRow>(
-    `SELECT id, webid_slug, display_name, role
+    `SELECT id, webid_slug, display_name
        FROM profiles
       WHERE webid_slug = $1
       LIMIT 1`,
@@ -169,7 +173,6 @@ export async function verifyBearer(token: string): Promise<VerifiedBearer> {
     slug,
     profileId: profile.id,
     displayName: profile.display_name,
-    role: profile.role,
     cnfJkt,
   };
 }

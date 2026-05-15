@@ -5,6 +5,7 @@
  */
 
 import { loadAuthState } from './auth';
+import { getActiveWorkspaceId } from './prefs';
 
 interface ApiResponse<T> {
   data?: T;
@@ -34,6 +35,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<ApiRespo
 
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    // Build Spec 1 §8 Story 5.1 + multi-collective Story 3.2: send
+    // the active workspace as X-Memu-Workspace-Id when one is set.
+    // The server resolves the request's RLS scope to that workspace
+    // (requireCollective + resolveActiveWorkspace in src/auth.ts).
+    // Header is omitted entirely when no workspace is selected — the
+    // server then falls back to personal-then-first, which today
+    // means the caller's home Collective. Caller-supplied header in
+    // options (rare) wins so callers can opt out for specific calls.
+    const explicitHeaderProvided =
+      headers['X-Memu-Workspace-Id'] !== undefined || headers['x-memu-workspace-id'] !== undefined;
+    if (!explicitHeaderProvided) {
+      const activeWorkspaceId = await getActiveWorkspaceId();
+      if (activeWorkspaceId) {
+        headers['X-Memu-Workspace-Id'] = activeWorkspaceId;
+      }
     }
 
     const res = await fetch(`${baseUrl}${path}`, {
@@ -1136,6 +1154,121 @@ export async function syncMemberGrantsNow(
 
 export async function listCachedMemberSpaces(memberId: string) {
   return request<{ spaces: CachedExternalSpace[] }>(`/api/households/members/${memberId}/grants/cached`);
+}
+
+// Caller's own role within their home Collective. Pulls from
+// /api/family/profiles (which already projects role via
+// collective_memberships) and returns the row marked is_self=true.
+// Returns null when the caller has no membership row, the request
+// fails, or the response shape is unexpected — every consumer should
+// treat null as "treat as adult" (the backend is the source of truth
+// and will refuse mutations from children anyway).
+export async function fetchSelfRole(): Promise<string | null> {
+  const res = await request<{ profiles: Array<{ id: string; role: string; is_self?: boolean }> }>(
+    '/api/family/profiles',
+  );
+  if (!res.data?.profiles) return null;
+  const self = res.data.profiles.find(p => p.is_self);
+  return self?.role ?? null;
+}
+
+// ==========================================
+// Workspaces (Build Spec 1 — Multi-Collective Membership)
+// ==========================================
+//
+// Shapes mirror the backend (src/api/workspaces.ts) exactly. The
+// canonical type list lives there as WORKSPACE_TYPES; this is the
+// mobile-side copy. Keep in sync if the backend list changes.
+
+export const WORKSPACE_TYPES = [
+  'household',
+  'personal',
+  'family',
+  'work',
+  'project',
+  'research',
+  'community',
+] as const;
+export type WorkspaceType = typeof WORKSPACE_TYPES[number];
+
+/**
+ * Types the user can pick from in the create-workspace sheet. The
+ * backend rejects 'household' with reason 'household_reserved' — those
+ * are auto-created at registration, not user-created. See
+ * validateWorkspaceCreate in src/api/workspaces.ts.
+ */
+export const CREATABLE_WORKSPACE_TYPES: ReadonlyArray<Exclude<WorkspaceType, 'household'>> = [
+  'personal',
+  'family',
+  'work',
+  'project',
+  'research',
+  'community',
+];
+
+export type WorkspaceRole = 'owner' | 'admin' | 'adult' | 'child';
+
+export interface Workspace {
+  id: string;
+  name: string;
+  type: WorkspaceType;
+  parentCollectiveId: string | null;
+  status: string;
+  role: WorkspaceRole | string;
+}
+
+export interface WorkspaceProject {
+  id: string;
+  workspaceId: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: 'active' | 'archived';
+  createdAt: string;
+}
+
+export type WorkspaceCreateReason =
+  | 'name_required'
+  | 'type_required'
+  | 'type_invalid'
+  | 'household_reserved';
+
+export type ProjectCreateReason = 'name_required' | 'slug_invalid' | 'slug_conflict';
+
+export async function listWorkspaces(): Promise<ApiResponse<{ workspaces: Workspace[] }>> {
+  return request<{ workspaces: Workspace[] }>('/api/workspaces');
+}
+
+export async function createWorkspace(params: {
+  name: string;
+  type: WorkspaceType;
+  parentCollectiveId?: string | null;
+}): Promise<ApiResponse<{ workspace: Workspace }>> {
+  return request<{ workspace: Workspace }>('/api/workspaces', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function listProjects(
+  workspaceId: string,
+): Promise<ApiResponse<{ projects: WorkspaceProject[] }>> {
+  return request<{ projects: WorkspaceProject[] }>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+  );
+}
+
+export async function createProject(
+  workspaceId: string,
+  params: { name: string; slug?: string; description?: string },
+): Promise<ApiResponse<{ project: WorkspaceProject }>> {
+  return request<{ project: WorkspaceProject }>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/projects`,
+    {
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+  );
 }
 
 // Data export — returns JSON archive text

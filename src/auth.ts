@@ -19,10 +19,27 @@ export function generateApiKey(): string {
  * known. The match is by api_key (32-byte random secret) so the read
  * surfaces exactly one row regardless of how many collectives share
  * the deployment.
+ *
+ * Multi-Collective Membership spec, Story 2.2: role is hydrated from
+ * collective_memberships (the relationship table) and joined onto the
+ * returned shape, because every existing caller of this function reads
+ * `profile.role` to gate authorization. The join scopes to the
+ * profile's home collective (profiles.collective_id) and status='active'.
+ * Bootstrap mode is required because collective_memberships is Tier-A
+ * with FORCE RLS — without bootstrap the JOIN returns NULL rows. The
+ * bootstrap flag is safe here: api_key is itself a 32-byte secret and
+ * we're only reading.
  */
 export async function getProfileByApiKey(apiKey: string) {
   const res = await db.queryAsBootstrap(
-    'SELECT id, display_name, role, email, ai_model, daily_query_limit, collective_id FROM profiles WHERE api_key = $1',
+    `SELECT p.id, p.display_name, p.email, p.ai_model, p.daily_query_limit, p.collective_id,
+            cm.role
+       FROM profiles p
+       LEFT JOIN collective_memberships cm
+         ON cm.profile_id = p.id
+        AND cm.collective_id = p.collective_id
+        AND cm.status = 'active'
+      WHERE p.api_key = $1`,
     [apiKey]
   );
   return res.rows[0] || null;
@@ -51,17 +68,117 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
 }
 
 /**
- * Pre-Beta Stream 1 — collective resolution.
+ * The HTTP header carrying the caller's chosen active workspace.
  *
- * Runs after requireAuth. Loads the profile's collective, blocks any
- * request against a collective pending GDPR erasure (Stream 3), and
- * attaches `request.collectiveId` for tenant-scoped queries.
+ * Build Spec 1 §8 Story 5.1: "Add an explicit `workspace_id`
+ * parameter (a header, or a query/body field) that the request
+ * pipeline threads through as the scope". We chose the header form —
+ * cleanest because every endpoint inherits it via the requireCollective
+ * preHandler, without polluting per-route signatures.
  *
- * Uses raw pool.query because:
- *   - profiles has a permissive RLS policy that allows reads when no
- *     collective context is set (which is the case here — we're trying
- *     to figure out which context to set).
- *   - collectives has no RLS at all (Tier-C — global table).
+ * Clients (mobile + PWA): send `X-Memu-Workspace-Id: <collective_id>`
+ * on every request once the user has selected a non-default workspace.
+ * Omitting it falls back to the deterministic default (see resolution
+ * order in requireCollective).
+ */
+export const ACTIVE_WORKSPACE_HEADER = 'x-memu-workspace-id';
+
+interface MembershipRow {
+  collective_id: string;
+  collective_type: string;
+  collective_status: string;
+  pending_deletion_at: Date | null;
+  membership_created_at: Date;
+}
+
+/**
+ * Load every active membership for a profile, ordered for the default
+ * resolver (oldest first). Bootstrap-mode because collective_memberships
+ * is Tier-A (FORCE RLS), and at this point the request has no active
+ * collective context yet — we're trying to figure out which one to set.
+ */
+async function loadActiveMemberships(profileId: string): Promise<MembershipRow[]> {
+  const res = await db.queryAsBootstrap<MembershipRow>(
+    `SELECT cm.collective_id,
+            c.type             AS collective_type,
+            c.status           AS collective_status,
+            c.pending_deletion_at,
+            cm.created_at      AS membership_created_at
+       FROM collective_memberships cm
+       JOIN collectives c ON c.id = cm.collective_id
+      WHERE cm.profile_id = $1 AND cm.status = 'active'
+      ORDER BY cm.created_at ASC`,
+    [profileId],
+  );
+  return res.rows;
+}
+
+/**
+ * Choose which membership is the active workspace for this request.
+ *
+ * Resolution order (Build Spec 1 §8 Story 5.1, applied verbatim):
+ *   1. Explicit X-Memu-Workspace-Id header — must match a membership.
+ *   2. The caller's `personal`-type workspace (Story 3.3 will make
+ *      everyone have one; today most callers don't, so this branch
+ *      fires once Story 3.3 lands).
+ *   3. The caller's first workspace by membership.created_at.
+ *
+ * Returns the chosen membership, or an error result the handler
+ * surfaces as the appropriate HTTP response.
+ *
+ * Pure for unit-testing — the database read happens in
+ * loadActiveMemberships above. This function just picks.
+ */
+export type ResolveActiveResult =
+  | { ok: true; membership: MembershipRow; source: 'header' | 'personal' | 'first' }
+  | { ok: false; reason: 'no_workspace' | 'not_a_member'; requestedId?: string };
+
+export function resolveActiveWorkspace(
+  memberships: MembershipRow[],
+  headerValue: string | null,
+): ResolveActiveResult {
+  if (memberships.length === 0) {
+    return { ok: false, reason: 'no_workspace' };
+  }
+  if (headerValue && headerValue.trim()) {
+    const wantedId = headerValue.trim();
+    const explicit = memberships.find(m => m.collective_id === wantedId);
+    if (!explicit) {
+      return { ok: false, reason: 'not_a_member', requestedId: wantedId };
+    }
+    return { ok: true, membership: explicit, source: 'header' };
+  }
+  // Personal-first preference per spec — Story 3.3 will populate this
+  // branch for every caller; until then it falls through to 'first'
+  // for the existing 1:1-era household-only callers.
+  const personal = memberships.find(m => m.collective_type === 'personal');
+  if (personal) {
+    return { ok: true, membership: personal, source: 'personal' };
+  }
+  return { ok: true, membership: memberships[0], source: 'first' };
+}
+
+/**
+ * Pre-Beta Stream 1 + Multi-Collective Story 3.2 — collective
+ * resolution.
+ *
+ * Runs after requireAuth. Resolves which Collective (= workspace) is
+ * the active context for this request, blocks requests against a
+ * Collective pending GDPR erasure (Stream 3), and attaches
+ * `request.collectiveId` for tenant-scoped queries.
+ *
+ * Story 3.2 shift: the active Collective is no longer hard-coded to
+ * `profiles.collective_id` (the home). It's resolved per-request from
+ * the caller's active memberships, with the X-Memu-Workspace-Id
+ * header as the explicit signal and a deterministic default
+ * (personal-then-first) when the header is absent. The spec is
+ * explicit (§8 Story 5.1): "Never infer the active workspace
+ * implicitly from anything else."
+ *
+ * `request.profile.collective_id` (set by requireAuth) still points
+ * at the profile's home — useful for displaying "this is your main
+ * workspace" indicators, but not used to drive scope. Scope comes
+ * from `request.collectiveId` (this function) only.
  */
 export async function requireCollective(request: FastifyRequest, reply: FastifyReply) {
   const profileId = (request as any).profileId as string | undefined;
@@ -69,43 +186,49 @@ export async function requireCollective(request: FastifyRequest, reply: FastifyR
     return reply.code(500).send({ error: 'requireCollective called before requireAuth' });
   }
 
-  // queryAsBootstrap so the join with profiles works before collective
-  // context is set. collectives is Tier-C (no RLS) so it doesn't need
-  // bootstrap; profiles needs it.
-  const result = await db.queryAsBootstrap<{
-    collective_id: string;
-    pending_deletion_at: Date | null;
-    status: string;
-  }>(
-    `SELECT p.collective_id, h.pending_deletion_at, h.status
-       FROM profiles p
-       JOIN collectives h ON h.id = p.collective_id
-      WHERE p.id = $1`,
-    [profileId],
-  );
+  const memberships = await loadActiveMemberships(profileId);
+  const rawHeader = request.headers[ACTIVE_WORKSPACE_HEADER];
+  const headerValue = typeof rawHeader === 'string'
+    ? rawHeader
+    : Array.isArray(rawHeader) && rawHeader.length > 0
+      ? rawHeader[0]
+      : null;
 
-  const row = result.rows[0];
-  if (!row) {
-    return reply.code(403).send({ error: 'no_household' });
+  const resolved = resolveActiveWorkspace(memberships, headerValue);
+  if (!resolved.ok) {
+    if (resolved.reason === 'no_workspace') {
+      // Pre-Story-3.3, this would be a corrupt account (profile with no
+      // active membership). Post-3.3, even brand-new registrations land
+      // with a personal workspace, so this branch becomes "operator-
+      // induced state corruption only".
+      return reply.code(403).send({ error: 'no_household' });
+    }
+    // not_a_member — the caller asked for a workspace they don't
+    // belong to. 403 with the requested id so the client can clear
+    // its stale active-workspace state if needed.
+    return reply.code(403).send({ error: 'not_a_member', workspaceId: resolved.requestedId });
   }
-  if (row.status !== 'active') {
-    return reply.code(403).send({ error: 'household_inactive', status: row.status });
+
+  const { membership, source } = resolved;
+  if (membership.collective_status !== 'active') {
+    return reply.code(403).send({ error: 'household_inactive', status: membership.collective_status });
   }
-  if (row.pending_deletion_at) {
+  if (membership.pending_deletion_at) {
     return reply.code(410).send({
       error: 'household_pending_deletion',
-      scheduled_deletion_at: row.pending_deletion_at,
+      scheduled_deletion_at: membership.pending_deletion_at,
       can_cancel: true,
     });
   }
 
-  (request as any).collectiveId = row.collective_id;
+  (request as any).collectiveId = membership.collective_id;
+  (request as any).activeWorkspaceSource = source;
 
   // Enter the AsyncLocalStorage tenant context for the rest of this
   // request. Every db.query / db.transaction call from here on
   // (including inside the route handler and fire-and-forget chains)
   // sees this collective and runs inside an RLS-gated transaction.
-  bindCollectiveContext(row.collective_id);
+  bindCollectiveContext(membership.collective_id);
 }
 
 export interface RegisterProfileOptions {
@@ -173,8 +296,19 @@ export async function registerProfile(
     // First-boot / public-register backstop: if a profile already exists,
     // return it instead of creating a duplicate. queryAsBootstrap so the
     // Tier-B policy permits the cross-collective read.
+    //
+    // Story 2.2: hydrate role from collective_memberships so the
+    // returned shape continues to carry it.
     const existingRes = await db.queryAsBootstrap(
-      'SELECT id, display_name, email, role, api_key, collective_id, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
+      `SELECT p.id, p.display_name, p.email, p.api_key, p.collective_id, p.created_at,
+              cm.role
+         FROM profiles p
+         LEFT JOIN collective_memberships cm
+           ON cm.profile_id = p.id
+          AND cm.collective_id = p.collective_id
+          AND cm.status = 'active'
+        ORDER BY p.created_at ASC
+        LIMIT 1`
     );
     if (existingRes.rowCount && existingRes.rowCount > 0 && existingRes.rows[0]) {
       return existingRes.rows[0];
@@ -233,11 +367,14 @@ async function registerPrimaryCollectiveAndProfile(
 
     // Profile insert — collective_id points at the not-yet-existing
     // collective. Deferred FK lets this through; validated at COMMIT.
+    // Story 2.2: role no longer on profiles — it's a property of the
+    // membership relationship (inserted below after the collective
+    // exists). The function still RETURNs role for API-shape stability.
     const profileRes = await client.query(
-      `INSERT INTO profiles (display_name, email, role, api_key, collective_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, display_name, email, role, api_key, collective_id, created_at`,
-      [displayName, email, role, apiKey, collectiveId],
+      `INSERT INTO profiles (display_name, email, api_key, collective_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, display_name, email, api_key, collective_id, created_at`,
+      [displayName, email, apiKey, collectiveId],
     );
     const profile = profileRes.rows[0];
 
@@ -248,6 +385,14 @@ async function registerPrimaryCollectiveAndProfile(
       `INSERT INTO collectives (id, type, name, primary_admin_profile_id)
        VALUES ($1, 'household', $2, $3)`,
       [collectiveId, collectiveName, profile.id],
+    );
+
+    // Story 2.2: membership row carries role now. session var set to
+    // collectiveId above; collective_memberships' WITH CHECK passes.
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, $3, 'active')`,
+      [collectiveId, profile.id, role],
     );
 
     // Persona — collective_id matches the active session variable, so
@@ -283,8 +428,21 @@ async function registerPrimaryCollectiveAndProfile(
       }
     }
 
+    // Story 3.3 — auto-create the personal Collective. Every profile
+    // ends up with TWO active memberships: the household (just
+    // inserted above) and a personal one owned by them. The household
+    // is the social space; the personal is the individual notebook.
+    // See feedback_solid_alignment_test memory: the personal is the
+    // anchor that lets a member leave the household and still have a
+    // place to keep their context. Without it, leave-with-identity
+    // doesn't work.
+    await createPersonalCollectiveInTx(client, profile.id, collectiveId);
+
     await client.query('COMMIT');
-    return profile;
+    // Story 2.2: pass-through role so the API shape stays
+    // { id, display_name, email, role, api_key, collective_id, created_at }
+    // even though role is no longer a column on profiles.
+    return { ...profile, role };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -339,13 +497,21 @@ async function inviteProfileToExistingCollective(
     // a DIFFERENT collective, the INSERT is rejected by the WITH CHECK
     // (defence-in-depth: caller can't invite into a collective they
     // don't belong to).
+    // Story 2.2: role no longer on profiles. Profile insert drops it;
+    // membership insert below carries the role.
     const profileRes = await client.query(
-      `INSERT INTO profiles (display_name, email, role, api_key, collective_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, display_name, email, role, api_key, collective_id, created_at`,
-      [displayName, email, role, apiKey, collectiveId],
+      `INSERT INTO profiles (display_name, email, api_key, collective_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, display_name, email, api_key, collective_id, created_at`,
+      [displayName, email, apiKey, collectiveId],
     );
     const profile = profileRes.rows[0];
+
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, $3, 'active')`,
+      [collectiveId, profile.id, role],
+    );
 
     const personaId = `${role}-${Date.now()}-${profile.id.slice(0, 4)}`;
     const personaLabel = role === 'child' ? `Child-${profile.id.slice(0, 4)}` : `Adult-${profile.id.slice(0, 4)}`;
@@ -363,6 +529,66 @@ async function inviteProfileToExistingCollective(
       [displayName.trim(), entityLabel, collectiveId],
     );
 
-    return profile;
+    // Story 3.3 — every invited profile gets their own personal
+    // Collective too. The invitee's "home" pointer
+    // (profiles.collective_id) stays at the inviter's collective —
+    // that's the social space they were brought into. Their personal
+    // is a SECOND membership where they're sole owner. Children
+    // included (a child's personal is their own notebook, separate
+    // from any family Space; if/when a child leaves a household the
+    // personal carries their context away).
+    await createPersonalCollectiveInTx(client, profile.id, collectiveId);
+
+    // Story 2.2: mirror Flow A — pass-through role on the return
+    // shape so callers downstream of registerProfile() see role
+    // regardless of which flow ran.
+    return { ...profile, role };
   });
+}
+
+/**
+ * Story 3.3 helper — create a personal Collective for a profile inside
+ * an already-open transaction. The caller has already opened a client
+ * with BEGIN and (for Flow A and Google first-boot) set
+ * memu.collective_id to the household's id; this function temporarily
+ * switches the session var to the new personal id so the
+ * collective_memberships WITH CHECK passes, then restores the original
+ * session var so any post-call statements (entity_registry inserts,
+ * etc.) run under the original collective context.
+ *
+ * Idempotent against the migration-045 unique index: if a personal
+ * Collective already exists for this profile (e.g. the migration ran
+ * and the user is somehow being re-registered), the INSERT fails
+ * cleanly on `collectives_one_personal_per_profile_idx`. Caller (Flow
+ * A / Flow B / Google first-boot) is expected to be inserting a NEW
+ * profile, so the duplicate case shouldn't arise — but the index is
+ * the safety net.
+ */
+async function createPersonalCollectiveInTx(
+  client: import('pg').PoolClient,
+  profileId: string,
+  restoreCollectiveId: string,
+): Promise<void> {
+  const personalId = crypto.randomUUID();
+
+  // Switch the session var so the membership WITH CHECK against the
+  // about-to-exist personal Collective passes. SET LOCAL stays
+  // transaction-scoped.
+  await client.query("SELECT set_config('memu.collective_id', $1, true)", [personalId]);
+
+  await client.query(
+    `INSERT INTO collectives (id, type, name, primary_admin_profile_id, status)
+     VALUES ($1, 'personal', 'Personal', $2, 'active')`,
+    [personalId, profileId],
+  );
+
+  await client.query(
+    `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+     VALUES ($1, $2, 'owner', 'active')`,
+    [personalId, profileId],
+  );
+
+  // Restore the original collective context for any subsequent inserts
+  // the caller may run before COMMIT.
+  await client.query("SELECT set_config('memu.collective_id', $1, true)", [restoreCollectiveId]);
 }

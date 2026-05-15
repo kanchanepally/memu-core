@@ -76,3 +76,33 @@ export async function setBriefingEnabled(v: boolean): Promise<void> {
 export async function setBriefingTime(hhmm: string): Promise<void> {
   await setItem(KEYS.briefingTime, hhmm);
 }
+
+// ---------------------------------------------------------------------------
+// Active workspace (Build Spec 1 Story 5.3 + multi-collective Story 3.2)
+// ---------------------------------------------------------------------------
+//
+// Records which workspace the user last "switched to" via the workspace
+// switcher. `mobile/lib/api.ts` reads this on every request and sends
+// it as `X-Memu-Workspace-Id`; the backend resolves it to the active
+// RLS scope (src/auth.ts:resolveActiveWorkspace). When unset, the
+// backend falls back to the personal-then-first default.
+//
+// Stored alongside the other prefs (SecureStore on native, localStorage
+// on web) so it survives app restarts without needing a real session
+// model on the server.
+
+const ACTIVE_WORKSPACE_KEY = 'memu_pref_active_workspace_id';
+
+export async function getActiveWorkspaceId(): Promise<string | null> {
+  return getItem(ACTIVE_WORKSPACE_KEY);
+}
+
+export async function setActiveWorkspaceId(id: string | null): Promise<void> {
+  if (id == null) {
+    const store = await getStore();
+    if (store) await store.deleteItemAsync(ACTIVE_WORKSPACE_KEY);
+    else webStore.del(ACTIVE_WORKSPACE_KEY);
+    return;
+  }
+  await setItem(ACTIVE_WORKSPACE_KEY, id);
+}

@@ -84,9 +84,22 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
   // before any collective context is set. (Without bootstrap, this
   // returns zero rows even though the row exists — the policy is
   // strict by default.)
+  //
+  // Multi-Collective Membership spec, Story 2.2: role now lives on
+  // collective_memberships, not profiles. We hydrate it from there
+  // (status='active' scoped to the profile's home collective) so the
+  // return shape stays compatible with the pre-spec callers.
   if (identity.email) {
     const byEmail = await db.queryAsBootstrap(
-      'SELECT id, display_name, email, role, api_key, collective_id, created_at FROM profiles WHERE email = $1 LIMIT 1',
+      `SELECT p.id, p.display_name, p.email, p.api_key, p.collective_id, p.created_at,
+              cm.role
+         FROM profiles p
+         LEFT JOIN collective_memberships cm
+           ON cm.profile_id = p.id
+          AND cm.collective_id = p.collective_id
+          AND cm.status = 'active'
+        WHERE p.email = $1
+        LIMIT 1`,
       [identity.email]
     );
     if (byEmail.rowCount && byEmail.rows[0]) {
@@ -96,7 +109,15 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
 
   // Step 2 — adopt email onto primary if it has none yet.
   const primary = await db.queryAsBootstrap(
-    'SELECT id, display_name, email, role, api_key, collective_id, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
+    `SELECT p.id, p.display_name, p.email, p.api_key, p.collective_id, p.created_at,
+            cm.role
+       FROM profiles p
+       LEFT JOIN collective_memberships cm
+         ON cm.profile_id = p.id
+        AND cm.collective_id = p.collective_id
+        AND cm.status = 'active'
+      ORDER BY p.created_at ASC
+      LIMIT 1`
   );
   if (primary.rowCount && primary.rows[0]) {
     const profile = primary.rows[0];
@@ -140,10 +161,15 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
     await client.query("SELECT set_config('memu.collective_id', $1, true)", [collectiveId]);
 
     // Profile first (deferred FK lets it reference the not-yet-created collective).
+    //
+    // Multi-Collective Membership spec, Story 2.2: profiles.role is
+    // retired. The role for this person in their primary Collective
+    // is recorded on collective_memberships (below), which is the
+    // single source of truth.
     const profileRes = await client.query(
-      `INSERT INTO profiles (display_name, email, role, api_key, collective_id)
-       VALUES ($1, $2, 'adult', $3, $4)
-       RETURNING id, display_name, email, role, api_key, collective_id, created_at`,
+      `INSERT INTO profiles (display_name, email, api_key, collective_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, display_name, email, api_key, collective_id, created_at`,
       [identity.name, identity.email, apiKey, collectiveId],
     );
     const profile = profileRes.rows[0];
@@ -153,6 +179,16 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
       `INSERT INTO collectives (id, type, name, primary_admin_profile_id)
        VALUES ($1, 'household', $2, $3)`,
       [collectiveId, collectiveName, profile.id],
+    );
+
+    // Membership — the relationship row that carries the role.
+    // First-boot Google sign-in lands the new admin as 'adult'; the
+    // collective's primary_admin_profile_id (above) marks the
+    // ownership axis separately from the role axis.
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, 'adult', 'active')`,
+      [collectiveId, profile.id],
     );
 
     const personaId = `adult-${Date.now()}-${profile.id.slice(0, 4)}`;
@@ -166,8 +202,33 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
       [identity.name.trim(), `Adult-${profile.id.slice(0, 4)}`, collectiveId],
     );
 
+    // Story 3.3 — every new profile also gets a personal Collective
+    // they own. Inline (rather than calling the shared helper from
+    // auth.ts) so this file doesn't take a dependency on auth's
+    // internal helper exports. Same shape: SET LOCAL switches the
+    // session var to the new personal id for the membership WITH
+    // CHECK; then restored to the household id (defensively — no
+    // statements run after this before COMMIT).
+    const personalId = crypto.randomUUID();
+    await client.query("SELECT set_config('memu.collective_id', $1, true)", [personalId]);
+    await client.query(
+      `INSERT INTO collectives (id, type, name, primary_admin_profile_id, status)
+       VALUES ($1, 'personal', 'Personal', $2, 'active')`,
+      [personalId, profile.id],
+    );
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, 'owner', 'active')`,
+      [personalId, profile.id],
+    );
+    await client.query("SELECT set_config('memu.collective_id', $1, true)", [collectiveId]);
+
     await client.query('COMMIT');
-    return profile;
+    // Hydrate the role onto the returned shape so callers that read
+    // `.role` keep working. The DB no longer carries it on profiles —
+    // we know it's 'adult' because we just inserted it on the
+    // membership row above.
+    return { ...profile, role: 'adult' };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;

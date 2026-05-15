@@ -56,6 +56,16 @@ const PRIMARY: Destination[] = [
 // Phase A.8 — Settings retired from inline nav. The account pill at the
 // bottom of the drawer (see renderAccountPill) is now the entry point.
 
+// Build Spec 1 Story 5.3 — Workspaces sits in a secondary group
+// below PRIMARY. It's a settings-shaped destination (configures
+// which Collective you're working inside) rather than a daily
+// surface, but worth surfacing one tap deep so users discover the
+// multi-Collective model without digging through Settings. Same
+// row treatment as PRIMARY so the rail stays visually coherent.
+const SECONDARY: Destination[] = [
+  { label: 'Workspaces', iconName: 'briefcase-outline', path: '/workspaces' },
+];
+
 function isChatActive(pathname: string): boolean {
   return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/chat' || pathname === '/chat';
 }
@@ -215,10 +225,17 @@ export default function SideDrawer() {
 
           {/* Phase A.8 — primary nav only (Settings retired from this
               region). Fixed height; never scrolls regardless of how many
-              conversations accumulate. */}
+              conversations accumulate.
+              Story 5.3 — SECONDARY group (Workspaces) sits directly
+              under PRIMARY with a subtle divider; same row treatment so
+              the rail stays visually coherent. */}
           <View style={styles.navRegion}>
             <View style={styles.section}>
               {PRIMARY.map(renderNavRow)}
+            </View>
+            <View style={styles.secondaryDivider} />
+            <View style={styles.section}>
+              {SECONDARY.map(renderNavRow)}
             </View>
           </View>
 
@@ -329,6 +346,13 @@ const styles = StyleSheet.create({
     // Fixed natural height — no flex so it doesn't grow.
   },
   section: { gap: 1 },
+  secondaryDivider: {
+    height: 1,
+    backgroundColor: colors.surfaceVariant,
+    marginVertical: spacing.xs,
+    marginHorizontal: spacing.sm,
+    opacity: 0.6,
+  },
   // Phase A.7 — nav rail is chrome, not content.
   // - 13px / 400 at rest, 600 active (was body / bold-active)
   // - Active state is a 3px left rule + indigo text (was filled
