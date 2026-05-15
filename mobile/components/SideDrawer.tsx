@@ -11,16 +11,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import {
-  MessageCircle,
-  Layers,
-  Calendar as LucideCalendar,
-  ListChecks,
-  LayoutGrid,
-  Settings as LucideSettings,
-  Plus,
-  type LucideIcon,
-} from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { useDrawer } from '../lib/drawer';
 import { colors, spacing, radius, typography } from '../lib/tokens';
@@ -34,7 +25,7 @@ const TOP_PAD = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 56;
 
 type Destination = {
   label: string;
-  Icon: LucideIcon;
+  iconName: keyof typeof Ionicons.glyphMap;
   path: string;
 };
 
@@ -55,11 +46,11 @@ type Destination = {
 // The underlying route is still /(tabs)/today.tsx — the screen wasn't
 // reworked, only its semantic position changed.
 const PRIMARY: Destination[] = [
-  { label: 'Chat', Icon: MessageCircle, path: '/(tabs)/chat' },
-  { label: 'Spaces', Icon: Layers, path: '/(tabs)/spaces' },
-  { label: 'Calendar', Icon: LucideCalendar, path: '/(tabs)/calendar' },
-  { label: 'Lists', Icon: ListChecks, path: '/(tabs)/lists' },
-  { label: 'Dashboard', Icon: LayoutGrid, path: '/(tabs)/today' },
+  { label: 'Chat', iconName: 'chatbubble-outline', path: '/(tabs)/chat' },
+  { label: 'Spaces', iconName: 'layers-outline', path: '/(tabs)/spaces' },
+  { label: 'Calendar', iconName: 'calendar-outline', path: '/(tabs)/calendar' },
+  { label: 'Lists', iconName: 'list-outline', path: '/(tabs)/lists' },
+  { label: 'Dashboard', iconName: 'grid-outline', path: '/(tabs)/today' },
 ];
 
 // Phase A.8 — Settings retired from inline nav. The account pill at the
@@ -172,7 +163,6 @@ export default function SideDrawer() {
 
   const renderNavRow = (dest: Destination) => {
     const active = isActive(pathname, dest);
-    const Icon = dest.Icon;
     return (
       <Pressable
         key={dest.path}
@@ -183,9 +173,9 @@ export default function SideDrawer() {
           pressed && styles.rowPressed,
         ]}
       >
-        <Icon
+        <Ionicons
+          name={dest.iconName}
           size={18}
-          strokeWidth={active ? 2 : 1.5}
           color={active ? colors.primary : colors.onSurfaceVariant}
         />
         <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
@@ -243,7 +233,7 @@ export default function SideDrawer() {
                 style={({ pressed }) => [styles.newChatBtn, pressed && styles.rowPressed]}
                 accessibilityLabel="Start new chat"
               >
-                <Plus size={14} strokeWidth={1.8} color={colors.primary} />
+                <Ionicons name="add" size={14} color={colors.primary} />
                 <Text style={styles.newChatLabel}>New</Text>
               </Pressable>
             </View>
@@ -284,9 +274,9 @@ export default function SideDrawer() {
               </Text>
               <Text style={styles.accountHint}>Settings</Text>
             </View>
-            <LucideSettings
+            <Ionicons
+              name="settings-outline"
               size={14}
-              strokeWidth={1.5}
               color={colors.onSurfaceVariant}
             />
           </Pressable>
@@ -494,3 +484,4 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 });
+

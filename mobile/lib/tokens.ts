@@ -61,6 +61,9 @@ export const colors = {
 
   success: '#3A7D5C',
   warning: '#B88843',
+  onWarning: '#FFFFFF',
+  warningContainer: '#FFF7E6',
+  onWarningContainer: '#7A5A12',
 
   // ---- Source semantics (stream card origin) ----
   sourceChat: '#5B5993',
@@ -104,10 +107,10 @@ export const radius = {
   pill: 9999,
 } as const;
 
-// ---- Typography: Manrope headline + Inter body/label ----
+// ---- Typography: Source Sans 3 UI + Lora reading ----
 export const typography = {
-  fontFamily: 'Inter_400Regular',
-  headlineFamily: 'Manrope_800ExtraBold',
+  fontFamily: 'SourceSans3_400Regular',
+  headlineFamily: 'SourceSans3_800ExtraBold',
   sizes: {
     xs: 11,
     sm: 13,
@@ -136,13 +139,16 @@ export const typography = {
   },
   // Family tokens — use these via `fontFamily` directly, not the root one above
   families: {
-    headline: 'Manrope_800ExtraBold',
-    headlineLight: 'Manrope_300Light',
-    headlineMedium: 'Manrope_500Medium',
-    body: 'Inter_400Regular',
-    bodyMedium: 'Inter_500Medium',
-    bodyBold: 'Inter_700Bold',
-    label: 'Inter_500Medium',
+    headline: 'SourceSans3_800ExtraBold',
+    headlineLight: 'SourceSans3_300Light',
+    headlineMedium: 'SourceSans3_500Medium',
+    body: 'SourceSans3_400Regular',
+    bodyMedium: 'SourceSans3_500Medium',
+    bodyBold: 'SourceSans3_700Bold',
+    label: 'SourceSans3_600SemiBold',
+    reading: 'Lora_400Regular',
+    readingMedium: 'Lora_500Medium',
+    readingBold: 'Lora_700Bold',
   },
 } as const;
 

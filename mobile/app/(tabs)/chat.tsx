@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, TextInput, Pressable, FlatList,
+import { View, StyleSheet, TextInput, Pressable, FlatList,
   KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
-} from 'react-native';
+ } from 'react-native';
+import { Text } from '../../components/ui/Text';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -564,7 +564,7 @@ export default function ChatScreen() {
       return (
         <View style={styles.separatorRow}>
           <View style={styles.separatorRule} />
-          <Text style={styles.separatorLabel}>{item.label}</Text>
+          <Text variant="ui" size="xs" color="onSurfaceVariant" style={styles.separatorLabel}>{item.label}</Text>
           <View style={styles.separatorRule} />
         </View>
       );
@@ -625,7 +625,7 @@ export default function ChatScreen() {
                 onOpenSpace={() => router.push('/(tabs)/spaces' as any)}
               />
             </View>
-            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+            <Text variant="ui" size="xs" color="outline" style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
           </View>
         </View>
       );
@@ -654,9 +654,9 @@ export default function ChatScreen() {
               <View style={styles.avatar}>
                 <Ionicons name="sparkles" size={14} color={colors.tertiary} />
               </View>
-              <Text style={styles.briefingEyebrow}>Today's brief</Text>
+              <Text variant="ui" size="xs" color="tertiary" style={styles.briefingEyebrow}>Today's brief</Text>
             </View>
-            <Text selectable={true} style={styles.briefingBody}>
+            <Text variant="reading" size="body" color="onSurface" selectable={true} style={styles.briefingBody}>
               {item.text}
             </Text>
             {hasBriefingActions ? (
@@ -678,7 +678,7 @@ export default function ChatScreen() {
                 />
               </View>
             ) : null}
-            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+            <Text variant="ui" size="xs" color="outline" style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
           </View>
         </View>
       );
@@ -699,13 +699,13 @@ export default function ChatScreen() {
           {isWhatsApp && !item.fromMemu && (
             <View style={styles.contextBadge}>
               <Ionicons name="logo-whatsapp" size={12} color="#25D366" />
-              <Text style={styles.contextBadgeText}>From WhatsApp</Text>
+              <Text variant="ui" size="xs" color="outline" style={styles.contextBadgeText}>From WhatsApp</Text>
             </View>
           )}
           {isWhatsApp && item.fromMemu && (
             <View style={styles.contextBadge}>
               <Ionicons name="pencil" size={12} color={colors.outline} />
-              <Text style={styles.contextBadgeText}>WhatsApp Draft</Text>
+              <Text variant="ui" size="xs" color="outline" style={styles.contextBadgeText}>WhatsApp Draft</Text>
             </View>
           )}
 
@@ -719,14 +719,10 @@ export default function ChatScreen() {
               item.fromMemu && item.error && styles.bubbleError,
             ]}
           >
-            <Text
-              selectable={true}
-              style={[
-                styles.bubbleText,
+            <Text variant="reading" size="body" selectable={true} style={[styles.bubbleText, 
                 item.fromMemu ? styles.textMemu : styles.textUser,
                 item.fromMemu && item.error && styles.textError,
-              ]}
-            >
+              ]}>
               {item.text}
             </Text>
           </View>
@@ -740,7 +736,7 @@ export default function ChatScreen() {
                   onPress={() => router.push(`/(tabs)/spaces?focus=${sp.slug}` as any)}
                 >
                   <Ionicons name="document-text-outline" size={14} color={colors.tertiary} />
-                  <Text style={styles.artefactText} numberOfLines={1}>{sp.name}</Text>
+                  <Text variant="ui" size="sm" weight="medium" color="onTertiaryContainer" numberOfLines={1} style={styles.artefactText}>{sp.name}</Text>
                   <Ionicons name="chevron-forward" size={12} color={colors.outline} />
                 </Pressable>
               ))}
@@ -755,14 +751,14 @@ export default function ChatScreen() {
           {item.fromMemu && item.retrievalState === 'empty' ? (
             <View style={styles.unsourcedRow}>
               <Ionicons name="information-circle-outline" size={12} color={colors.onSurfaceVariant} />
-              <Text style={styles.unsourcedText}>
+              <Text variant="ui" size="xs" color="onSurfaceVariant" style={styles.unsourcedText}>
                 Memu had no notes for this — answered from general knowledge.
               </Text>
             </View>
           ) : null}
 
           <View style={styles.metaRow}>
-            <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+            <Text variant="ui" size="xs" color="outline" style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
             {isWhatsApp && item.fromMemu && (
               <Pressable 
                 onPress={() => {
@@ -772,7 +768,7 @@ export default function ChatScreen() {
                 style={styles.copyButton}
               >
                 <Ionicons name="copy-outline" size={12} color={colors.primary} />
-                <Text style={styles.copyText}>Copy</Text>
+                <Text variant="ui" size="xs" color="primary" style={styles.copyText}>Copy</Text>
               </Pressable>
             )}
           </View>
@@ -985,8 +981,6 @@ const styles = StyleSheet.create({
     borderColor: '#E6B847',
   },
   bubbleText: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
     lineHeight: 22,
   },
   textMemu: {
@@ -1015,9 +1009,6 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   separatorLabel: {
-    fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.wide,
   },
@@ -1054,16 +1045,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   briefingEyebrow: {
-    fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.tertiary,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.widest,
   },
   briefingBody: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
     lineHeight: 22,
     marginBottom: spacing.sm,
   },
@@ -1078,9 +1063,6 @@ const styles = StyleSheet.create({
   },
 
   timestamp: {
-    fontSize: 10,
-    color: colors.outline,
-    fontFamily: typography.families.label,
     letterSpacing: typography.tracking.wide,
   },
   metaRow: {
@@ -1098,9 +1080,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   contextBadgeText: {
-    fontSize: 10,
-    color: colors.outline,
-    fontFamily: typography.families.label,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -1114,9 +1093,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   copyText: {
-    fontSize: 10,
-    color: colors.primary,
-    fontFamily: typography.families.label,
     textTransform: 'uppercase',
   },
 
@@ -1257,9 +1233,6 @@ const styles = StyleSheet.create({
   },
   artefactText: {
     flex: 1,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onTertiaryContainer,
   },
   // BUG-15 honesty caption — subtle, low-contrast, info icon. Sits below the
   // Memu bubble when retrievalState === 'empty'. Designed to inform without
@@ -1275,9 +1248,6 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   unsourcedText: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
     fontStyle: 'italic',
     flexShrink: 1,
   },
