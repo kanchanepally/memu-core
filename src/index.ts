@@ -3,7 +3,7 @@ import 'dotenv/config'; // Load env variables immediately before other imports
 import Fastify from 'fastify';
 import pino from 'pino';
 import { testConnection, pool, assertRuntimeRoleNotSuperuser } from './db/connection';
-import { db, enterCollectiveContext, bindCollectiveContext, currentCollectiveId } from './db/tenant';
+import { db, enterCollectiveContext, bindCollectiveContext, bindRequestContext, currentCollectiveId } from './db/tenant';
 import { runMigrations } from './db/migrate';
 import { connectToWhatsApp } from './channels/whatsapp';
 import { seedContext } from './intelligence/context';
@@ -232,10 +232,23 @@ server.addHook('preHandler', async (request, reply) => {
 // where requireCollective's await of queryAsBootstrap before the enterWith
 // causes the bound store to be popped by the time control returns to the
 // route handler. Investigation deferred — TD-05.
+//
+// Migration 047 (2026-05-15): re-bind via bindRequestContext so the
+// caller's profile_id stays in scope for the profiles RLS self-row
+// exception. Using the old bindCollectiveContext here was silently
+// stripping the profile_id that requireCollective had just bound —
+// onboarding state reads + every profile-by-self-id read returned
+// zero rows because memu.profile_id was empty by the time the txn
+// ran.
 server.addHook('preHandler', async (request) => {
   if (isUnauthenticatedRoute(request.url)) return;
   const collectiveId = (request as any).collectiveId as string | undefined;
-  if (collectiveId) bindCollectiveContext(collectiveId);
+  const profileId = (request as any).profileId as string | undefined;
+  if (collectiveId && profileId) {
+    bindRequestContext(profileId, collectiveId);
+  } else if (collectiveId) {
+    bindCollectiveContext(collectiveId);
+  }
 });
 
 // After auth, bind the resolved profileId into the request logger so every
@@ -360,8 +373,12 @@ server.post('/api/message', async (request, reply) => {
     // (chat, especially the SSE variant) span enough async slots that
     // entering one more time at the root of the handler's own async tree
     // is cheap insurance. TD-05.
+    // Migration 047: re-bind via bindRequestContext to preserve the
+    // profile_id session var (needed by the profiles RLS self-row
+    // exception).
     const collectiveId = (request as any).collectiveId;
-    if (collectiveId) bindCollectiveContext(collectiveId);
+    if (collectiveId && profileId) bindRequestContext(profileId, collectiveId);
+    else if (collectiveId) bindCollectiveContext(collectiveId);
     if (!currentCollectiveId()) {
       server.log.warn({ profileId, collectiveId }, '[ALS] tenant context still null at /api/message entry');
     }
@@ -410,8 +427,11 @@ server.post('/api/message/stream', async (request, reply) => {
   if (!profileId) return reply.code(401).send({ error: 'Authentication required' });
 
   // Belt-and-braces ALS re-bind — see /api/message handler. TD-05.
+  // Migration 047: bindRequestContext preserves the profile_id session
+  // var for the profiles RLS self-row exception.
   const collectiveId = (request as any).collectiveId;
-  if (collectiveId) bindCollectiveContext(collectiveId);
+  if (collectiveId && profileId) bindRequestContext(profileId, collectiveId);
+  else if (collectiveId) bindCollectiveContext(collectiveId);
   if (!currentCollectiveId()) {
     server.log.warn({ profileId, collectiveId }, '[ALS] tenant context still null at /api/message/stream entry');
   }
