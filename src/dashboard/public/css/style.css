@@ -3641,6 +3641,101 @@ textarea.input {
 .space-body strong { font-weight: 700; }
 .space-body em { font-style: italic; }
 
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z — research-workspace reading surface (Story Z.1).
+   Rules below cover markdown-it output that the legacy renderer never
+   produced (tables, code blocks, definition lists, footnotes, task lists,
+   abbreviations, sub/sup). They're scoped to .space-body but only fire
+   on Spaces rendered via the research path — family Spaces continue
+   through renderMarkdown() and never produce these elements, so these
+   rules are dead in a family workspace.
+   -------------------------------------------------------------------------- */
+
+/* Code blocks — distinct from inline code via the wrapping <pre>. */
+.space-body pre {
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0 var(--space-md);
+  overflow-x: auto;
+  line-height: 1.5;
+  font-size: 0.92em;
+}
+.space-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Tables — quiet borders, generous cell padding, sticky-feeling header. */
+.space-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-sm) 0 var(--space-md);
+  font-size: 0.95em;
+}
+.space-body th, .space-body td {
+  border: 1px solid var(--border);
+  padding: var(--space-xs) var(--space-sm);
+  text-align: left;
+  vertical-align: top;
+}
+.space-body th {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+
+/* Definition lists — bold terms, indented definitions, the academic
+   glossary shape. */
+.space-body dl { margin: var(--space-sm) 0 var(--space-md); }
+.space-body dt { font-weight: 600; margin-top: var(--space-xs); }
+.space-body dd { margin: 0 0 var(--space-xs) var(--space-md); color: var(--text-secondary); }
+
+/* Footnotes — produced by markdown-it-footnote. Smaller text, separated
+   from body prose by a hairline. Anchor links inherit existing .space-body a. */
+.space-body .footnotes {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+.space-body .footnotes ol { padding-left: var(--space-md); }
+.space-body .footnote-ref a {
+  text-decoration: none;
+  font-weight: 600;
+}
+.space-body .footnote-backref { margin-left: var(--space-xs); text-decoration: none; }
+
+/* Task lists — markdown-it-task-lists emits a real <input type="checkbox">.
+   We pass enabled: false so the box is read-only; visually it stays in
+   line with the list item. */
+.space-body ul.contains-task-list { list-style: none; padding-left: var(--space-md); }
+.space-body .task-list-item { display: flex; align-items: flex-start; gap: var(--space-xs); margin: var(--space-xs) 0; }
+.space-body .task-list-item input[type="checkbox"] { margin-top: 0.3em; flex-shrink: 0; }
+
+/* Abbreviations — markdown-it-abbr wraps <abbr title="...">. Dotted
+   underline so the user knows there's a hover-revealed expansion. */
+.space-body abbr[title] {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--space-xs);
+  cursor: help;
+}
+
+/* Sub / sup — markdown-it-sub / markdown-it-sup. Light tracking so
+   formulae read cleanly without disrupting line height. */
+.space-body sub, .space-body sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+.space-body sup { top: -0.5em; }
+.space-body sub { bottom: -0.25em; }
+
 /* ==========================================================================
    Calendar tab
    ========================================================================== */

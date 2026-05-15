@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pwa-workspace-rename">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-reading">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -178,6 +178,24 @@
 </svg>
 
 <!-- Auth gate -->
+<!-- Build Spec 2 Phase Z — markdown-it for the research-workspace
+     reading surface. Loaded synchronously (no defer) so they execute
+     in document order before the main inline <script> at line ~1119,
+     which is the first user of markdown-it via renderSpaceBody().
+     Family / personal workspaces never call into these — the dispatch
+     in renderSpaceBody() keeps the legacy renderMarkdown() path for
+     non-research workspaces, so this is a research-only cost on
+     bundle weight (~156KB across the seven files). Vendored under
+     /vendor/ so a network outage doesn't break the reading surface
+     for an already-loaded PWA. -->
+<script src="/vendor/markdown-it.min.js"></script>
+<script src="/vendor/markdown-it-footnote.min.js"></script>
+<script src="/vendor/markdown-it-deflist.min.js"></script>
+<script src="/vendor/markdown-it-task-lists.min.js"></script>
+<script src="/vendor/markdown-it-abbr.min.js"></script>
+<script src="/vendor/markdown-it-sub.min.js"></script>
+<script src="/vendor/markdown-it-sup.min.js"></script>
+
 <script>
 const AUTH_KEY = 'memu_auth';
 const ACTIVE_WORKSPACE_KEY = 'memu_active_workspace_id';
@@ -1790,6 +1808,65 @@ function renderMarkdown(text) {
     }
     if (inList) out.push('</ul>');
     return out.join('');
+}
+
+// Build Spec 2 Phase Z — Story Z.1.
+// markdown-it instance for research-workspace Space bodies. Lazily
+// constructed on first use so the cost is only paid in a research
+// workspace; family / personal workspaces never touch it.
+//
+// Plugin set is fixed at construction time (matches spec §3.Z.1):
+// footnotes, definition lists, task lists, abbreviations, sub/sup.
+// Math (mathjax3 / katex) is deliberately deferred — large dep,
+// opt-in per spec, lands in a follow-up.
+//
+// Safety posture: html: false (raw HTML in source is escaped),
+// linkify: true (auto-link URLs — useful for academic citations),
+// breaks: false (CommonMark paragraph semantics, not the legacy
+// every-line-a-<p> behaviour). The legacy renderMarkdown() stays
+// in place for chat bubbles, stream cards, and family-workspace
+// Space bodies — see renderSpaceBody() below.
+let __mdResearch = null;
+function getResearchMarkdown() {
+    if (__mdResearch) return __mdResearch;
+    if (typeof window.markdownit !== 'function') {
+        console.error('[Phase Z] markdown-it vendor bundle did not load');
+        return null;
+    }
+    const md = window.markdownit({ html: false, linkify: true, breaks: false, typographer: false });
+    if (window.markdownitFootnote) md.use(window.markdownitFootnote);
+    if (window.markdownitDeflist) md.use(window.markdownitDeflist);
+    if (window.markdownitTaskLists) md.use(window.markdownitTaskLists, { enabled: false, label: true });
+    if (window.markdownitAbbr) md.use(window.markdownitAbbr);
+    if (window.markdownitSub) md.use(window.markdownitSub);
+    if (window.markdownitSup) md.use(window.markdownitSup);
+    __mdResearch = md;
+    return md;
+}
+
+// renderSpaceBody — the dispatch point for the Phase Z reading
+// surface. Research workspaces get the markdown-it pipeline; every
+// other workspace type (family, personal, work, project, community,
+// household) stays on the legacy hand-rolled renderer so behaviour
+// in the family workspace is byte-identical to pre-Phase-Z.
+//
+// `workspaceType` defaults to the active workspace's type when
+// omitted — callers that already have it (e.g. an explicit
+// override for a deep-link to another workspace's Space) pass it
+// in; the common case just resolves from effectiveActiveWorkspace().
+function renderSpaceBody(text, workspaceType) {
+    if (!text) return '';
+    const type = workspaceType
+        || (typeof effectiveActiveWorkspace === 'function'
+            ? (effectiveActiveWorkspace() || {}).type
+            : null);
+    if (type === 'research') {
+        const md = getResearchMarkdown();
+        if (md) return md.render(text);
+        // Vendor bundle failed to load — fall through to the legacy
+        // renderer so the Space still reads, just without the upgrade.
+    }
+    return renderMarkdown(text);
 }
 
 const AVATAR_MARK_SVG = '<svg class="icon"><use href="#icon-29"></use></svg>';
@@ -3868,7 +3945,7 @@ function openSpaceDetail(id) {
     document.getElementById('space-detail-category').innerHTML = categoryIcon(s.category) + ' ' + categoryLabel(s.category);
     document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
     document.getElementById('space-detail-updated').textContent = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at) || 'Updated recently';
-    document.getElementById('space-detail-body').innerHTML = renderMarkdown(s.body_markdown || '_No content yet — tap Edit to add some._');
+    document.getElementById('space-detail-body').innerHTML = renderSpaceBody(s.body_markdown || '_No content yet — tap Edit to add some._');
     // Show the Un-nest action only when this Space lives under a parent.
     // Drop-on-canvas in the Spaces Canvas no longer un-parents (would
     // collide with free-position drag), so detail-view is now the only
@@ -4002,7 +4079,7 @@ function togglePreview() {
         btn.classList.remove('active');
         btn.textContent = 'Preview';
     } else {
-        preview.innerHTML = renderMarkdown(body.value || '_Nothing to preview yet._');
+        preview.innerHTML = renderSpaceBody(body.value || '_Nothing to preview yet._');
         preview.classList.remove('hidden');
         body.classList.add('hidden');
         btn.classList.add('active');
