@@ -60,7 +60,7 @@
             <input type="url" id="server-url" class="input" placeholder="api.memu.digital" autocapitalize="none" autocorrect="off">
         </div>
 
-        <div id="server-error" class="error-banner hidden"></div>
+        <div id="server-error" class="banner-error hidden"></div>
 
         <button class="btn btn-primary w-full" id="btn-connect" onclick="verifyServer()">Connect</button>
     </div>
@@ -76,7 +76,7 @@
         <h2>Create your profile</h2>
         <p class="text-muted mb-md">This is how Memu will know you. Your name is stored on the server — it never goes to any AI model.</p>
 
-        <div id="server-confirm" class="success-banner mb-md"></div>
+        <div id="server-confirm" class="banner-success mb-md"></div>
 
         <div class="mb-md">
             <label class="input-label">Your name</label>
@@ -87,7 +87,7 @@
             <input type="email" id="profile-email" class="input" placeholder="you@example.com">
         </div>
 
-        <div id="profile-error" class="error-banner hidden"></div>
+        <div id="profile-error" class="banner-error hidden"></div>
 
         <button class="btn btn-primary w-full" id="btn-register" onclick="registerProfile()">Create profile</button>
 
@@ -249,3 +249,4 @@ document.getElementById('profile-email').addEventListener('keydown', e => { if (
 </script>
 </body>
 </html>
+

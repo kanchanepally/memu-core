@@ -5,21 +5,7 @@ import {
   Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  Users,
-  Clock,
-  CheckSquare,
-  Calendar as LucideCalendar,
-  Sparkles,
-  Home as LucideHome,
-  UtensilsCrossed,
-  Search,
-  ChevronDown,
-  ChevronRight,
-  Newspaper,
-  RefreshCw,
-  Shield,
-} from 'lucide-react-native';
+
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -458,9 +444,9 @@ export default function TodayScreen() {
             onPress={cycleLens}
             accessibilityLabel={`Switch view to ${lens === 'family' ? 'individual' : 'family'}`}
           >
-            <Users size={13} strokeWidth={1.6} color={colors.primary} />
+            <Ionicons name="people-outline" size={13} color={colors.primary} />
             <Text style={styles.lensPillLabel}>{lens === 'family' ? 'Family' : firstName}</Text>
-            <ChevronDown size={10} strokeWidth={2} color={colors.primary} />
+            <Ionicons name="chevron-down-outline" size={10} color={colors.primary} />
           </Pressable>
         </View>
 
@@ -473,14 +459,14 @@ export default function TodayScreen() {
         {/* ─── Zone 1 — What's happening ─────────────────────────── */}
         <View style={styles.zone}>
           <View style={styles.zoneEyebrow}>
-            <Clock size={11} strokeWidth={1.8} color={colors.primary} />
+            <Ionicons name="time-outline" size={11} color={colors.primary} />
             <Text style={styles.zoneEyebrowText}>What's happening</Text>
           </View>
 
           {/* Schedule card */}
           <View style={styles.zoneCard}>
             <View style={styles.zoneCardHead}>
-              <LucideCalendar size={13} strokeWidth={1.5} color={colors.primary} />
+              <Ionicons name="calendar-outline" size={13} color={colors.primary} />
               <Text style={styles.zoneCardHeadText}>Schedule</Text>
               {/* Phase A.9.1 — show-the-work: when the lens widens to
                   Family, name exactly how many calendars were merged so
@@ -531,7 +517,7 @@ export default function TodayScreen() {
           {/* Open commitments card */}
           <View style={styles.zoneCard}>
             <View style={styles.zoneCardHead}>
-              <CheckSquare size={13} strokeWidth={1.5} color={colors.primary} />
+              <Ionicons name="checkbox-outline" size={13} color={colors.primary} />
               <Text style={styles.zoneCardHeadText}>Open commitments</Text>
             </View>
             {commitments.length === 0 && shoppingCount === 0 ? (
@@ -550,7 +536,7 @@ export default function TodayScreen() {
                     >
                       <Text style={styles.commitmentEyebrow}>{display.label}</Text>
                       <Text style={styles.commitmentTitle} numberOfLines={1}>{card.title}</Text>
-                      <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+                      <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
                     </Pressable>
                   );
                 })}
@@ -563,7 +549,7 @@ export default function TodayScreen() {
                     <Text style={styles.commitmentTitle} numberOfLines={1}>
                       Shopping list · {shoppingCount} item{shoppingCount === 1 ? '' : 's'}
                     </Text>
-                    <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+                    <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
                   </Pressable>
                 ) : null}
                 {commitments.length > 4 ? (
@@ -647,7 +633,7 @@ export default function TodayScreen() {
         {/* ─── Zone 3 — What I'm thinking ────────────────────────── */}
         <View style={styles.zoneThinking}>
           <View style={styles.zoneEyebrow}>
-            <Sparkles size={11} strokeWidth={1.8} color={colors.primary} />
+            <Ionicons name="sparkles-outline" size={11} color={colors.primary} />
             <Text style={styles.zoneEyebrowText}>What I'm thinking</Text>
           </View>
           <Text style={styles.thinkingIntro}>
@@ -663,13 +649,13 @@ export default function TodayScreen() {
               )}
             >
               <View style={styles.thinkingCardIcon}>
-                <LucideHome size={16} strokeWidth={1.5} color={colors.primary} />
+                <Ionicons name="home-outline" size={16} color={colors.primary} />
               </View>
               <View style={styles.thinkingCardBody}>
                 <Text style={styles.thinkingCardTitle}>Weekend ideas</Text>
                 <Text style={styles.thinkingCardSub}>Local events that fit our family</Text>
               </View>
-              <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+              <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
             </Pressable>
             <Pressable
               style={styles.thinkingCard}
@@ -679,13 +665,13 @@ export default function TodayScreen() {
               )}
             >
               <View style={styles.thinkingCardIcon}>
-                <UtensilsCrossed size={16} strokeWidth={1.5} color={colors.primary} />
+                <Ionicons name="restaurant-outline" size={16} color={colors.primary} />
               </View>
               <View style={styles.thinkingCardBody}>
                 <Text style={styles.thinkingCardTitle}>Meals this week</Text>
                 <Text style={styles.thinkingCardSub}>Recipes from what you've told me</Text>
               </View>
-              <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+              <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
             </Pressable>
             <Pressable
               style={styles.thinkingCard}
@@ -695,13 +681,13 @@ export default function TodayScreen() {
               )}
             >
               <View style={styles.thinkingCardIcon}>
-                <Search size={16} strokeWidth={1.5} color={colors.primary} />
+                <Ionicons name="search-outline" size={16} color={colors.primary} />
               </View>
               <View style={styles.thinkingCardBody}>
                 <Text style={styles.thinkingCardTitle}>What I'm missing</Text>
                 <Text style={styles.thinkingCardSub}>Across Spaces, calendar, patterns</Text>
               </View>
-              <ChevronRight size={14} strokeWidth={1.8} color={colors.outline} />
+              <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
             </Pressable>
           </View>
         </View>
@@ -710,7 +696,7 @@ export default function TodayScreen() {
         <View style={styles.zoneNews}>
           <View style={styles.zoneNewsHead}>
             <View style={styles.zoneEyebrow}>
-              <Newspaper size={11} strokeWidth={1.8} color={colors.primary} />
+              <Ionicons name="newspaper-outline" size={11} color={colors.primary} />
               <Text style={styles.zoneEyebrowText}>News</Text>
             </View>
           </View>
@@ -1392,3 +1378,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
 });
+

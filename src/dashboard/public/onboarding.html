@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memu — Setup</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
 
     <!-- Onboarding-specific styles. The conversational pattern (Memu bubble +
@@ -377,7 +375,7 @@ async function api(path, opts = {}) {
         <div id="step-body"></div>
 
         <!-- Error banner -->
-        <div id="onboarding-error" class="error-banner hidden" style="margin-top: var(--space-md);"></div>
+        <div id="onboarding-error" class="banner-error hidden" style="margin-top: var(--space-md);"></div>
 
         <!-- Skip + Continue actions -->
         <div class="onboarding-actions" id="actions"></div>
@@ -791,3 +789,4 @@ function fallbackCopy(step) {
 
 </body>
 </html>
+

@@ -3,8 +3,8 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator, AppState, StyleSheet, type AppStateStatus } from 'react-native';
 import { useFonts } from 'expo-font';
-import { Manrope_300Light, Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
-import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { SourceSans3_300Light, SourceSans3_400Regular, SourceSans3_500Medium, SourceSans3_600SemiBold, SourceSans3_700Bold, SourceSans3_800ExtraBold } from '@expo-google-fonts/source-sans-3';
+import { Lora_400Regular, Lora_500Medium, Lora_600SemiBold, Lora_700Bold } from '@expo-google-fonts/lora';
 import * as Notifications from 'expo-notifications';
 import { colors } from '../lib/tokens';
 import { loadAuthState } from '../lib/auth';
@@ -20,15 +20,16 @@ export default function RootLayout() {
 
   // Load custom premium fonts
   const [fontsLoaded] = useFonts({
-    Manrope_300Light,
-    Manrope_500Medium,
-    Manrope_700Bold,
-    Manrope_800ExtraBold,
-    Inter_300Light,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    SourceSans3_300Light,
+    SourceSans3_400Regular,
+    SourceSans3_500Medium,
+    SourceSans3_600SemiBold,
+    SourceSans3_700Bold,
+    SourceSans3_800ExtraBold,
+    Lora_400Regular,
+    Lora_500Medium,
+    Lora_600SemiBold,
+    Lora_700Bold,
   });
 
   useEffect(() => {
@@ -147,7 +148,7 @@ export default function RootLayout() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.onSurface,
-          headerTitleStyle: { fontFamily: 'Manrope_800ExtraBold' },
+          headerTitleStyle: { fontFamily: 'SourceSans3_700Bold' },
           contentStyle: { backgroundColor: colors.surface },
         }}
       >

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   Modal,
@@ -10,6 +9,8 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { Text } from '../components/ui/Text';
+import { Card } from '../components/ui/Card';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
@@ -159,14 +160,15 @@ export default function CollectiveScreen() {
             const badge = statusBadge(m.status);
             const days = daysUntil(m.leaveGraceUntil);
             return (
-              <Pressable key={m.id} style={styles.card} onPress={() => setMemberOpen(m)}>
+              <Pressable key={m.id} onPress={() => setMemberOpen(m)}>
+                <Card padding="md" style={styles.card}>
                 <View style={styles.cardLeft}>
-                  <Text style={styles.memberName}>{m.memberDisplayName}</Text>
-                  <Text style={styles.memberWebid} numberOfLines={1}>
+                  <Text variant="ui" size="body" weight="medium" color="onSurface" style={styles.memberName}>{m.memberDisplayName}</Text>
+                  <Text variant="ui" size="sm" color="onSurfaceVariant" numberOfLines={1} style={styles.memberWebid}>
                     {m.memberWebid}
                   </Text>
                   {m.status === 'leaving' && days !== null ? (
-                    <Text style={styles.gracePreview}>
+                    <Text variant="ui" size="xs" color="warning" style={styles.gracePreview}>
                       Leaves in {days} day{days === 1 ? '' : 's'} · cancellable
                     </Text>
                   ) : null}
@@ -174,6 +176,7 @@ export default function CollectiveScreen() {
                 <View style={[styles.statusBadge, styles[`badge_${badge.tone}`]]}>
                   <Text style={styles.statusBadgeText}>{badge.label}</Text>
                 </View>
+                </Card>
               </Pressable>
             );
           })
@@ -702,31 +705,18 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
-    padding: spacing.md,
-    backgroundColor: colors.surfaceVariant,
-    borderRadius: radius.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    ...shadows.sm,
   },
   cardLeft: { flex: 1, marginRight: spacing.sm },
   memberName: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
     fontWeight: '600',
   },
   memberWebid: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
     marginTop: 2,
   },
   gracePreview: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.tertiary,
     marginTop: 4,
   },
   gracePreviewBig: {
