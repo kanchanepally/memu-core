@@ -82,11 +82,22 @@ function turtleEscape(value: string): string {
  */
 function rdfTypeForCategory(category: SpaceCategory): string {
   switch (category) {
-    case 'person':     return 'http://schema.org/Person';
-    case 'routine':    return `${MEMU_VOCAB}Routine`;
-    case 'household':  return 'http://schema.org/Place';
-    case 'commitment': return `${MEMU_VOCAB}Commitment`;
-    case 'document':   return `${MEMU_VOCAB}Document`;
+    case 'person':      return 'http://schema.org/Person';
+    case 'routine':     return `${MEMU_VOCAB}Routine`;
+    case 'household':   return 'http://schema.org/Place';
+    case 'commitment':  return `${MEMU_VOCAB}Commitment`;
+    case 'document':    return `${MEMU_VOCAB}Document`;
+    // Research-set additions (Build Spec 2 Phase R1). All under memu:
+    // namespace until we have a real external consumer that would
+    // benefit from upstream schema.org / SKOS terms — at which point
+    // remapping these is a single-file change and a Solid-client
+    // negotiation, not a data migration.
+    case 'memo':        return `${MEMU_VOCAB}Memo`;
+    case 'theme':       return `${MEMU_VOCAB}Theme`;
+    case 'participant': return `${MEMU_VOCAB}Participant`;
+    case 'source':      return `${MEMU_VOCAB}Source`;
+    case 'question':    return `${MEMU_VOCAB}Question`;
+    case 'quote':       return `${MEMU_VOCAB}Quote`;
   }
 }
 

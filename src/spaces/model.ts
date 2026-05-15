@@ -12,8 +12,74 @@
  * memu:// resolves to an HTTPS URL on the family's issuer base.
  */
 
-export const SPACE_CATEGORIES = ['person', 'routine', 'household', 'commitment', 'document'] as const;
+// ---------------------------------------------------------------------------
+// Category sets — Build Spec 2 Phase R1.
+//
+// The set of valid Space categories is no longer global. It's a function
+// of the owning workspace's `type`:
+//
+//   family / personal / work / project / community / household → FAMILY_CATEGORIES
+//   research                                                    → RESEARCH_CATEGORIES
+//
+// `document` deliberately overlaps both — researchers attach PDFs and bills
+// the same way families do; the category is shared. Every other category
+// belongs to exactly one set.
+//
+// SPACE_CATEGORIES is the UNION used by the database CHECK constraint
+// (the schema can't be type-aware) and by parseSpaceUri (a memu:// URI's
+// category segment may come from either set). The real "is this category
+// valid for THIS workspace" rule lives in isCategoryAllowedForType
+// below, applied in the Space write path. The CHECK is a typo guard;
+// the function is the authority.
+//
+// Adding a category set: extend RESEARCH_CATEGORIES (or add a new const
+// for a future set), add the new strings to SPACE_CATEGORIES, extend
+// getCategorySetForType. Adding a workspace type that needs its own set:
+// extend WORKSPACE_TYPES in src/api/workspaces.ts AND extend the switch
+// in getCategorySetForType. Until a type earns its own set it falls back
+// to FAMILY_CATEGORIES (spec §1.3 — no premature abstraction).
+// ---------------------------------------------------------------------------
+
+export const FAMILY_CATEGORIES = [
+  'person', 'routine', 'household', 'commitment', 'document',
+] as const;
+
+export const RESEARCH_CATEGORIES = [
+  'memo', 'theme', 'participant', 'source', 'document', 'question', 'quote',
+] as const;
+
+// Union of every category across every set. Deduped by Set to keep
+// `document` from appearing twice. Order: family set first (preserves
+// historic ordering for any consumer that iterates), then research-only
+// additions appended.
+export const SPACE_CATEGORIES = [
+  ...FAMILY_CATEGORIES,
+  ...RESEARCH_CATEGORIES.filter(c => !(FAMILY_CATEGORIES as readonly string[]).includes(c)),
+] as const;
+
 export type SpaceCategory = typeof SPACE_CATEGORIES[number];
+
+/**
+ * The category set permitted for a given workspace type. Research gets
+ * the research set; every other type (today) falls back to family.
+ *
+ * Inputs from outside the type system (e.g. a string read from the DB)
+ * land here too — we accept `string` so callers don't need to narrow
+ * before calling. Unknown values get the family set, matching the
+ * spec's "fall back to family" rule.
+ */
+export function getCategorySetForType(workspaceType: string): readonly SpaceCategory[] {
+  return workspaceType === 'research' ? RESEARCH_CATEGORIES : FAMILY_CATEGORIES;
+}
+
+/**
+ * True iff `category` is in the set permitted for `workspaceType`.
+ * The Space write path's gate; the DB CHECK is a typo guard, this is
+ * the rule.
+ */
+export function isCategoryAllowedForType(category: string, workspaceType: string): boolean {
+  return (getCategorySetForType(workspaceType) as readonly string[]).includes(category);
+}
 
 export const SPACE_DOMAINS = [
   'nourishment', 'shelter', 'health', 'education', 'finance', 'safety',

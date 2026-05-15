@@ -24,6 +24,7 @@ import { persistWikilinkEdges } from './wikilinks';
 import { assignPassageIds } from './passageIds';
 import {
   buildSpaceUri,
+  isCategoryAllowedForType,
   slugify,
   type Space,
   type SpaceCategory,
@@ -218,6 +219,29 @@ export class SpaceProjectError extends Error {
   }
 }
 
+/**
+ * Build Spec 2 Phase R1 — thrown when a Space write tries to use a
+ * category that's not in the owning workspace's type's category set
+ * (e.g. `theme` in a family workspace, `routine` in a research
+ * workspace). The DB CHECK constraint only enforces the UNION of all
+ * sets — this error is the type-aware rule. Carries the offending
+ * category + workspace type so the API layer can surface a 422 that
+ * names both ("`theme` is not a valid category for a `family`
+ * workspace").
+ */
+export class SpaceCategoryError extends Error {
+  readonly reason: 'category_not_in_workspace_type';
+  readonly category: string;
+  readonly workspaceType: string;
+  constructor(category: string, workspaceType: string) {
+    super(`Category "${category}" is not valid for a ${workspaceType} workspace. Adjust the workspace type or the Space category.`);
+    this.name = 'SpaceCategoryError';
+    this.reason = 'category_not_in_workspace_type';
+    this.category = category;
+    this.workspaceType = workspaceType;
+  }
+}
+
 export interface ParentValidationResult {
   ok: boolean;
   /** Discriminated reason on failure — usable by the API layer to map to 422 + message. */
@@ -287,20 +311,30 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
   // context. Caller must be inside enterCollectiveContext (typical:
   // they're inside a Fastify request that went through requireCollective).
   const space = await db.transaction(async (client) => {
-    // Build Spec 2 Phase Z Story Z.2 — assign stable passage ids to
-    // every top-level block in research-workspace Spaces. Look up the
-    // workspace's type once per write; for non-research workspaces the
-    // body flows through unchanged so family Space bodies are
-    // byte-identical to pre-Phase-Z. The lookup is on the collectives
-    // table (Tier-C, no RLS) — safe to read inside the tenant tx.
-    let bodyMarkdownForWrite = input.bodyMarkdown;
+    // One lookup of the owning workspace's type, used for two
+    // type-aware concerns: Phase Z Story Z.2 (passage-id assignment
+    // for research bodies) and Phase R1 (category set validation —
+    // the DB CHECK enforces only the UNION; the type-aware rule
+    // lives here). The lookup is on the collectives table (Tier-C,
+    // no RLS) — safe to read inside the tenant tx.
     const wsTypeRes = await client.query<{ type: string }>(
       `SELECT type FROM collectives WHERE id = $1 LIMIT 1`,
       [input.familyId],
     );
-    if (wsTypeRes.rows[0]?.type === 'research') {
-      bodyMarkdownForWrite = assignPassageIds(input.bodyMarkdown);
+    const workspaceType = wsTypeRes.rows[0]?.type ?? 'family';
+
+    // R1 — reject a category that's not in this workspace type's set.
+    // The error names both halves so the log line is self-explanatory.
+    if (!isCategoryAllowedForType(input.category, workspaceType)) {
+      throw new SpaceCategoryError(input.category, workspaceType);
     }
+
+    // Z.2 — research workspaces get pid-augmented bodies; others pass
+    // through unchanged so family Space bodies are byte-identical to
+    // pre-Phase-Z.
+    const bodyMarkdownForWrite = workspaceType === 'research'
+      ? assignPassageIds(input.bodyMarkdown)
+      : input.bodyMarkdown;
 
     let existingId: string | null = null;
     let existingUri: string | null = null;
