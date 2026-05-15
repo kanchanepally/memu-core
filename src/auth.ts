@@ -68,17 +68,117 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
 }
 
 /**
- * Pre-Beta Stream 1 — collective resolution.
+ * The HTTP header carrying the caller's chosen active workspace.
  *
- * Runs after requireAuth. Loads the profile's collective, blocks any
- * request against a collective pending GDPR erasure (Stream 3), and
- * attaches `request.collectiveId` for tenant-scoped queries.
+ * Build Spec 1 §8 Story 5.1: "Add an explicit `workspace_id`
+ * parameter (a header, or a query/body field) that the request
+ * pipeline threads through as the scope". We chose the header form —
+ * cleanest because every endpoint inherits it via the requireCollective
+ * preHandler, without polluting per-route signatures.
  *
- * Uses raw pool.query because:
- *   - profiles has a permissive RLS policy that allows reads when no
- *     collective context is set (which is the case here — we're trying
- *     to figure out which context to set).
- *   - collectives has no RLS at all (Tier-C — global table).
+ * Clients (mobile + PWA): send `X-Memu-Workspace-Id: <collective_id>`
+ * on every request once the user has selected a non-default workspace.
+ * Omitting it falls back to the deterministic default (see resolution
+ * order in requireCollective).
+ */
+export const ACTIVE_WORKSPACE_HEADER = 'x-memu-workspace-id';
+
+interface MembershipRow {
+  collective_id: string;
+  collective_type: string;
+  collective_status: string;
+  pending_deletion_at: Date | null;
+  membership_created_at: Date;
+}
+
+/**
+ * Load every active membership for a profile, ordered for the default
+ * resolver (oldest first). Bootstrap-mode because collective_memberships
+ * is Tier-A (FORCE RLS), and at this point the request has no active
+ * collective context yet — we're trying to figure out which one to set.
+ */
+async function loadActiveMemberships(profileId: string): Promise<MembershipRow[]> {
+  const res = await db.queryAsBootstrap<MembershipRow>(
+    `SELECT cm.collective_id,
+            c.type             AS collective_type,
+            c.status           AS collective_status,
+            c.pending_deletion_at,
+            cm.created_at      AS membership_created_at
+       FROM collective_memberships cm
+       JOIN collectives c ON c.id = cm.collective_id
+      WHERE cm.profile_id = $1 AND cm.status = 'active'
+      ORDER BY cm.created_at ASC`,
+    [profileId],
+  );
+  return res.rows;
+}
+
+/**
+ * Choose which membership is the active workspace for this request.
+ *
+ * Resolution order (Build Spec 1 §8 Story 5.1, applied verbatim):
+ *   1. Explicit X-Memu-Workspace-Id header — must match a membership.
+ *   2. The caller's `personal`-type workspace (Story 3.3 will make
+ *      everyone have one; today most callers don't, so this branch
+ *      fires once Story 3.3 lands).
+ *   3. The caller's first workspace by membership.created_at.
+ *
+ * Returns the chosen membership, or an error result the handler
+ * surfaces as the appropriate HTTP response.
+ *
+ * Pure for unit-testing — the database read happens in
+ * loadActiveMemberships above. This function just picks.
+ */
+export type ResolveActiveResult =
+  | { ok: true; membership: MembershipRow; source: 'header' | 'personal' | 'first' }
+  | { ok: false; reason: 'no_workspace' | 'not_a_member'; requestedId?: string };
+
+export function resolveActiveWorkspace(
+  memberships: MembershipRow[],
+  headerValue: string | null,
+): ResolveActiveResult {
+  if (memberships.length === 0) {
+    return { ok: false, reason: 'no_workspace' };
+  }
+  if (headerValue && headerValue.trim()) {
+    const wantedId = headerValue.trim();
+    const explicit = memberships.find(m => m.collective_id === wantedId);
+    if (!explicit) {
+      return { ok: false, reason: 'not_a_member', requestedId: wantedId };
+    }
+    return { ok: true, membership: explicit, source: 'header' };
+  }
+  // Personal-first preference per spec — Story 3.3 will populate this
+  // branch for every caller; until then it falls through to 'first'
+  // for the existing 1:1-era household-only callers.
+  const personal = memberships.find(m => m.collective_type === 'personal');
+  if (personal) {
+    return { ok: true, membership: personal, source: 'personal' };
+  }
+  return { ok: true, membership: memberships[0], source: 'first' };
+}
+
+/**
+ * Pre-Beta Stream 1 + Multi-Collective Story 3.2 — collective
+ * resolution.
+ *
+ * Runs after requireAuth. Resolves which Collective (= workspace) is
+ * the active context for this request, blocks requests against a
+ * Collective pending GDPR erasure (Stream 3), and attaches
+ * `request.collectiveId` for tenant-scoped queries.
+ *
+ * Story 3.2 shift: the active Collective is no longer hard-coded to
+ * `profiles.collective_id` (the home). It's resolved per-request from
+ * the caller's active memberships, with the X-Memu-Workspace-Id
+ * header as the explicit signal and a deterministic default
+ * (personal-then-first) when the header is absent. The spec is
+ * explicit (§8 Story 5.1): "Never infer the active workspace
+ * implicitly from anything else."
+ *
+ * `request.profile.collective_id` (set by requireAuth) still points
+ * at the profile's home — useful for displaying "this is your main
+ * workspace" indicators, but not used to drive scope. Scope comes
+ * from `request.collectiveId` (this function) only.
  */
 export async function requireCollective(request: FastifyRequest, reply: FastifyReply) {
   const profileId = (request as any).profileId as string | undefined;
@@ -86,43 +186,49 @@ export async function requireCollective(request: FastifyRequest, reply: FastifyR
     return reply.code(500).send({ error: 'requireCollective called before requireAuth' });
   }
 
-  // queryAsBootstrap so the join with profiles works before collective
-  // context is set. collectives is Tier-C (no RLS) so it doesn't need
-  // bootstrap; profiles needs it.
-  const result = await db.queryAsBootstrap<{
-    collective_id: string;
-    pending_deletion_at: Date | null;
-    status: string;
-  }>(
-    `SELECT p.collective_id, h.pending_deletion_at, h.status
-       FROM profiles p
-       JOIN collectives h ON h.id = p.collective_id
-      WHERE p.id = $1`,
-    [profileId],
-  );
+  const memberships = await loadActiveMemberships(profileId);
+  const rawHeader = request.headers[ACTIVE_WORKSPACE_HEADER];
+  const headerValue = typeof rawHeader === 'string'
+    ? rawHeader
+    : Array.isArray(rawHeader) && rawHeader.length > 0
+      ? rawHeader[0]
+      : null;
 
-  const row = result.rows[0];
-  if (!row) {
-    return reply.code(403).send({ error: 'no_household' });
+  const resolved = resolveActiveWorkspace(memberships, headerValue);
+  if (!resolved.ok) {
+    if (resolved.reason === 'no_workspace') {
+      // Pre-Story-3.3, this would be a corrupt account (profile with no
+      // active membership). Post-3.3, even brand-new registrations land
+      // with a personal workspace, so this branch becomes "operator-
+      // induced state corruption only".
+      return reply.code(403).send({ error: 'no_household' });
+    }
+    // not_a_member — the caller asked for a workspace they don't
+    // belong to. 403 with the requested id so the client can clear
+    // its stale active-workspace state if needed.
+    return reply.code(403).send({ error: 'not_a_member', workspaceId: resolved.requestedId });
   }
-  if (row.status !== 'active') {
-    return reply.code(403).send({ error: 'household_inactive', status: row.status });
+
+  const { membership, source } = resolved;
+  if (membership.collective_status !== 'active') {
+    return reply.code(403).send({ error: 'household_inactive', status: membership.collective_status });
   }
-  if (row.pending_deletion_at) {
+  if (membership.pending_deletion_at) {
     return reply.code(410).send({
       error: 'household_pending_deletion',
-      scheduled_deletion_at: row.pending_deletion_at,
+      scheduled_deletion_at: membership.pending_deletion_at,
       can_cancel: true,
     });
   }
 
-  (request as any).collectiveId = row.collective_id;
+  (request as any).collectiveId = membership.collective_id;
+  (request as any).activeWorkspaceSource = source;
 
   // Enter the AsyncLocalStorage tenant context for the rest of this
   // request. Every db.query / db.transaction call from here on
   // (including inside the route handler and fire-and-forget chains)
   // sees this collective and runs inside an RLS-gated transaction.
-  bindCollectiveContext(row.collective_id);
+  bindCollectiveContext(membership.collective_id);
 }
 
 export interface RegisterProfileOptions {
