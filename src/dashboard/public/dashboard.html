@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-reading">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-pdf">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -620,6 +620,14 @@ async function api(path, opts = {}) {
                 <span id="space-detail-updated" class="space-detail-updated"></span>
             </div>
             <h1 id="space-detail-title" class="space-detail-title"></h1>
+            <!-- Phase Z Story Z.3 — PDF inline rendering. Only mounted
+                 when the active workspace is research AND the Space has
+                 a document:* source reference pointing at a PDF. The
+                 viewer module (loaded on demand from
+                 /vendor/memu-pdf-viewer.mjs) owns the rendering and
+                 cleanup; the openSpaceDetail() handler below calls
+                 mountPdfIfAvailable() / unmountPdf() to drive it. -->
+            <div id="space-detail-pdf" class="hidden"></div>
             <div id="space-detail-body" class="space-body"></div>
             <div class="space-detail-actions">
                 <button class="btn btn-secondary btn-sm" onclick="openShareSpace()">
@@ -4043,6 +4051,13 @@ function openSpaceDetail(id) {
     document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
     document.getElementById('space-detail-updated').textContent = formatSpaceUpdated(s.lastUpdated || s.last_updated || s.last_updated_at) || 'Updated recently';
     document.getElementById('space-detail-body').innerHTML = renderSpaceBody(s.body_markdown || '_No content yet — tap Edit to add some._');
+    // Phase Z Story Z.3 — mount the PDF viewer above the markdown body
+    // if this Space has an attached PDF and the active workspace is
+    // research. unmountPdf() always runs first to clean up any prior
+    // mount before deciding whether to mount this one — so closing one
+    // PDF Space and opening another doesn't leak DOM or workers.
+    unmountPdf();
+    mountPdfIfAvailable(s);
     // Show the Un-nest action only when this Space lives under a parent.
     // Drop-on-canvas in the Spaces Canvas no longer un-parents (would
     // collide with free-position drag), so detail-view is now the only
@@ -4071,6 +4086,96 @@ function closeSpaceDetail() {
     document.getElementById('spaces-fab').classList.remove('hidden');
     document.getElementById('topbar-title').textContent = TAB_TITLES.spaces;
     spacesState.currentId = null;
+    // Phase Z Story Z.3 — release the pdf.js worker + DOM. Without
+    // this, navigating between PDF Spaces would stack DOM mounts and
+    // leak the worker thread until the page reloaded.
+    unmountPdf();
+}
+
+// ========== PHASE Z STORY Z.3 — PDF inline rendering ==========
+//
+// State for the currently-mounted PDF viewer handle. The viewer
+// module (loaded on demand from /vendor/memu-pdf-viewer.mjs) exposes
+// renderPdfInto(url, container) which returns a handle with
+// .destroy(). We hold the handle here so unmountPdf() can release
+// the worker + DOM when the Space view is closed or another Space
+// is opened.
+let __activePdfHandle = null;
+// Promise for the lazy module load — first call triggers the
+// dynamic import; subsequent calls reuse the resolved module.
+let __pdfModulePromise = null;
+function loadPdfModule() {
+    if (__pdfModulePromise) return __pdfModulePromise;
+    __pdfModulePromise = import('/vendor/memu-pdf-viewer.mjs')
+        .then(mod => mod || (window.MemuPdfViewer ? { renderPdfInto: window.MemuPdfViewer.renderPdfInto } : null))
+        .catch(err => {
+            console.error('[Phase Z] PDF viewer module failed to load:', err);
+            __pdfModulePromise = null; // allow retry on next attempt
+            return null;
+        });
+    return __pdfModulePromise;
+}
+
+// Find the first document: source ref pointing at a PDF on a Space row.
+// Returns null if none — caller falls back to markdown-only rendering.
+// Accepts both source_references (server raw) and sourceReferences
+// (camelCased) so we work against whichever shape the catalogue uses.
+function findPdfSourceRef(space) {
+    const refs = space.source_references || space.sourceReferences || [];
+    if (!Array.isArray(refs)) return -1;
+    for (let i = 0; i < refs.length; i++) {
+        const r = refs[i];
+        if (typeof r !== 'string' || !r.startsWith('document:')) continue;
+        const lower = r.toLowerCase();
+        if (lower.endsWith('.pdf')) return i;
+    }
+    return -1;
+}
+
+async function mountPdfIfAvailable(space) {
+    // Gate 1 — only research workspaces get the PDF surface. Family /
+    // personal Spaces with attached documents continue to show the
+    // markdown summary the document_ingestion skill produced; we don't
+    // change their reading view in Phase Z.
+    const ws = (typeof effectiveActiveWorkspace === 'function') ? effectiveActiveWorkspace() : null;
+    if (!ws || ws.type !== 'research') return;
+    // Gate 2 — the Space must actually have a PDF attached.
+    const idx = findPdfSourceRef(space);
+    if (idx < 0) return;
+    const container = document.getElementById('space-detail-pdf');
+    if (!container) return;
+    container.classList.remove('hidden');
+    container.innerHTML = '<div class="pdf-loading">Loading PDF…</div>';
+
+    const mod = await loadPdfModule();
+    if (!mod || typeof mod.renderPdfInto !== 'function') {
+        container.innerHTML = '<div class="pdf-error">PDF viewer module unavailable. Markdown view below.</div>';
+        return;
+    }
+    // Bail if the user already navigated away while we were loading.
+    if (spacesState.currentId !== space.id) {
+        container.classList.add('hidden');
+        return;
+    }
+    try {
+        const url = `/api/spaces/${encodeURIComponent(space.id)}/document${idx > 0 ? '?idx=' + idx : ''}`;
+        __activePdfHandle = await mod.renderPdfInto(url, container);
+    } catch (err) {
+        console.error('[Phase Z] PDF render failed:', err);
+        container.innerHTML = `<div class="pdf-error">Couldn't render PDF: ${esc(String(err && err.message || err))}</div>`;
+    }
+}
+
+function unmountPdf() {
+    if (__activePdfHandle && typeof __activePdfHandle.destroy === 'function') {
+        try { __activePdfHandle.destroy(); } catch (err) { console.warn('[Phase Z] PDF unmount error:', err); }
+    }
+    __activePdfHandle = null;
+    const container = document.getElementById('space-detail-pdf');
+    if (container) {
+        container.innerHTML = '';
+        container.classList.add('hidden');
+    }
 }
 
 function enterSpaceEdit() {

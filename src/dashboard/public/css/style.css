@@ -3736,6 +3736,92 @@ textarea.input {
 .space-body sup { top: -0.5em; }
 .space-body sub { bottom: -0.25em; }
 
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z Story Z.3 — PDF inline rendering surface.
+   Only fires on research-workspace Spaces that have an attached PDF;
+   the container above starts hidden and is shown by mountPdfIfAvailable().
+   Pages render as canvas + selectable text-layer overlay, one per page,
+   continuous scroll inside the Space's detail view.
+   -------------------------------------------------------------------------- */
+
+.pdf-viewer {
+  margin: var(--space-md) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  /* The canvas widths come from pdf.js (set inline per page). Cap the
+     container so a wide PDF doesn't blow out the column on a big screen. */
+  max-width: 100%;
+}
+
+.pdf-loading {
+  padding: var(--space-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.pdf-error {
+  padding: var(--space-md);
+  border-radius: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  color: var(--color-error, var(--text-secondary));
+  font-size: var(--font-size-sm);
+}
+
+.pdf-page {
+  position: relative;
+  background: white;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  /* pdf.js sets width / height inline on each .pdf-page to match the
+     page's natural dimensions; we just provide the visual frame. */
+}
+
+.pdf-page-label {
+  position: absolute;
+  top: -22px;
+  right: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.pdf-page-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Text layer for selection. Sits absolutely on top of the canvas with
+   transparent spans positioned over each glyph — selecting these gives
+   real text the user can copy. Color is transparent (visible glyphs
+   come from the canvas underneath); spans get color: transparent so
+   the selection highlight overlays cleanly without showing the spans
+   themselves. */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  /* pdf.js's TextLayer reads --scale-factor (set inline per page in the
+     viewer module) to size text spans to match the rendered canvas. */
+  --scale-factor: 1;
+}
+.pdf-text-layer ::selection {
+  background: rgba(80, 84, 181, 0.3);
+}
+.pdf-text-layer span,
+.pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
 /* ==========================================================================
    Calendar tab
    ========================================================================== */
