@@ -21,6 +21,7 @@ import matter from 'gray-matter';
 import { db } from '../db/tenant';
 import { embedText } from '../intelligence/context';
 import { persistWikilinkEdges } from './wikilinks';
+import { assignPassageIds } from './passageIds';
 import {
   buildSpaceUri,
   slugify,
@@ -286,6 +287,21 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
   // context. Caller must be inside enterCollectiveContext (typical:
   // they're inside a Fastify request that went through requireCollective).
   const space = await db.transaction(async (client) => {
+    // Build Spec 2 Phase Z Story Z.2 — assign stable passage ids to
+    // every top-level block in research-workspace Spaces. Look up the
+    // workspace's type once per write; for non-research workspaces the
+    // body flows through unchanged so family Space bodies are
+    // byte-identical to pre-Phase-Z. The lookup is on the collectives
+    // table (Tier-C, no RLS) — safe to read inside the tenant tx.
+    let bodyMarkdownForWrite = input.bodyMarkdown;
+    const wsTypeRes = await client.query<{ type: string }>(
+      `SELECT type FROM collectives WHERE id = $1 LIMIT 1`,
+      [input.familyId],
+    );
+    if (wsTypeRes.rows[0]?.type === 'research') {
+      bodyMarkdownForWrite = assignPassageIds(input.bodyMarkdown);
+    }
+
     let existingId: string | null = null;
     let existingUri: string | null = null;
     const existing = await client.query<{ id: string; uri: string }>(
@@ -350,7 +366,12 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
     // Phase 1: embed the Space body on every write. Same text shape as
     // backfillEmbeddings.ts (title + description + body) so backfilled
     // and live-written embeddings live in the same semantic space.
-    const embeddingText = [input.name, input.description ?? '', input.bodyMarkdown]
+    // Phase Z Z.2 — embed the augmented body (with pid comments) so
+    // search recall over research Spaces is consistent regardless of
+    // when the embedding was generated. The 10–30 chars of comment
+    // noise per block is below the noise floor of MiniLM-L6's 384-dim
+    // representation.
+    const embeddingText = [input.name, input.description ?? '', bodyMarkdownForWrite]
       .map(s => (s ?? '').trim())
       .filter(Boolean)
       .join('\n\n');
@@ -385,7 +406,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
         slug,
         input.category,
         input.name,
-        input.bodyMarkdown,
+        bodyMarkdownForWrite,
         input.description ?? '',
         input.domains ?? [],
         input.people ?? [],
@@ -406,7 +427,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
     // is more important than partial graph coverage). RLS scopes the
     // target resolution to the active collective — cross-collective
     // [[targets]] silently resolve to nothing.
-    await persistWikilinkEdges(client, uri, input.bodyMarkdown);
+    await persistWikilinkEdges(client, uri, bodyMarkdownForWrite);
 
     await client.query(
       `INSERT INTO spaces_log (family_id, space_uri, event, summary, actor_profile_id)
@@ -449,7 +470,7 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
       confidence: input.confidence ?? 0.5,
       sourceReferences: input.sourceReferences ?? [],
       tags: input.tags ?? [],
-      bodyMarkdown: input.bodyMarkdown,
+      bodyMarkdown: bodyMarkdownForWrite,
       lastUpdated: new Date(),
       parentSpaceUri: effectiveParent,
     };

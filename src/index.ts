@@ -2201,6 +2201,121 @@ server.get('/api/spaces/snapshot', async (request, reply) => {
   }
 });
 
+// Build Spec 2 Phase Z Story Z.3 — serve an attached document file (PDF
+// today; future: audio, image) referenced from a Space's source_references.
+//
+// Path-traversal posture: the source reference carries an absolute path
+// to a file persisted by documentIngestion's persistOriginal(). We
+// validate the resolved path stays inside documentsRoot()/<familyId>/
+// before reading — anything outside that prefix is rejected. RLS on
+// synthesis_pages scopes the Space lookup to the active workspace, so a
+// caller can't fetch a document attached to a Space they don't own. If
+// a Space has multiple document: source refs, ?idx=N picks the Nth
+// (default 0).
+server.get('/api/spaces/:id/document', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const query = request.query as { idx?: string } | undefined;
+    const refIdx = query?.idx ? parseInt(query.idx, 10) : 0;
+    if (!Number.isFinite(refIdx) || refIdx < 0) {
+      return reply.code(400).send({ error: 'idx must be a non-negative integer' });
+    }
+    const res = await db.query<{ family_id: string; source_references: string[] | null }>(
+      `SELECT family_id, source_references FROM synthesis_pages WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (res.rowCount === 0) {
+      return reply.code(404).send({ error: 'Space not found' });
+    }
+    const row = res.rows[0];
+    const docRefs = (row.source_references ?? []).filter(r => typeof r === 'string' && r.startsWith('document:'));
+    if (docRefs.length === 0) {
+      return reply.code(404).send({ error: 'Space has no attached document' });
+    }
+    if (refIdx >= docRefs.length) {
+      return reply.code(404).send({ error: `idx ${refIdx} out of range (Space has ${docRefs.length} document(s))` });
+    }
+    const filePath = docRefs[refIdx].slice('document:'.length);
+
+    const path = await import('path');
+    const fs = await import('fs');
+    const documentsRoot = process.env.MEMU_DOCUMENTS_ROOT
+      ?? path.resolve(process.cwd(), 'data', 'documents');
+    const expectedPrefix = path.resolve(documentsRoot, row.family_id) + path.sep;
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(expectedPrefix)) {
+      // The source reference points outside this workspace's docs root —
+      // either a legacy path shape we don't support or a tampering attempt.
+      // Refuse to serve regardless.
+      server.log.warn({ resolved, expectedPrefix, spaceId: id }, 'document fetch: path outside workspace root');
+      return reply.code(403).send({ error: 'document reference outside workspace storage root' });
+    }
+    try {
+      await fs.promises.access(resolved, fs.constants.R_OK);
+    } catch {
+      return reply.code(404).send({ error: 'document file not found on disk' });
+    }
+    const ext = path.extname(resolved).toLowerCase();
+    const contentType =
+      ext === '.pdf' ? 'application/pdf' :
+      ext === '.txt' || ext === '.md' ? 'text/plain; charset=utf-8' :
+      ext === '.png' ? 'image/png' :
+      ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+      'application/octet-stream';
+    const stat = await fs.promises.stat(resolved);
+    reply.type(contentType);
+    reply.header('Content-Length', String(stat.size));
+    // Inline so pdf.js can render it (vs. forcing a download).
+    reply.header('Content-Disposition', `inline; filename="${path.basename(resolved)}"`);
+    // The original file is content-addressable by path (uuid in filename);
+    // safe to cache for the session. No surprise revalidation needed.
+    reply.header('Cache-Control', 'private, max-age=3600');
+    return reply.send(fs.createReadStream(resolved));
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch document' });
+  }
+});
+
+// Build Spec 2 Phase Z Story Z.6b — reading state.
+// POST /api/spaces/:id/read — mark a Space as opened by the active
+// profile. Fire-and-forget from the frontend on Space-detail open;
+// idempotent (repeated POSTs just bump last_read_at). RLS scopes the
+// underlying recordRead() to the active Collective, so a Space id
+// from another workspace looks identical to "not found" from here.
+server.post('/api/spaces/:id/read', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const { recordRead } = await import('./spaces/readingState');
+    const ok = await recordRead(profileId, id);
+    if (!ok) return reply.code(404).send({ error: 'Space not found' });
+    return { ok: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to record read' });
+  }
+});
+
+// GET /api/spaces/recently-read — list of recently-opened Spaces for
+// the active profile in the active Collective. Drives the "Continue
+// reading" affordance on the Spaces list view. Default limit 5; cap
+// at 50.
+server.get('/api/spaces/recently-read', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const q = request.query as { limit?: string } | undefined;
+    const limit = q?.limit ? parseInt(q.limit, 10) : 5;
+    const { listRecentlyRead } = await import('./spaces/readingState');
+    const entries = await listRecentlyRead(profileId, Number.isFinite(limit) ? limit : 5);
+    return { entries };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to list recently-read Spaces' });
+  }
+});
+
 // Delete a Space
 server.delete('/api/spaces/:id', async (request, reply) => {
   try {

@@ -3641,6 +3641,305 @@ textarea.input {
 .space-body strong { font-weight: 700; }
 .space-body em { font-style: italic; }
 
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z — research-workspace reading surface (Story Z.1).
+   Rules below cover markdown-it output that the legacy renderer never
+   produced (tables, code blocks, definition lists, footnotes, task lists,
+   abbreviations, sub/sup). They're scoped to .space-body but only fire
+   on Spaces rendered via the research path — family Spaces continue
+   through renderMarkdown() and never produce these elements, so these
+   rules are dead in a family workspace.
+   -------------------------------------------------------------------------- */
+
+/* Code blocks — distinct from inline code via the wrapping <pre>. */
+.space-body pre {
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0 var(--space-md);
+  overflow-x: auto;
+  line-height: 1.5;
+  font-size: 0.92em;
+}
+.space-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* Tables — quiet borders, generous cell padding, sticky-feeling header. */
+.space-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-sm) 0 var(--space-md);
+  font-size: 0.95em;
+}
+.space-body th, .space-body td {
+  border: 1px solid var(--border);
+  padding: var(--space-xs) var(--space-sm);
+  text-align: left;
+  vertical-align: top;
+}
+.space-body th {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+
+/* Definition lists — bold terms, indented definitions, the academic
+   glossary shape. */
+.space-body dl { margin: var(--space-sm) 0 var(--space-md); }
+.space-body dt { font-weight: 600; margin-top: var(--space-xs); }
+.space-body dd { margin: 0 0 var(--space-xs) var(--space-md); color: var(--text-secondary); }
+
+/* Footnotes — produced by markdown-it-footnote. Smaller text, separated
+   from body prose by a hairline. Anchor links inherit existing .space-body a. */
+.space-body .footnotes {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+.space-body .footnotes ol { padding-left: var(--space-md); }
+.space-body .footnote-ref a {
+  text-decoration: none;
+  font-weight: 600;
+}
+.space-body .footnote-backref { margin-left: var(--space-xs); text-decoration: none; }
+
+/* Task lists — markdown-it-task-lists emits a real <input type="checkbox">.
+   We pass enabled: false so the box is read-only; visually it stays in
+   line with the list item. */
+.space-body ul.contains-task-list { list-style: none; padding-left: var(--space-md); }
+.space-body .task-list-item { display: flex; align-items: flex-start; gap: var(--space-xs); margin: var(--space-xs) 0; }
+.space-body .task-list-item input[type="checkbox"] { margin-top: 0.3em; flex-shrink: 0; }
+
+/* Abbreviations — markdown-it-abbr wraps <abbr title="...">. Dotted
+   underline so the user knows there's a hover-revealed expansion. */
+.space-body abbr[title] {
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: var(--space-xs);
+  cursor: help;
+}
+
+/* Sub / sup — markdown-it-sub / markdown-it-sup. Light tracking so
+   formulae read cleanly without disrupting line height. */
+.space-body sub, .space-body sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+.space-body sup { top: -0.5em; }
+.space-body sub { bottom: -0.25em; }
+
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z Story Z.3 — PDF inline rendering surface.
+   Only fires on research-workspace Spaces that have an attached PDF;
+   the container above starts hidden and is shown by mountPdfIfAvailable().
+   Pages render as canvas + selectable text-layer overlay, one per page,
+   continuous scroll inside the Space's detail view.
+   -------------------------------------------------------------------------- */
+
+.pdf-viewer {
+  margin: var(--space-md) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  /* The canvas widths come from pdf.js (set inline per page). Cap the
+     container so a wide PDF doesn't blow out the column on a big screen. */
+  max-width: 100%;
+}
+
+.pdf-loading {
+  padding: var(--space-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.pdf-error {
+  padding: var(--space-md);
+  border-radius: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  color: var(--color-error, var(--text-secondary));
+  font-size: var(--font-size-sm);
+}
+
+.pdf-page {
+  position: relative;
+  background: white;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  /* pdf.js sets width / height inline on each .pdf-page to match the
+     page's natural dimensions; we just provide the visual frame. */
+}
+
+.pdf-page-label {
+  position: absolute;
+  top: -22px;
+  right: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.pdf-page-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Text layer for selection. Sits absolutely on top of the canvas with
+   transparent spans positioned over each glyph — selecting these gives
+   real text the user can copy. Color is transparent (visible glyphs
+   come from the canvas underneath); spans get color: transparent so
+   the selection highlight overlays cleanly without showing the spans
+   themselves. */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1;
+  /* pdf.js's TextLayer reads --scale-factor (set inline per page in the
+     viewer module) to size text spans to match the rendered canvas. */
+  --scale-factor: 1;
+}
+.pdf-text-layer ::selection {
+  background: rgba(80, 84, 181, 0.3);
+}
+.pdf-text-layer span,
+.pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z Story Z.6b — Continue-reading affordance.
+   Shows above the Spaces grid when the user has a recently-opened
+   Space they could resume. Quiet — a labelled-chip register, not a
+   loud feature card; it surfaces a useful action without dominating
+   the page.
+   -------------------------------------------------------------------------- */
+
+.continue-reading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin: var(--space-md) 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.continue-reading:hover {
+  border-color: var(--indigo-primary);
+}
+.continue-reading:active {
+  transform: scale(0.998);
+}
+.continue-reading-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.continue-reading-title {
+  font-family: var(--font-reading);
+  font-weight: 600;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+}
+.continue-reading-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z Story Z.6a — focus mode.
+   When body carries .focus-mode, the navigation chrome (sidebar +
+   topbar) is hidden and the reading column centres at ~720px so the
+   researcher reads without ambient UI. Entered via `.` keyboard
+   shortcut on an open Space; exited via Esc, `.` again, or the
+   floating Exit-focus button below.
+   -------------------------------------------------------------------------- */
+
+body.focus-mode .sidebar,
+body.focus-mode .app-topbar,
+body.focus-mode .sidebar-backdrop,
+body.focus-mode .spaces-fab {
+  display: none !important;
+}
+
+body.focus-mode .app-main {
+  padding: var(--space-xl) 0 var(--space-xl) 0;
+}
+
+body.focus-mode #spaces-detail-view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-left: var(--space-md);
+  padding-right: var(--space-md);
+}
+
+/* In focus mode the PDF viewer should also breathe — match the
+   reading column's width so the page canvases don't blow out. */
+body.focus-mode #space-detail-pdf,
+body.focus-mode #space-detail-body {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* The floating exit-focus button. Hidden by default; .focus-mode
+   shows it. Soft chip in the indigo palette so it reads as
+   "interactive but quiet". */
+.focus-exit {
+  display: none;
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 9999;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--color-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+body.focus-mode .focus-exit {
+  display: inline-flex;
+}
+.focus-exit:hover {
+  color: var(--text-primary);
+  border-color: var(--indigo-primary);
+}
+.focus-exit kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--color-surface-elevated, white);
+  color: var(--text-muted, var(--text-secondary));
+}
+
 /* ==========================================================================
    Calendar tab
    ========================================================================== */

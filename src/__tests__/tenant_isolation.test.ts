@@ -44,6 +44,7 @@ const SCOPED_TABLES = [
   'domain_states',
   'care_standards',
   'context_entries',
+  'space_reading_state',
 ];
 
 function findStatements(verb: 'UPDATE' | 'DELETE FROM' | 'INSERT INTO', table: string): string[] {
