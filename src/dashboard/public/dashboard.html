@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-readstate">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-r1-categories">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -3904,15 +3904,73 @@ function hideEl(id) {
 }
 
 // ========== SPACES TAB ==========
+//
+// Build Spec 2 Phase R1 — category sets are a function of the active
+// workspace's type. Three pieces:
+//
+//   CATEGORY_DISPLAYS  — single map of category → {label, icon}
+//                        covering every category in the union. ONE
+//                        source for the visual metadata.
+//   FAMILY_SET / RESEARCH_SET
+//                      — JS string arrays mirroring the backend's
+//                        FAMILY_CATEGORIES / RESEARCH_CATEGORIES in
+//                        src/spaces/model.ts. The arrays are
+//                        deliberately small and self-evident so they
+//                        round-trip cleanly across server / client;
+//                        if the backend grows a category, add it
+//                        here in the same commit.
+//   getActiveCategorySet() / getActiveChipDefs()
+//                      — derive the active workspace's set + the
+//                        chip ordering (with "All" at position 0).
+//                        Research workspaces put memo first; family
+//                        keeps person-first per historic order.
+//
+// The "All" filter is a UI-only key (no Space carries it); it's
+// added at chip-render time and excluded from create-modal pickers.
 
-const SPACE_CATEGORIES = [
-    { key: 'all', label: 'All', icon: '&#x2605;' },
-    { key: 'person', label: 'People', icon: '&#x1F464;' },
-    { key: 'routine', label: 'Routines', icon: '&#x23F1;' },
-    { key: 'household', label: 'Household', icon: '&#x1F3E0;' },
-    { key: 'commitment', label: 'Commitments', icon: '&#x1F4C5;' },
-    { key: 'document', label: 'Documents', icon: '&#x1F4C4;' },
-];
+const CATEGORY_DISPLAYS = {
+    person:      { label: 'People',       icon: '&#x1F464;' },  // 👤
+    routine:     { label: 'Routines',     icon: '&#x23F1;'  },  // ⏱
+    household:   { label: 'Household',    icon: '&#x1F3E0;' },  // 🏠
+    commitment:  { label: 'Commitments',  icon: '&#x1F4C5;' },  // 📅
+    document:    { label: 'Documents',    icon: '&#x1F4C4;' },  // 📄
+    memo:        { label: 'Memos',        icon: '&#x1F4DD;' },  // 📝
+    theme:       { label: 'Themes',       icon: '&#x1F3F7;' },  // 🏷
+    participant: { label: 'Participants', icon: '&#x1F5E3;' },  // 🗣
+    source:      { label: 'Sources',      icon: '&#x1F4DA;' },  // 📚
+    question:    { label: 'Questions',    icon: '&#x2753;'  },  // ❓
+    quote:       { label: 'Quotes',       icon: '&#x275D;'  },  // ❝
+};
+
+// MIRROR of src/spaces/model.ts — keep these arrays in sync. The
+// strings are the contract; the per-category visuals come from
+// CATEGORY_DISPLAYS above. R1.4: memo leads the research set so the
+// "researcher's voice" category sits first; person leads the family
+// set per historic order.
+const FAMILY_SET   = ['person', 'routine', 'household', 'commitment', 'document'];
+const RESEARCH_SET = ['memo', 'theme', 'participant', 'source', 'document', 'question', 'quote'];
+const ALL_FILTER_KEY = 'all';
+const ALL_FILTER_DISPLAY = { label: 'All', icon: '&#x2605;' }; // ★
+
+function getActiveCategorySet() {
+    const ws = (typeof effectiveActiveWorkspace === 'function') ? effectiveActiveWorkspace() : null;
+    return ws && ws.type === 'research' ? RESEARCH_SET : FAMILY_SET;
+}
+
+// Chip ordering: "All" first, then the active set's categories.
+function getActiveChipDefs() {
+    return [
+        { key: ALL_FILTER_KEY, ...ALL_FILTER_DISPLAY },
+        ...getActiveCategorySet().map(key => ({ key, ...CATEGORY_DISPLAYS[key] })),
+    ];
+}
+
+// What the create-Space FAB defaults to. Research workspaces lead
+// with memo (the researcher's voice — R1.4); family workspaces keep
+// person as today.
+function getDefaultNewCategory() {
+    return getActiveCategorySet()[0];
+}
 
 let spacesState = {
     spaces: [],
@@ -3923,7 +3981,16 @@ let spacesState = {
 
 function renderSpaceChips() {
     const el = document.getElementById('spaces-chips');
-    el.innerHTML = SPACE_CATEGORIES.map(c => {
+    const chipDefs = getActiveChipDefs();
+    // If the currently-selected filter isn't valid for THIS workspace
+    // type (e.g. switching from a research workspace where 'theme' was
+    // active to a family workspace that has no 'theme'), reset to
+    // 'all' so the strip doesn't render with no chip active. Cheap
+    // self-healing, runs on every chip render.
+    if (!chipDefs.some(c => c.key === spacesState.filter)) {
+        spacesState.filter = ALL_FILTER_KEY;
+    }
+    el.innerHTML = chipDefs.map(c => {
         const active = c.key === spacesState.filter ? ' active' : '';
         return `<button class="space-chip${active}" onclick="setSpaceFilter('${c.key}')">
             <span>${c.icon}</span><span>${c.label}</span>
@@ -3951,14 +4018,20 @@ function formatSpaceUpdated(iso) {
     } catch { return ''; }
 }
 
+// Display lookups read from CATEGORY_DISPLAYS — the single map. The
+// strip-trailing-s converts the plural chip label ("People") to the
+// singular form used in Space-detail headers ("Person"). Every label
+// in CATEGORY_DISPLAYS is pluralised the same way for consistency.
 function categoryLabel(key) {
-    const c = SPACE_CATEGORIES.find(x => x.key === key);
-    return c ? c.label.replace(/s$/, '') : key;
+    if (key === ALL_FILTER_KEY) return ALL_FILTER_DISPLAY.label;
+    const d = CATEGORY_DISPLAYS[key];
+    return d ? d.label.replace(/s$/, '') : key;
 }
 
 function categoryIcon(key) {
-    const c = SPACE_CATEGORIES.find(x => x.key === key);
-    return c ? c.icon : '&#x2605;';
+    if (key === ALL_FILTER_KEY) return ALL_FILTER_DISPLAY.icon;
+    const d = CATEGORY_DISPLAYS[key];
+    return d ? d.icon : ALL_FILTER_DISPLAY.icon;
 }
 
 async function loadSpaces() {
@@ -4826,7 +4899,17 @@ async function saveShareSpace() {
 }
 
 function openSpaceCreate() {
-    spacesState.newCategory = spacesState.filter !== 'all' ? spacesState.filter : 'person';
+    // R1.4 — default category is the active workspace's natural lead:
+    // memo for research, person for family. If the user has already
+    // narrowed the chip filter to a specific category, honour that
+    // (creating from a filtered view should land in the same shelf).
+    // Guard against a stale filter that's not valid for THIS workspace
+    // type — would 422 on save and the user wouldn't know why.
+    const activeSet = getActiveCategorySet();
+    const filteredFromActiveSet = (spacesState.filter !== 'all') && activeSet.includes(spacesState.filter);
+    spacesState.newCategory = filteredFromActiveSet
+        ? spacesState.filter
+        : getDefaultNewCategory();
     renderCreateCategories();
     document.getElementById('space-create-title').value = '';
     document.getElementById('space-create-body').value = '';
@@ -4839,10 +4922,14 @@ function closeSpaceCreate() {
 
 function renderCreateCategories() {
     const el = document.getElementById('space-create-categories');
-    el.innerHTML = SPACE_CATEGORIES.filter(c => c.key !== 'all').map(c => {
-        const active = c.key === spacesState.newCategory ? ' active' : '';
-        return `<button class="space-chip${active}" onclick="pickNewCategory('${c.key}')">
-            <span>${c.icon}</span><span>${c.label}</span>
+    // Active workspace's set only — excludes the "All" pseudo-filter
+    // and excludes the OTHER set's categories. Order matches the
+    // chip strip (memo first for research, person first for family).
+    el.innerHTML = getActiveCategorySet().map(key => {
+        const d = CATEGORY_DISPLAYS[key];
+        const active = key === spacesState.newCategory ? ' active' : '';
+        return `<button class="space-chip${active}" onclick="pickNewCategory('${key}')">
+            <span>${d.icon}</span><span>${d.label}</span>
         </button>`;
     }).join('');
 }
