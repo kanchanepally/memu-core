@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-14-lens-wiring">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pwa-workspace-switcher">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -180,20 +180,34 @@
 <!-- Auth gate -->
 <script>
 const AUTH_KEY = 'memu_auth';
+const ACTIVE_WORKSPACE_KEY = 'memu_active_workspace_id';
 function getAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; } catch { return {}; } }
 function clearAuth() { localStorage.removeItem(AUTH_KEY); window.location.href = '/'; }
+function getActiveWorkspaceId() { return localStorage.getItem(ACTIVE_WORKSPACE_KEY); }
+function setActiveWorkspaceId(id) {
+    if (id) localStorage.setItem(ACTIVE_WORKSPACE_KEY, id);
+    else localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+}
 const auth = getAuth();
 if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
 
 async function api(path, opts = {}) {
-    const res = await fetch(auth.serverUrl + path, {
-        ...opts,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + auth.apiKey,
-            ...(opts.headers || {}),
-        },
-    });
+    const callerHeaders = opts.headers || {};
+    const explicitWorkspaceHeader =
+        'X-Memu-Workspace-Id' in callerHeaders || 'x-memu-workspace-id' in callerHeaders;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + auth.apiKey,
+        ...callerHeaders,
+    };
+    // Story 3.2 — every request carries the active workspace as
+    // X-Memu-Workspace-Id; server resolves RLS scope from it. Omit
+    // when nothing's selected — server falls back to personal-then-first.
+    if (!explicitWorkspaceHeader) {
+        const wid = getActiveWorkspaceId();
+        if (wid) headers['X-Memu-Workspace-Id'] = wid;
+    }
+    const res = await fetch(auth.serverUrl + path, { ...opts, headers });
     return res;
 }
 
@@ -224,6 +238,15 @@ async function api(path, opts = {}) {
         <svg class="sidebar-logo-mark icon"><use href="#icon-1"></use></svg>
         <span class="sidebar-logo-text">Memu</span>
     </a>
+    <!-- Workspace switcher pill — shows the active workspace below the
+         brand mark, opens the Workspaces tab on click. Visible from every
+         tab so the active scope is always legible. Filled lazily by
+         initWorkspaceSwitcher() once GET /api/workspaces returns. -->
+    <button class="sidebar-workspace-pill" id="sidebar-workspace-pill"
+            onclick="switchTab('workspaces')" aria-label="Switch workspace">
+        <span class="sidebar-workspace-pill-eyebrow">Workspace</span>
+        <span class="sidebar-workspace-pill-name" id="sidebar-workspace-name">Loading…</span>
+    </button>
     <!-- Top region: primary + secondary nav. Fixed natural height. Conversations
          do NOT live here any more — they had been pushing Settings off-screen
          once 20+ threads accumulated. They now live in the bottom region. -->
@@ -780,6 +803,52 @@ async function api(path, opts = {}) {
     </div>
 </div>
 
+<!-- ==================== WORKSPACES TAB (Build Spec 1 — Story 5.3 PWA) ====================
+     Mirrors mobile/app/workspaces.tsx. Lists the caller's active
+     memberships, marks the current active workspace, lets the user
+     create a new one or switch. Switching writes localStorage
+     and reloads — every subsequent api() call carries the new
+     X-Memu-Workspace-Id and the server resolves scope to it. -->
+<div id="view-workspaces" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
+    <header class="spaces-masthead">
+        <div class="briefing-eyebrow">Workspaces</div>
+        <div class="briefing-title">Switch between contexts</div>
+        <div class="briefing-subtitle">Each workspace has its own Spaces, chat, lists. Switching changes what's visible — not where you are.</div>
+    </header>
+    <div class="workspace-list-actions" style="display:flex;justify-content:flex-end;margin-bottom:var(--space-md);">
+        <button class="btn btn-primary btn-sm" id="workspace-create-btn" onclick="openCreateWorkspace()">
+            <span style="margin-right:6px;">+</span>New workspace
+        </button>
+    </div>
+    <div id="workspace-list" class="workspace-list">
+        <div class="text-muted" style="padding:var(--space-md);text-align:center;">Loading…</div>
+    </div>
+</div>
+
+<!-- Create-workspace modal — POST /api/workspaces. Type picker omits
+     `household`: backend rejects it with reason=household_reserved
+     (households are created automatically at registration). -->
+<div class="modal-overlay" id="workspace-create-modal">
+    <div class="modal-card" style="max-width:480px;">
+        <h3 class="mb-sm">New workspace</h3>
+        <div class="text-muted mb-md" style="font-size:13px;">
+            Pick a name and a type. You'll be the owner. Your existing
+            workspaces aren't touched.
+        </div>
+        <label class="input-label">Name</label>
+        <input type="text" id="workspace-create-name" class="input mb-md" maxlength="120" placeholder="e.g. Memu venture, Sourdough research">
+        <label class="input-label">Type</label>
+        <div id="workspace-create-types" class="workspace-type-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:var(--space-md);">
+            <!-- Filled by openCreateWorkspace() from WORKSPACE_TYPES -->
+        </div>
+        <div id="workspace-create-error" class="hidden text-error" style="font-size:13px;margin-bottom:var(--space-sm);"></div>
+        <div class="flex gap-sm" style="justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="closeCreateWorkspace()">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="workspace-create-submit" onclick="submitCreateWorkspace()">Create</button>
+        </div>
+    </div>
+</div>
+
 <!-- ==================== LISTS TAB ==================== -->
 <div id="view-lists" class="container lists-canvas hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
     <header class="spaces-masthead">
@@ -982,6 +1051,18 @@ async function api(path, opts = {}) {
         <div id="settings-household-list"></div>
     </div>
 
+    <div class="section-label">Workspaces</div>
+    <div class="settings-section">
+        <div class="setting-row" onclick="switchTab('workspaces')">
+            <div class="setting-icon">&#x1F5C2;</div>
+            <div class="setting-content">
+                <div class="setting-title">Workspaces</div>
+                <div class="setting-subtitle">Personal, household, ventures — switch between them</div>
+            </div>
+            <span class="setting-chevron">&#x203A;</span>
+        </div>
+    </div>
+
     <div class="section-label">About</div>
     <div class="settings-section">
         <div class="setting-row">
@@ -1080,7 +1161,7 @@ applyInitialSidebarState();
 // landing). Switching this constant alone is enough — switchTab()
 // reads it during init.
 let currentTab = 'chat';
-const tabs = ['today', 'chat', 'spaces', 'lists', 'calendar', 'ledger', 'import', 'settings'];
+const tabs = ['today', 'chat', 'spaces', 'lists', 'calendar', 'ledger', 'import', 'settings', 'workspaces'];
 
 const TAB_TITLES = {
     today: 'Dashboard',  // Phase A.4 — renamed from "Today" (tab id stays for stable wiring)
@@ -1091,6 +1172,7 @@ const TAB_TITLES = {
     ledger: 'Privacy Ledger',
     import: 'Import',
     settings: 'Settings',
+    workspaces: 'Workspaces',
 };
 
 function switchTab(tab) {
@@ -1139,6 +1221,7 @@ function switchTab(tab) {
     if (tab === 'calendar') loadCalendar();
     if (tab === 'ledger') loadLedger();
     if (tab === 'settings') loadSettings();
+    if (tab === 'workspaces') loadWorkspaces();
 }
 
 // ========== TODAY TAB ==========
@@ -3268,6 +3351,254 @@ function handleSignOut() {
     }
 }
 
+// ========== WORKSPACES TAB ==========
+// Build Spec 1 Story 5.3 (PWA). Mirrors mobile/app/workspaces.tsx +
+// mobile/lib/workspaces.ts in plain JS. Backend truth is src/api/workspaces.ts.
+
+const WORKSPACE_TYPES = ['household', 'personal', 'family', 'work', 'project', 'research', 'community'];
+// Types a user can create. `household` is rejected by the backend with
+// reason=household_reserved; surfacing it would be a UX trap.
+const CREATABLE_WORKSPACE_TYPES = WORKSPACE_TYPES.filter(t => t !== 'household');
+
+const WORKSPACE_TYPE_LABEL = {
+    household: 'Household',
+    personal: 'Personal',
+    family: 'Family',
+    work: 'Work',
+    project: 'Project',
+    research: 'Research',
+    community: 'Community',
+};
+
+const WORKSPACE_ROLE_LABEL = {
+    owner: 'Owner',
+    admin: 'Admin',
+    adult: 'Adult',
+    child: 'Child',
+    member: 'Member',
+    viewer: 'Viewer',
+};
+
+const WORKSPACE_CREATE_ERROR_LABEL = {
+    name_required: 'Give your workspace a name.',
+    type_required: 'Pick a workspace type.',
+    type_invalid: 'Workspace type is invalid.',
+    household_reserved: "Household workspaces are created automatically — you can't make a new one by hand.",
+};
+
+let workspaceState = { items: [], homeId: null, selfRole: null };
+
+async function loadWorkspaces() {
+    const container = document.getElementById('workspace-list');
+    container.innerHTML = '<div class="text-muted" style="padding:var(--space-md);text-align:center;">Loading…</div>';
+    try {
+        const res = await api('/api/workspaces');
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            container.innerHTML = `<div class="text-error" style="padding:var(--space-md);">${esc(body.error || 'Failed to load workspaces')}</div>`;
+            return;
+        }
+        const data = await res.json();
+        workspaceState.items = data.workspaces || [];
+        // Home is the membership matching profile.collective_id —
+        // surfaced via /api/family/profiles where is_self=true. Cheaper
+        // single source: we cache homeId once and use it for both this
+        // tab and the sidebar pill. Failures here aren't fatal; the home
+        // indicator just doesn't render.
+        await loadSelfContextForWorkspaces();
+        renderWorkspaces();
+        renderWorkspacePill();
+    } catch (err) {
+        console.error('[loadWorkspaces]', err);
+        container.innerHTML = `<div class="text-error" style="padding:var(--space-md);">Network error — ${esc(String(err.message || err))}</div>`;
+    }
+}
+
+async function loadSelfContextForWorkspaces() {
+    if (workspaceState.homeId && workspaceState.selfRole) return;
+    try {
+        const res = await api('/api/family/profiles');
+        if (!res.ok) return;
+        const data = await res.json();
+        const self = (data.profiles || []).find(p => p.is_self);
+        if (self) {
+            workspaceState.selfRole = self.role || null;
+            // The PWA's /api/family/profiles call doesn't expose the
+            // caller's home collective_id directly. Best-available proxy:
+            // the workspace with type=household whose role matches the
+            // legacy 'adult'/'admin' pattern is the home for almost every
+            // caller today. Post-Story-3.3 every profile also owns a
+            // 'personal' workspace as a SECOND membership — that's not
+            // the home. Match by the household type for now; tighten if
+            // a real /api/me endpoint lands.
+            const household = workspaceState.items.find(w => w.type === 'household');
+            if (household) workspaceState.homeId = household.id;
+        }
+    } catch (err) {
+        // Soft-fail — the home indicator is informational, not a security gate.
+        console.warn('[loadSelfContextForWorkspaces]', err);
+    }
+}
+
+// Mirrors the server's resolveActiveWorkspace (src/auth.ts): explicit
+// localStorage selection wins; else personal-type; else first by
+// created_at. Used by every UI surface that needs to know "which
+// workspace is the server scoping to right now" so client and server
+// can't drift on the "Current" indicator.
+function effectiveActiveWorkspace() {
+    const activeId = getActiveWorkspaceId();
+    if (activeId) {
+        const explicit = workspaceState.items.find(x => x.id === activeId);
+        if (explicit) return explicit;
+    }
+    return workspaceState.items.find(x => x.type === 'personal') || workspaceState.items[0] || null;
+}
+
+function renderWorkspaces() {
+    const container = document.getElementById('workspace-list');
+    if (workspaceState.items.length === 0) {
+        container.innerHTML = '<div class="text-muted" style="padding:var(--space-md);text-align:center;">No workspaces yet.</div>';
+        return;
+    }
+    const active = effectiveActiveWorkspace();
+    container.innerHTML = workspaceState.items.map(w => {
+        const isActive = active && w.id === active.id;
+        const isHome = w.id === workspaceState.homeId;
+        const typeLabel = WORKSPACE_TYPE_LABEL[w.type] || w.type;
+        const roleLabel = WORKSPACE_ROLE_LABEL[w.role] || w.role;
+        const badges = [
+            isHome ? '<span class="workspace-badge workspace-badge-home">Home</span>' : '',
+            isActive ? '<span class="workspace-badge workspace-badge-current">Current</span>' : '',
+        ].filter(Boolean).join('');
+        const switchBtn = isActive
+            ? '<button class="btn btn-secondary btn-sm" disabled>Current</button>'
+            : `<button class="btn btn-primary btn-sm" onclick="switchToWorkspace('${esc(w.id)}','${esc(w.name)}')">Switch to this</button>`;
+        return `<div class="workspace-card">
+            <div class="workspace-card-head">
+                <div class="workspace-card-titles">
+                    <div class="workspace-card-name">${esc(w.name)}</div>
+                    <div class="workspace-card-meta">
+                        <span class="workspace-card-type">${esc(typeLabel)}</span>
+                        <span class="workspace-card-dot">·</span>
+                        <span class="workspace-card-role">${esc(roleLabel)}</span>
+                    </div>
+                </div>
+                <div class="workspace-card-badges">${badges}</div>
+            </div>
+            <div class="workspace-card-actions">${switchBtn}</div>
+        </div>`;
+    }).join('');
+
+    // Child-role guard mirrors mobile: backend has no role check on
+    // POST /api/workspaces today (Story 3.1 left it open), so this is
+    // the user-facing gate. A child sees the button disabled with the
+    // helper text below; an adult sees the normal "+" affordance.
+    const createBtn = document.getElementById('workspace-create-btn');
+    if (createBtn && workspaceState.selfRole === 'child') {
+        createBtn.disabled = true;
+        createBtn.title = 'Adults manage workspaces.';
+    }
+}
+
+function renderWorkspacePill() {
+    const pillName = document.getElementById('sidebar-workspace-name');
+    if (!pillName) return;
+    const w = effectiveActiveWorkspace();
+    pillName.textContent = w ? w.name : '—';
+}
+
+function switchToWorkspace(id, name) {
+    setActiveWorkspaceId(id);
+    // Switching scope on a long-running SPA is brittle (Spaces +
+    // chat history + briefing + lists are all already loaded for
+    // the previous workspace). A reload is simpler and reliable:
+    // every cached state drops, every request re-fetches with the
+    // new X-Memu-Workspace-Id header.
+    window.location.reload();
+}
+
+function openCreateWorkspace() {
+    document.getElementById('workspace-create-name').value = '';
+    document.getElementById('workspace-create-error').classList.add('hidden');
+    const chips = document.getElementById('workspace-create-types');
+    chips.innerHTML = CREATABLE_WORKSPACE_TYPES.map((t, i) => {
+        const label = WORKSPACE_TYPE_LABEL[t] || t;
+        return `<button class="workspace-type-chip ${i === 0 ? 'selected' : ''}"
+                       data-type="${esc(t)}"
+                       onclick="selectWorkspaceType('${esc(t)}')">${esc(label)}</button>`;
+    }).join('');
+    document.getElementById('workspace-create-modal').classList.add('open');
+    setTimeout(() => document.getElementById('workspace-create-name').focus(), 50);
+}
+
+function selectWorkspaceType(type) {
+    document.querySelectorAll('#workspace-create-types .workspace-type-chip').forEach(b => {
+        b.classList.toggle('selected', b.dataset.type === type);
+    });
+}
+
+function closeCreateWorkspace() {
+    document.getElementById('workspace-create-modal').classList.remove('open');
+}
+
+async function submitCreateWorkspace() {
+    const name = document.getElementById('workspace-create-name').value.trim();
+    const selected = document.querySelector('#workspace-create-types .workspace-type-chip.selected');
+    const type = selected?.dataset.type;
+    const errBox = document.getElementById('workspace-create-error');
+    errBox.classList.add('hidden');
+    if (!name) {
+        errBox.textContent = WORKSPACE_CREATE_ERROR_LABEL.name_required;
+        errBox.classList.remove('hidden');
+        return;
+    }
+    if (!type) {
+        errBox.textContent = WORKSPACE_CREATE_ERROR_LABEL.type_required;
+        errBox.classList.remove('hidden');
+        return;
+    }
+    const btn = document.getElementById('workspace-create-submit');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    try {
+        const res = await api('/api/workspaces', {
+            method: 'POST',
+            body: JSON.stringify({ name, type }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            errBox.textContent = WORKSPACE_CREATE_ERROR_LABEL[body.error] || body.error || 'Could not create workspace.';
+            errBox.classList.remove('hidden');
+            return;
+        }
+        closeCreateWorkspace();
+        await loadWorkspaces();
+    } catch (err) {
+        errBox.textContent = 'Network error — ' + String(err.message || err);
+        errBox.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create';
+    }
+}
+
+// Sidebar pill is rendered at boot via initWorkspaceSwitcher() — fires
+// once on page load so the pill name is correct before the user opens
+// the Workspaces tab. After that, switching tabs to Workspaces re-runs
+// loadWorkspaces() which keeps the pill in sync.
+async function initWorkspaceSwitcher() {
+    try {
+        const res = await api('/api/workspaces');
+        if (!res.ok) return;
+        const data = await res.json();
+        workspaceState.items = data.workspaces || [];
+        await loadSelfContextForWorkspaces();
+        renderWorkspacePill();
+    } catch (err) {
+        console.warn('[initWorkspaceSwitcher]', err);
+    }
+}
+
 // ========== UTILITIES ==========
 
 function esc(str) {
@@ -4446,6 +4777,11 @@ function renderSelectedDay() {
     // Fire-and-forget; no UI dependency. (loadSynthesis() retired —
     // briefings live in chat now.)
     loadBrief();
+
+    // Populate the sidebar workspace pill so the active scope is
+    // visible from any tab on first paint. Fire-and-forget — failures
+    // leave the pill showing "Loading…" which is benign.
+    initWorkspaceSwitcher();
 })();
 </script>
 </body>
