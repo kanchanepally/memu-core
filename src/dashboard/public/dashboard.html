@@ -664,6 +664,9 @@ async function api(path, opts = {}) {
                     <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-27"></use></svg>
                     Un-nest
                 </button>
+                <button class="btn btn-secondary btn-sm" onclick="enterFocusMode()" title="Focus mode (.) — hide chrome and centre the reading column">
+                    Focus <kbd style="margin-left:6px;font-family:var(--font-mono,monospace);font-size:11px;padding:1px 5px;border-radius:3px;border:1px solid var(--border);background:var(--color-surface);">.</kbd>
+                </button>
                 <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
                 <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
             </div>
