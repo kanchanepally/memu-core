@@ -1810,7 +1810,7 @@ function renderMarkdown(text) {
     return out.join('');
 }
 
-// Build Spec 2 Phase Z — Story Z.1.
+// Build Spec 2 Phase Z — Stories Z.1 + Z.2.
 // markdown-it instance for research-workspace Space bodies. Lazily
 // constructed on first use so the cost is only paid in a research
 // workspace; family / personal workspaces never touch it.
@@ -1820,12 +1820,19 @@ function renderMarkdown(text) {
 // Math (mathjax3 / katex) is deliberately deferred — large dep,
 // opt-in per spec, lands in a follow-up.
 //
-// Safety posture: html: false (raw HTML in source is escaped),
-// linkify: true (auto-link URLs — useful for academic citations),
-// breaks: false (CommonMark paragraph semantics, not the legacy
-// every-line-a-<p> behaviour). The legacy renderMarkdown() stays
-// in place for chat bubbles, stream cards, and family-workspace
-// Space bodies — see renderSpaceBody() below.
+// Z.2 — every top-level block carries a data-pid attribute on its
+// rendered HTML, derived from the <!-- pid:XYZ --> comment that
+// precedes it in the source. Server-side src/spaces/passageIds.ts
+// generates the comments on write for research workspaces; the
+// pidPlugin below extracts them on read and applies them as attrs
+// so the active-reading toolbar (R3) can address an exact passage.
+//
+// Safety posture: html: true is set so the parser produces html_block
+// tokens for the pid comments — but the renderer rules below STRIP
+// the rendered output of html_block / html_inline. Net effect: raw
+// <script>, <iframe>, etc. embedded in a Space body get stripped at
+// render time (same posture as html: false), while pid comments are
+// extracted by the plugin before the strip rule runs.
 let __mdResearch = null;
 function getResearchMarkdown() {
     if (__mdResearch) return __mdResearch;
@@ -1833,15 +1840,105 @@ function getResearchMarkdown() {
         console.error('[Phase Z] markdown-it vendor bundle did not load');
         return null;
     }
-    const md = window.markdownit({ html: false, linkify: true, breaks: false, typographer: false });
+    const md = window.markdownit({ html: true, linkify: true, breaks: false, typographer: false });
     if (window.markdownitFootnote) md.use(window.markdownitFootnote);
     if (window.markdownitDeflist) md.use(window.markdownitDeflist);
     if (window.markdownitTaskLists) md.use(window.markdownitTaskLists, { enabled: false, label: true });
     if (window.markdownitAbbr) md.use(window.markdownitAbbr);
     if (window.markdownitSub) md.use(window.markdownitSub);
     if (window.markdownitSup) md.use(window.markdownitSup);
+    md.use(pidPlugin);
+    // Strip ALL inline / block raw HTML from rendered output. Combined
+    // with html: true above, this gives us the same XSS posture as
+    // html: false — except pidPlugin above has already extracted the
+    // pid comments and turned them into data-pid attrs before this
+    // strip fires.
+    md.renderer.rules.html_block = () => '';
+    md.renderer.rules.html_inline = () => '';
+    // markdown-it's default fence + code_block renderers put attrs on
+    // <code>, not <pre>. For passage-id consistency with every other
+    // block (where data-pid lands on the block-level wrapper), move
+    // data-pid to <pre> and keep other attrs (e.g. language-* class)
+    // on <code>. Other attrs are vanishingly rare on raw code blocks
+    // — language classes come from fence info strings, not attrs.
+    const wrapWithPidOnPre = (defaultRule) => (tokens, idx, options, env, slf) => {
+        const token = tokens[idx];
+        let pidAttr = '';
+        if (token.attrs) {
+            const pidIdx = token.attrIndex('data-pid');
+            if (pidIdx >= 0) {
+                pidAttr = ` data-pid="${token.attrs[pidIdx][1]}"`;
+                // Splice the data-pid out so the default rule doesn't
+                // re-emit it on <code>. We mutate a shallow-cloned
+                // attrs array to avoid stomping on tokens shared with
+                // other consumers (cache, etc.).
+                token.attrs = token.attrs.filter((_, i) => i !== pidIdx);
+            }
+        }
+        const inner = defaultRule(tokens, idx, options, env, slf);
+        // Inject pidAttr right after the opening <pre tag. Default
+        // output always starts with "<pre" (no class on <pre> from
+        // default rules).
+        if (pidAttr && inner.startsWith('<pre')) {
+            return '<pre' + pidAttr + inner.slice(4);
+        }
+        return inner;
+    };
+    const defaultFence = md.renderer.rules.fence
+        || md.renderer.rules.fence /* dyn */
+        || function (tokens, idx, options, env, slf) { return slf.renderToken(tokens, idx, options); };
+    const defaultCodeBlock = md.renderer.rules.code_block
+        || function (tokens, idx, options, env, slf) {
+            // Fallback to canonical default — markdown-it's built-in.
+            const token = tokens[idx];
+            return '<pre><code' + slf.renderAttrs(token) + '>'
+                + md.utils.escapeHtml(token.content) + '</code></pre>\n';
+        };
+    md.renderer.rules.fence = wrapWithPidOnPre(defaultFence);
+    md.renderer.rules.code_block = wrapWithPidOnPre(defaultCodeBlock);
     __mdResearch = md;
     return md;
+}
+
+// pidPlugin — Phase Z Story Z.2 client-side half.
+//
+// Walks the token stream after block parsing. For each html_block
+// token whose content matches the pid-comment shape, captures the
+// pid as "pending" and removes the token from the stream. The next
+// block-level token (any *_open or self-closing top-level block —
+// code_block, fence, hr, table_open, dl_open, paragraph_open,
+// heading_open, blockquote_open, bullet_list_open, ordered_list_open)
+// receives the pending pid as a data-pid attribute. Mirrors the
+// server-side TOP_LEVEL_BLOCK_TYPES set in src/spaces/passageIds.ts —
+// keep the two in sync.
+const PID_COMMENT_RE = /<!--\s*pid:([0123456789abcdefghjkmnpqrstvwxyz]{4,6})\s*-->/i;
+const PID_BLOCK_OPENS = new Set([
+    'paragraph_open', 'heading_open', 'blockquote_open',
+    'bullet_list_open', 'ordered_list_open', 'code_block',
+    'fence', 'hr', 'table_open', 'dl_open',
+]);
+function pidPlugin(md) {
+    md.core.ruler.after('block', 'memu_pid_extract', (state) => {
+        const tokens = state.tokens;
+        const out = [];
+        let pendingPid = null;
+        for (const t of tokens) {
+            if (t.type === 'html_block') {
+                const m = PID_COMMENT_RE.exec(t.content);
+                if (m) {
+                    pendingPid = m[1].toLowerCase();
+                    continue; // drop the comment token; the next block consumes it
+                }
+                // Non-pid html_block — passes through to the strip rule.
+            }
+            if (pendingPid && PID_BLOCK_OPENS.has(t.type)) {
+                t.attrJoin('data-pid', pendingPid);
+                pendingPid = null;
+            }
+            out.push(t);
+        }
+        state.tokens = out;
+    });
 }
 
 // renderSpaceBody — the dispatch point for the Phase Z reading
