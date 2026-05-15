@@ -2678,6 +2678,134 @@ textarea.input {
   border-top: 1px solid var(--border);
 }
 
+/* Workspace switcher pill — sits below the Memu logo, above the nav.
+   Compact, two-line: eyebrow ("Workspace") above the active name. The
+   whole pill is the tap target; opens the Workspaces tab. */
+.sidebar-workspace-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin: var(--space-sm) 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-elevated, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sidebar-workspace-pill:hover {
+  border-color: var(--indigo-primary);
+  background: var(--color-surface-hover);
+}
+.sidebar-workspace-pill-eyebrow {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.sidebar-workspace-pill-name {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--indigo-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Workspaces tab — list of cards, one per active membership. */
+.workspace-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.workspace-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.workspace-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+.workspace-card-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.workspace-card-name {
+  font-family: var(--font-reading);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.workspace-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.workspace-card-type { text-transform: capitalize; }
+.workspace-card-role { text-transform: capitalize; }
+.workspace-card-dot { color: var(--text-tertiary, var(--text-secondary)); }
+.workspace-card-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.workspace-badge {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.workspace-badge-home {
+  background: var(--color-surface-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.workspace-badge-current {
+  background: var(--indigo-primary);
+  color: white;
+}
+.workspace-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Type picker chips in the create-workspace modal. */
+.workspace-type-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.workspace-type-chip:hover { border-color: var(--indigo-primary); }
+.workspace-type-chip.selected {
+  background: var(--indigo-primary);
+  border-color: var(--indigo-primary);
+  color: white;
+}
+
 .app-main {
   flex: 1;
   min-width: 0;
