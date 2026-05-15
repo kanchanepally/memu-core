@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pwa-switch-apostrophe-fix">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pwa-workspace-rename">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -3379,6 +3379,10 @@ const WORKSPACE_ROLE_LABEL = {
     viewer: 'Viewer',
 };
 
+// Mirrors WORKSPACE_RENAME_ROLES in src/api/workspaces.ts. Adult-bucket
+// roles can rename a workspace; child / member / viewer cannot.
+const WORKSPACE_RENAME_ROLES = new Set(['owner', 'admin', 'adult']);
+
 const WORKSPACE_CREATE_ERROR_LABEL = {
     name_required: 'Give your workspace a name.',
     type_required: 'Pick a workspace type.',
@@ -3472,17 +3476,24 @@ function renderWorkspaces() {
         const isHome = w.id === workspaceState.homeId;
         const typeLabel = WORKSPACE_TYPE_LABEL[w.type] || w.type;
         const roleLabel = WORKSPACE_ROLE_LABEL[w.role] || w.role;
+        const canRename = WORKSPACE_RENAME_ROLES.has(w.role);
         const badges = [
             isHome ? '<span class="workspace-badge workspace-badge-home">Home</span>' : '',
             isActive ? '<span class="workspace-badge workspace-badge-current">Current</span>' : '',
         ].filter(Boolean).join('');
+        const renameBtn = canRename
+            ? '<button class="workspace-rename-btn" title="Rename workspace" aria-label="Rename workspace">Rename</button>'
+            : '';
         const switchBtn = isActive
             ? '<button class="btn btn-secondary btn-sm" disabled>Current</button>'
             : '<button class="btn btn-primary btn-sm workspace-switch-btn">Switch to this</button>';
-        return `<div class="workspace-card" data-workspace-id="${esc(w.id)}">
+        return `<div class="workspace-card" data-workspace-id="${esc(w.id)}" data-workspace-name="${esc(w.name)}">
             <div class="workspace-card-head">
                 <div class="workspace-card-titles">
-                    <div class="workspace-card-name">${esc(w.name)}</div>
+                    <div class="workspace-card-name-row">
+                        <div class="workspace-card-name">${esc(w.name)}</div>
+                        ${renameBtn}
+                    </div>
                     <div class="workspace-card-meta">
                         <span class="workspace-card-type">${esc(typeLabel)}</span>
                         <span class="workspace-card-dot">·</span>
@@ -3505,20 +3516,60 @@ function renderWorkspaces() {
         createBtn.title = 'Adults manage workspaces.';
     }
 
-    // Wire the click handler once via event delegation. Re-running
+    // Wire the click handlers once via event delegation. Re-running
     // renderWorkspaces() (e.g. after creating a new workspace) doesn't
     // need to re-bind because the listener is on the container, not on
     // individual buttons that get replaced on each render. Guard with
     // a flag to keep this idempotent.
     if (!container.dataset.switchHandlerBound) {
         container.addEventListener('click', (e) => {
-            const btn = e.target.closest('.workspace-switch-btn');
-            if (!btn) return;
-            const card = btn.closest('[data-workspace-id]');
-            const id = card?.dataset.workspaceId;
-            if (id) switchToWorkspace(id);
+            const card = e.target.closest('[data-workspace-id]');
+            if (!card) return;
+            const id = card.dataset.workspaceId;
+            const name = card.dataset.workspaceName;
+            if (!id) return;
+            if (e.target.closest('.workspace-switch-btn')) {
+                switchToWorkspace(id);
+            } else if (e.target.closest('.workspace-rename-btn')) {
+                openRenameWorkspace(id, name || '');
+            }
         });
         container.dataset.switchHandlerBound = '1';
+    }
+}
+
+function openRenameWorkspace(id, currentName) {
+    // Browser-native prompt is enough for the slice — Hareesh's
+    // primary use case (rename "Hareesh's household" → something
+    // shared) is a one-shot action. A proper modal would be polish.
+    // Cancel returns null; empty string is a no-op. Trim happens
+    // server-side too.
+    const next = window.prompt('Rename workspace:', currentName);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === currentName) return;
+    submitRenameWorkspace(id, trimmed);
+}
+
+async function submitRenameWorkspace(id, newName) {
+    try {
+        const res = await api('/api/workspaces/' + encodeURIComponent(id), {
+            method: 'PATCH',
+            body: JSON.stringify({ name: newName }),
+        });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            // Reuse the create-modal error labels — same reason codes
+            // (name_required) overlap.
+            const message = WORKSPACE_CREATE_ERROR_LABEL[body.error]
+                || body.error
+                || 'Could not rename workspace.';
+            window.alert(message);
+            return;
+        }
+        await loadWorkspaces();
+    } catch (err) {
+        window.alert('Network error — ' + String(err.message || err));
     }
 }
 

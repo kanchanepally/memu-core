@@ -149,6 +149,35 @@ export function validateWorkspaceCreate(input: unknown): WorkspaceCreateValidati
 }
 
 // ---------------------------------------------------------------------------
+// PATCH /api/workspaces/:id validator
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceUpdateInput {
+  name: string;
+}
+
+export type WorkspaceUpdateValidation =
+  | { ok: true; name: string }
+  | { ok: false; reason: 'name_required' };
+
+export function validateWorkspaceUpdate(input: unknown): WorkspaceUpdateValidation {
+  if (!input || typeof input !== 'object') return { ok: false, reason: 'name_required' };
+  const b = input as Record<string, unknown>;
+  const name = typeof b.name === 'string' ? b.name.trim() : '';
+  if (!name) return { ok: false, reason: 'name_required' };
+  return { ok: true, name: name.slice(0, 120) };
+}
+
+/** Roles allowed to rename a workspace. Mirrors the adult-bucket from
+ *  the spec's role-to-bucket mapping. Children + viewers + members
+ *  cannot rename. */
+export const WORKSPACE_RENAME_ROLES = ['owner', 'admin', 'adult'] as const;
+export type WorkspaceRenameRole = typeof WORKSPACE_RENAME_ROLES[number];
+export function canRenameWorkspace(role: string | null | undefined): boolean {
+  return typeof role === 'string' && (WORKSPACE_RENAME_ROLES as readonly string[]).includes(role);
+}
+
+// ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
 
@@ -313,6 +342,44 @@ async function createWorkspace(
   };
 }
 
+/**
+ * Rename an existing workspace. Caller's role in the workspace must be
+ * adult-bucket (owner / admin / adult). `collectives` is Tier-C with
+ * no RLS, so the role check is done explicitly in code via
+ * collective_memberships before the UPDATE.
+ *
+ * Returns the updated workspace shape, or null when caller is not a
+ * member / not allowed / workspace doesn't exist (all three collapse
+ * into 404 from the route handler — we don't distinguish for the
+ * client's sake).
+ */
+async function renameWorkspace(
+  callerProfileId: string,
+  workspaceId: string,
+  newName: string,
+): Promise<{ id: string; name: string; type: WorkspaceType; status: string } | null> {
+  // Verify the caller has an adult-bucket role in this workspace.
+  // queryAsBootstrap because the caller may not have entered this
+  // workspace's RLS context for this request — they're operating on
+  // a workspace from their list, not necessarily their active one.
+  const memberRes = await db.queryAsBootstrap<{ role: string }>(
+    `SELECT role FROM collective_memberships
+      WHERE profile_id = $1 AND collective_id = $2 AND status = 'active'
+      LIMIT 1`,
+    [callerProfileId, workspaceId],
+  );
+  if (memberRes.rowCount === 0) return null;
+  if (!canRenameWorkspace(memberRes.rows[0].role)) return null;
+
+  // collectives is Tier-C — no RLS gating on the write. Update + return
+  // the row in one statement.
+  const res = await db.queryWithoutTenant<{ id: string; name: string; type: WorkspaceType; status: string }>(
+    `UPDATE collectives SET name = $1 WHERE id = $2 RETURNING id, name, type, status`,
+    [newName, workspaceId],
+  );
+  return res.rows[0] ?? null;
+}
+
 async function listProjects(workspaceId: string) {
   // RLS scopes to active collective; the URL workspaceId is the same
   // collective today so the predicate is functionally redundant —
@@ -398,6 +465,30 @@ export async function workspaceRoutes(server: FastifyInstance) {
     } catch (err) {
       server.log.error(err);
       return reply.code(500).send({ error: 'Failed to create workspace' });
+    }
+  });
+
+  // Rename a workspace. Role check is in renameWorkspace itself —
+  // caller must be adult-bucket (owner/admin/adult) in this workspace.
+  // Not-a-member, wrong-role, and not-found all collapse to 404; we
+  // don't distinguish for the client (less information leaked).
+  server.patch('/api/workspaces/:id', async (request: AuthedRequest, reply: FastifyReply) => {
+    try {
+      const profileId = request.profileId as string;
+      if (!profileId) return reply.code(401).send({ error: 'not authenticated' });
+      const { id } = request.params as { id: string };
+      const validated = validateWorkspaceUpdate(request.body);
+      if (!validated.ok) {
+        return reply.code(400).send({ error: validated.reason });
+      }
+      const workspace = await renameWorkspace(profileId, id, validated.name);
+      if (!workspace) {
+        return reply.code(404).send({ error: 'workspace not found' });
+      }
+      return reply.send({ workspace });
+    } catch (err) {
+      server.log.error(err);
+      return reply.code(500).send({ error: 'Failed to rename workspace' });
     }
   });
 
