@@ -19,7 +19,7 @@
 <!-- Equivalent in 24x24 viewBox: 1.5px stroke, round caps/joins -->
 <svg style="display: none;">
   <defs>
-  <symbol id="icon-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="icon-1" viewBox="0 0 80 80">
     <defs>
                 <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stop-color="#5054B5"/>
@@ -111,13 +111,13 @@
   <symbol id="icon-28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
   </symbol>
-  <symbol id="icon-29" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="icon-29" viewBox="0 0 80 80">
     <circle cx="30" cy="50" r="18" fill="url(#logoGrad)" opacity="0.85"/><circle cx="50" cy="50" r="18" fill="url(#logoGrad)" opacity="0.85"/><circle cx="40" cy="32" r="18" fill="url(#logoGrad)" opacity="0.85"/>
   </symbol>
   <symbol id="icon-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/>
   </symbol>
-  <symbol id="icon-31" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="icon-31" viewBox="0 0 24 24" fill="currentColor">
     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/>
   </symbol>
   <symbol id="icon-32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -153,7 +153,7 @@
   <symbol id="icon-42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
   </symbol>
-  <symbol id="icon-43" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <symbol id="icon-43" viewBox="0 0 24 24" fill="currentColor">
     <circle cx="12" cy="12" r="3"/>
   </symbol>
   <symbol id="icon-44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -234,19 +234,19 @@ async function api(path, opts = {}) {
          terminals at the 18px display size than the prior 1.8 weight. -->
     <nav class="sidebar-nav">
         <button class="sidebar-nav-item active" id="tab-chat" onclick="switchTab('chat')">
-            <svg class="icon" width="1.5"><use href="#icon-2"></use></svg>
+            <svg class="icon"><use href="#icon-2"></use></svg>
             <span>Chat</span>
         </button>
         <button class="sidebar-nav-item" id="tab-spaces" onclick="switchTab('spaces')">
-            <svg class="icon" width="1.5"><use href="#icon-3"></use></svg>
+            <svg class="icon"><use href="#icon-3"></use></svg>
             <span>Spaces</span>
         </button>
         <button class="sidebar-nav-item" id="tab-lists" onclick="switchTab('lists')">
-            <svg class="icon" width="1.5"><use href="#icon-4"></use></svg>
+            <svg class="icon"><use href="#icon-4"></use></svg>
             <span>Lists</span>
         </button>
         <button class="sidebar-nav-item" id="tab-calendar" onclick="switchTab('calendar')">
-            <svg class="icon" width="1.5"><use href="#icon-5"></use></svg>
+            <svg class="icon"><use href="#icon-5"></use></svg>
             <span>Calendar</span>
         </button>
         <!-- Phase A.4 — 'Dashboard' (was 'Today'). Sits below the daily-action
@@ -255,7 +255,7 @@ async function api(path, opts = {}) {
              underlying tab id stays 'today' to avoid breaking switchTab()
              callers and the loadDashboard / loadBrief wiring. -->
         <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
-            <svg class="icon" width="1.5"><use href="#icon-6"></use></svg>
+            <svg class="icon"><use href="#icon-6"></use></svg>
             <span>Dashboard</span>
         </button>
     </nav>
@@ -268,7 +268,7 @@ async function api(path, opts = {}) {
         <div class="sidebar-conversations-head">
             <span class="sidebar-conversations-label">Conversations</span>
             <button class="sidebar-new-chat-btn" onclick="startNewConversation()" title="Start new chat">
-                <svg class="icon" width="1.8" height="14"><use href="#icon-7"></use></svg>
+                <svg class="icon" width="14" height="14"><use href="#icon-7"></use></svg>
                 <span>New</span>
             </button>
         </div>
@@ -288,7 +288,7 @@ async function api(path, opts = {}) {
             <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
             <span class="sidebar-account-hint">Settings</span>
         </span>
-        <svg class="sidebar-account-gear icon" width="1.5" height="14"><use href="#icon-8"></use></svg>
+        <svg class="sidebar-account-gear icon" width="14" height="14"><use href="#icon-8"></use></svg>
     </button>
 </aside>
 <main class="app-main">
@@ -297,11 +297,11 @@ async function api(path, opts = {}) {
      Always visible so the user can recall the sidebar from anywhere. -->
 <header class="app-topbar">
     <button class="topbar-hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation" title="Toggle navigation">
-        <svg class="icon" width="2" height="22"><use href="#icon-9"></use></svg>
+        <svg class="icon" width="22" height="22"><use href="#icon-9"></use></svg>
     </button>
     <h1 class="topbar-title" id="topbar-title">Chat</h1>
     <button class="topbar-search" id="topbar-search" aria-label="Search" title="Search">
-        <svg class="icon" width="1.8" height="18"><use href="#icon-10"></use></svg>
+        <svg class="icon" width="18" height="18"><use href="#icon-10"></use></svg>
     </button>
 </header>
 
@@ -436,7 +436,7 @@ async function api(path, opts = {}) {
                 <span class="zone-news-refreshed" id="news-refreshed-at"></span>
             </div>
             <button class="zone-news-refresh" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button">
-                <svg class="icon" width="1.5" height="14"><use href="#icon-20"></use></svg>
+                <svg class="icon" width="14" height="14"><use href="#icon-20"></use></svg>
             </button>
         </div>
         <div id="news-feed" class="news-feed">
@@ -444,7 +444,7 @@ async function api(path, opts = {}) {
         </div>
         <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button">
             <span id="news-more-label">More news</span>
-            <svg class="icon" width="1.8" height="12"><use href="#icon-12"></use></svg>
+            <svg class="icon" width="12" height="12"><use href="#icon-12"></use></svg>
         </button>
     </section>
 
@@ -480,7 +480,7 @@ async function api(path, opts = {}) {
         <div class="connect-card">
             <div class="connect-glow"></div>
             <div class="connect-icon-chip">
-                <svg class="icon" width="1.8" height="24"><use href="#icon-21"></use></svg>
+                <svg class="icon" width="24" height="24"><use href="#icon-21"></use></svg>
             </div>
             <h2 class="connect-title">Connect Google Calendar</h2>
             <p class="connect-subtitle">Memu will show your schedule here—and spot the quiet conflicts before they bite.</p>
@@ -528,7 +528,7 @@ async function api(path, opts = {}) {
         </div>
         <div class="chat-input-bar">
             <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo, PDF, or document">
-                <svg class="icon" width="1.8" height="20"><use href="#icon-22"></use></svg>
+                <svg class="icon" width="20" height="20"><use href="#icon-22"></use></svg>
             </button>
             <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
             <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
@@ -551,7 +551,7 @@ async function api(path, opts = {}) {
                     <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
                 </div>
                 <a class="spaces-canvas-link" href="/canvas.html" title="Open the Spaces Canvas">
-                    <svg class="icon" width="1.6" height="16"><use href="#icon-23"></use></svg>
+                    <svg class="icon" width="16" height="16"><use href="#icon-23"></use></svg>
                     <span>Canvas view</span>
                 </a>
             </div>
@@ -569,7 +569,7 @@ async function api(path, opts = {}) {
          Toggled by openSpaceDetail() / closeSpaceDetail(). -->
     <div id="spaces-detail-view" class="hidden">
         <button class="space-back-btn" onclick="closeSpaceDetail()" aria-label="Back to Spaces">
-            <svg class="icon" width="1.8" height="18"><use href="#icon-24"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="#icon-24"></use></svg>
             <span>All Spaces</span>
         </button>
         <div id="space-detail-view">
@@ -582,15 +582,15 @@ async function api(path, opts = {}) {
             <div id="space-detail-body" class="space-body"></div>
             <div class="space-detail-actions">
                 <button class="btn btn-secondary btn-sm" onclick="openShareSpace()">
-                    <svg class="icon" width="1.8" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-25"></use></svg>
+                    <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-25"></use></svg>
                     Share
                 </button>
                 <button class="btn btn-secondary btn-sm" onclick="openConnectSpace()">
-                    <svg class="icon" width="1.8" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-26"></use></svg>
+                    <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-26"></use></svg>
                     Connect
                 </button>
                 <button class="btn btn-secondary btn-sm hidden" id="space-detail-unnest-btn" onclick="unnestCurrentSpace()" title="Move this Space back to the top level">
-                    <svg class="icon" width="1.8" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-27"></use></svg>
+                    <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-27"></use></svg>
                     Un-nest
                 </button>
                 <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
@@ -672,7 +672,7 @@ async function api(path, opts = {}) {
             <span>Or send a one-off copy</span>
         </div>
         <button class="share-email-btn" onclick="emailShareSpace()">
-            <svg class="icon" width="1.8" height="18"><use href="#icon-28"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="#icon-28"></use></svg>
             <span>
                 <strong>Email a copy</strong>
                 <small>Opens your email app with the Space pre-filled. Recipient can read but can't edit.</small>
@@ -1838,7 +1838,7 @@ function addChatMessage(text, isUser, timestamp, channel, spaces, type, retrieva
     if (!isUser && Array.isArray(spaces) && spaces.length > 0) {
         const chips = spaces.slice(0, 5).map(sp => `
             <a class="chat-artefact-chip" href="#" onclick="openSpaceFromChat('${sp.slug}');return false;" title="Open Space">
-                <svg class="icon" width="1.6" height="14"><use href="#icon-32"></use></svg>
+                <svg class="icon" width="14" height="14"><use href="#icon-32"></use></svg>
                 <span>${esc(sp.name)}</span>
                 <span class="chat-artefact-arrow" aria-hidden="true">›</span>
             </a>
