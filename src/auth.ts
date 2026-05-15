@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import crypto from 'crypto';
 import { pool } from './db/connection';
-import { bindCollectiveContext, db } from './db/tenant';
+import { bindCollectiveContext, bindRequestContext, db } from './db/tenant';
 
 /**
  * Generate a secure API key for a new profile.
@@ -227,8 +227,16 @@ export async function requireCollective(request: FastifyRequest, reply: FastifyR
   // Enter the AsyncLocalStorage tenant context for the rest of this
   // request. Every db.query / db.transaction call from here on
   // (including inside the route handler and fire-and-forget chains)
-  // sees this collective and runs inside an RLS-gated transaction.
-  bindCollectiveContext(membership.collective_id);
+  // sees this collective + this profile_id, and runs inside an
+  // RLS-gated transaction.
+  //
+  // bindRequestContext (vs bindCollectiveContext) also binds the
+  // caller's profile_id into the AsyncLocalStorage context so the
+  // profiles RLS policies (migration 047) can evaluate the
+  // "caller's own profile is always readable from any workspace"
+  // exception. Without this, profile-self-reads from a non-home
+  // workspace return zero rows and onboarding-state checks fail.
+  bindRequestContext(profileId, membership.collective_id);
 }
 
 export interface RegisterProfileOptions {

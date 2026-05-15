@@ -37,6 +37,17 @@ import type { PoolClient, QueryResult, QueryResultRow } from 'pg';
 
 interface TenantContext {
   collectiveId: string;
+  // The authenticated caller's profile id, when known. Set by
+  // requireCollective via bindRequestContext. Cron jobs and explicit
+  // enterCollectiveContext callers don't carry a profile context —
+  // they're operating on data, not on behalf of a specific person.
+  // When present, runInTenantTransaction sets memu.profile_id in the
+  // transaction, which the profiles RLS policy (migration 047) uses
+  // to honor "the caller's own profile is always readable from any
+  // active workspace" — required so non-home workspaces don't hide
+  // properties of the person themselves (display name, onboarding
+  // state, brief preferences, etc.).
+  profileId?: string;
 }
 
 const tenantStorage = new AsyncLocalStorage<TenantContext>();
@@ -89,6 +100,28 @@ export function bindCollectiveContext(collectiveId: string): void {
 }
 
 /**
+ * Bind both the collective AND the caller's profile_id into the
+ * current async-context. This is the request-time variant used by
+ * `requireCollective` — it knows both pieces and sets them so every
+ * subsequent transaction in this request can also evaluate the
+ * profiles_read / profiles_write policies' "self-row" exception
+ * (migration 047).
+ *
+ * Cron jobs and offline workers continue to use bindCollectiveContext
+ * — they don't act on behalf of a particular caller, so the self-row
+ * exception correctly does NOT fire for them.
+ */
+export function bindRequestContext(profileId: string, collectiveId: string): void {
+  if (!profileId || typeof profileId !== 'string') {
+    throw new Error(`bindRequestContext: invalid profileId: ${JSON.stringify(profileId)}`);
+  }
+  if (!collectiveId || typeof collectiveId !== 'string') {
+    throw new Error(`bindRequestContext: invalid collectiveId: ${JSON.stringify(collectiveId)}`);
+  }
+  tenantStorage.enterWith({ collectiveId, profileId });
+}
+
+/**
  * Read the current collective id, or null if no context is active.
  * Most callers should not need this — they should call `db.query` or
  * `db.transaction` and let those check the context. Exposed for
@@ -124,7 +157,7 @@ async function query<T extends QueryResultRow = any>(
   }
   return runInTenantTransaction(ctx.collectiveId, async (client) => {
     return client.query<T>(text, params);
-  });
+  }, ctx.profileId);
 }
 
 /**
@@ -214,7 +247,7 @@ async function transaction<T>(
   if (!ctx) {
     throw new Error('db.transaction requires an active collective context — call enterCollectiveContext first, or use pool.connect() directly for non-tenant transactions');
   }
-  return runInTenantTransaction(ctx.collectiveId, fn);
+  return runInTenantTransaction(ctx.collectiveId, fn, ctx.profileId);
 }
 
 /**
@@ -232,17 +265,25 @@ async function transactionAs<T>(
 /**
  * Internal: open a connection, BEGIN, set memu.collective_id (transaction-
  * local so it can't leak when the connection returns to the pool),
+ * optionally set memu.profile_id when the active context carries one,
  * run fn, COMMIT (or ROLLBACK on error), release. The single point
- * where the RLS session variable is set.
+ * where the RLS session variables are set.
  */
 async function runInTenantTransaction<T>(
   collectiveId: string,
   fn: (client: PoolClient) => Promise<T>,
+  profileId?: string,
 ): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query("SELECT set_config('memu.collective_id', $1, true)", [collectiveId]);
+    if (profileId) {
+      // Migration 047 — profiles policy's self-row exception. Only
+      // set when we're inside a request bound to a known caller;
+      // cron / worker paths skip this and inherit strict policies.
+      await client.query("SELECT set_config('memu.profile_id', $1, true)", [profileId]);
+    }
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
