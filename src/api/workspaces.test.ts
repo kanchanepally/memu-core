@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  canRenameWorkspace,
   isWorkspaceType,
   slugifyProjectName,
   validateProjectCreate,
   validateWorkspaceCreate,
+  validateWorkspaceUpdate,
+  WORKSPACE_RENAME_ROLES,
   WORKSPACE_TYPES,
 } from './workspaces';
 
@@ -176,5 +179,56 @@ describe('validateWorkspaceCreate (Story 3.1)', () => {
       const v = validateWorkspaceCreate({ name: 'X', type: t });
       expect(v.ok).toBe(true);
     }
+  });
+});
+
+describe('validateWorkspaceUpdate', () => {
+  it('happy path with a trimmed name', () => {
+    const v = validateWorkspaceUpdate({ name: '  Kanchanepally household  ' });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.name).toBe('Kanchanepally household');
+  });
+
+  it('clamps at 120 chars', () => {
+    const v = validateWorkspaceUpdate({ name: 'a'.repeat(200) });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.name.length).toBe(120);
+  });
+
+  it('rejects empty / missing / wrong-type inputs', () => {
+    expect(validateWorkspaceUpdate({ name: '' }).ok).toBe(false);
+    expect(validateWorkspaceUpdate({ name: '   ' }).ok).toBe(false);
+    expect(validateWorkspaceUpdate({}).ok).toBe(false);
+    expect(validateWorkspaceUpdate(null).ok).toBe(false);
+    expect(validateWorkspaceUpdate('not an object').ok).toBe(false);
+  });
+
+  it('reason is name_required for every rejection branch', () => {
+    const cases = [{ name: '' }, { name: '   ' }, {}, null, undefined];
+    for (const c of cases) {
+      const v = validateWorkspaceUpdate(c);
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.reason).toBe('name_required');
+    }
+  });
+});
+
+describe('canRenameWorkspace', () => {
+  it('allows the adult-bucket roles', () => {
+    for (const r of WORKSPACE_RENAME_ROLES) {
+      expect(canRenameWorkspace(r)).toBe(true);
+    }
+  });
+
+  it('blocks child / member / viewer / unknown / falsy', () => {
+    expect(canRenameWorkspace('child')).toBe(false);
+    expect(canRenameWorkspace('member')).toBe(false);
+    expect(canRenameWorkspace('viewer')).toBe(false);
+    expect(canRenameWorkspace('something_else')).toBe(false);
+    expect(canRenameWorkspace('')).toBe(false);
+    expect(canRenameWorkspace(null)).toBe(false);
+    expect(canRenameWorkspace(undefined)).toBe(false);
   });
 });

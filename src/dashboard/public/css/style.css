@@ -2746,11 +2746,33 @@ textarea.input {
   gap: 4px;
   min-width: 0;
 }
+.workspace-card-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
 .workspace-card-name {
   font-family: var(--font-reading);
   font-size: var(--font-size-lg);
   font-weight: 700;
   color: var(--text-primary);
+}
+.workspace-rename-btn {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.workspace-rename-btn:hover {
+  color: var(--indigo-primary);
+  border-color: var(--border);
+  background: var(--color-surface-hover);
 }
 .workspace-card-meta {
   display: flex;
