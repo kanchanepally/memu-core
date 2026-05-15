@@ -296,19 +296,30 @@
      after index.html has set the auth tokens in localStorage. -->
 <script>
 const AUTH_KEY = 'memu_auth';
+const ACTIVE_WORKSPACE_KEY = 'memu_active_workspace_id';
 function getAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; } catch { return {}; } }
+function getActiveWorkspaceId() { return localStorage.getItem(ACTIVE_WORKSPACE_KEY); }
 const auth = getAuth();
 if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
 
+// Threads X-Memu-Workspace-Id when one is selected. Onboarding mostly
+// operates against the home Collective; the header is omitted when
+// nothing's selected and the server falls back to its own resolver
+// (personal-then-first). Consistent shape across canvas / kids /
+// onboarding / dashboard so no surface drifts.
 async function api(path, opts = {}) {
-    return fetch(auth.serverUrl + path, {
-        ...opts,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + auth.apiKey,
-            ...(opts.headers || {}),
-        },
-    });
+    const callerHeaders = opts.headers || {};
+    const explicit = 'X-Memu-Workspace-Id' in callerHeaders || 'x-memu-workspace-id' in callerHeaders;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + auth.apiKey,
+        ...callerHeaders,
+    };
+    if (!explicit) {
+        const wid = getActiveWorkspaceId();
+        if (wid) headers['X-Memu-Workspace-Id'] = wid;
+    }
+    return fetch(auth.serverUrl + path, { ...opts, headers });
 }
 </script>
 
