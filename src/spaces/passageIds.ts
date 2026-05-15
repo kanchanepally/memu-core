@@ -49,7 +49,11 @@
  */
 
 import MarkdownIt from 'markdown-it';
-import type Token from 'markdown-it/lib/token';
+// @types/markdown-it 14.x exposes Token under the MarkdownIt namespace
+// in its CJS-shaped types; importing from 'markdown-it/lib/token' fails
+// because the ESM-only `.mts` declaration isn't resolvable under
+// classic node module resolution. Use the namespace alias instead.
+type Token = MarkdownIt.Token;
 import { randomBytes } from 'crypto';
 
 /**

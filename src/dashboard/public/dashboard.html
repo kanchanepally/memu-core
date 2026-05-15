@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-pdf">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-focus">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -345,6 +345,18 @@ async function api(path, opts = {}) {
         <svg class="icon" width="18" height="18"><use href="#icon-10"></use></svg>
     </button>
 </header>
+
+<!-- Phase Z Story Z.6 — focus mode exit affordance. Only visible
+     when body.focus-mode is on (sidebar + topbar are hidden in that
+     state, so this button is the only way to navigate back besides
+     keyboard). Esc and `.` also exit; the button is the discoverable
+     fallback for users who don't know the shortcut. -->
+<button class="focus-exit" id="focus-exit"
+        onclick="exitFocusMode()"
+        aria-label="Exit focus mode"
+        title="Exit focus mode (Esc or .)">
+    Exit focus <kbd>Esc</kbd>
+</button>
 
 <!-- ==================== DASHBOARD TAB (Phase A.9 — reshape) ====================
      Five concentric zones, each with a specific job. The Dashboard is no
@@ -4090,7 +4102,68 @@ function closeSpaceDetail() {
     // this, navigating between PDF Spaces would stack DOM mounts and
     // leak the worker thread until the page reloaded.
     unmountPdf();
+    // Phase Z Story Z.6 — exit focus mode when leaving the reading
+    // surface. Focus mode is a Space-reading state; carrying it back
+    // to the Spaces list view (or any other tab) hides the navigation
+    // chrome with nothing left to focus on.
+    exitFocusMode();
 }
+
+// ========== PHASE Z STORY Z.6 — focus mode ==========
+//
+// Focus mode hides the sidebar, topbar, and other navigation chrome;
+// the reading column expands to ~720px centred on the viewport so the
+// researcher can read without ambient UI. Toggled via `.` keyboard
+// shortcut (mirrors the spec); also via Esc to exit, and via the
+// floating "Exit focus" button.
+//
+// State lives entirely in a body class — no DB, no persistence. Focus
+// mode is a per-session reading-room toggle; entering a Space afresh
+// starts outside focus by default.
+
+function isFocusMode() {
+    return document.body.classList.contains('focus-mode');
+}
+
+function enterFocusMode() {
+    document.body.classList.add('focus-mode');
+}
+
+function exitFocusMode() {
+    document.body.classList.remove('focus-mode');
+}
+
+function toggleFocusMode() {
+    document.body.classList.toggle('focus-mode');
+}
+
+// Keyboard shortcuts for focus mode. Skip when the user is typing in
+// any input / textarea / contenteditable (so `.` in a memo body
+// inserts a period, not a focus toggle). Also gate `.` entry on the
+// Space detail view being currently visible — focus mode only makes
+// sense when there's a Space to read.
+document.addEventListener('keydown', (e) => {
+    // Don't override modifier-keyed shortcuts (Ctrl+./Meta+. etc are
+    // browser-reserved on some platforms).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+    if (e.key === '.') {
+        // Only allow entering focus mode when a Space is open for
+        // reading — the chrome is hidden in focus mode, so there has
+        // to be something to focus on. The edit-textarea case is
+        // already covered above by the INPUT/TEXTAREA bail-out.
+        const spaceOpen = !document.getElementById('spaces-detail-view').classList.contains('hidden');
+        if (spaceOpen) {
+            e.preventDefault();
+            toggleFocusMode();
+        }
+    } else if (e.key === 'Escape' && isFocusMode()) {
+        e.preventDefault();
+        exitFocusMode();
+    }
+});
 
 // ========== PHASE Z STORY Z.3 — PDF inline rendering ==========
 //

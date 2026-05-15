@@ -3822,6 +3822,79 @@ textarea.input {
   transform-origin: 0% 0%;
 }
 
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z Story Z.6 — focus mode.
+   When body carries .focus-mode, the navigation chrome (sidebar +
+   topbar) is hidden and the reading column centres at ~720px so the
+   researcher reads without ambient UI. Entered via `.` keyboard
+   shortcut on an open Space; exited via Esc, `.` again, or the
+   floating Exit-focus button below.
+   -------------------------------------------------------------------------- */
+
+body.focus-mode .sidebar,
+body.focus-mode .app-topbar,
+body.focus-mode .sidebar-backdrop,
+body.focus-mode .spaces-fab {
+  display: none !important;
+}
+
+body.focus-mode .app-main {
+  padding: var(--space-xl) 0 var(--space-xl) 0;
+}
+
+body.focus-mode #spaces-detail-view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-left: var(--space-md);
+  padding-right: var(--space-md);
+}
+
+/* In focus mode the PDF viewer should also breathe — match the
+   reading column's width so the page canvases don't blow out. */
+body.focus-mode #space-detail-pdf,
+body.focus-mode #space-detail-body {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* The floating exit-focus button. Hidden by default; .focus-mode
+   shows it. Soft chip in the indigo palette so it reads as
+   "interactive but quiet". */
+.focus-exit {
+  display: none;
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 9999;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--color-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+body.focus-mode .focus-exit {
+  display: inline-flex;
+}
+.focus-exit:hover {
+  color: var(--text-primary);
+  border-color: var(--indigo-primary);
+}
+.focus-exit kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--color-surface-elevated, white);
+  color: var(--text-muted, var(--text-secondary));
+}
+
 /* ==========================================================================
    Calendar tab
    ========================================================================== */
