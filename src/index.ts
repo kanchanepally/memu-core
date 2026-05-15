@@ -1735,12 +1735,20 @@ server.post('/api/spaces', async (request, reply) => {
       parent_space_uri?: string | null;
     };
 
-    const validCategories = ['person', 'routine', 'household', 'commitment', 'document'] as const;
     if (!title || !title.trim()) {
       return reply.code(400).send({ error: 'title is required' });
     }
-    if (!category || !validCategories.includes(category as typeof validCategories[number])) {
-      return reply.code(400).send({ error: 'category must be one of person, routine, household, commitment, document' });
+    // Build Spec 2 Phase R1 — the route layer only checks "is this any
+    // valid category at all" against the UNION (typo guard). The
+    // type-aware "is this category valid for THIS workspace's type"
+    // check happens inside upsertSpace and throws SpaceCategoryError,
+    // mapped to a 422 below. Two-layer gate: cheap rejection here
+    // before we hit the DB, semantic rejection after the type lookup.
+    const { SPACE_CATEGORIES } = await import('./spaces/model');
+    if (!category || !(SPACE_CATEGORIES as readonly string[]).includes(category)) {
+      return reply.code(400).send({
+        error: `category must be one of ${SPACE_CATEGORIES.join(', ')}`,
+      });
     }
 
     // Normalise parent_space_uri: empty string → null, anything else → string.
@@ -1759,7 +1767,7 @@ server.post('/api/spaces', async (request, reply) => {
 
     const space = await upsertSpace({
       familyId: profileId,
-      category: category as 'person' | 'routine' | 'household' | 'commitment' | 'document',
+      category: category as Parameters<typeof upsertSpace>[0]['category'],
       name: title.trim(),
       bodyMarkdown: body_markdown || '',
       actorProfileId: profileId,
@@ -1767,6 +1775,19 @@ server.post('/api/spaces', async (request, reply) => {
     });
     return { space };
   } catch (err) {
+    // Phase R1 — surface the type-aware rejection as a 422 with the
+    // structured reason so the PWA can render a useful message
+    // ("`theme` is not valid in a family workspace"). Cheaper than
+    // re-discovering the workspace type from client state.
+    const { SpaceCategoryError } = await import('./spaces/store');
+    if (err instanceof SpaceCategoryError) {
+      return reply.code(422).send({
+        error: err.message,
+        reason: err.reason,
+        category: err.category,
+        workspaceType: err.workspaceType,
+      });
+    }
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to create space' });
   }

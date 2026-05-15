@@ -24,7 +24,7 @@ describe('assignPassageIds', () => {
 
   it('assigns a pid to a single paragraph', () => {
     const result = assignPassageIds('Hello world.');
-    expect(result).toMatch(/<!-- pid:[23456789abcdefghjkmnpqrstuvwxyz]{4,6} -->\nHello world\./);
+    expect(result).toMatch(/<!-- pid:[0123456789abcdefghjkmnpqrstvwxyz]{4,6} -->\nHello world\./);
     expect(listPassageIds(result)).toHaveLength(1);
   });
 

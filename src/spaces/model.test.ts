@@ -11,6 +11,11 @@ import {
   slugify,
   resolveVisibility,
   canSee,
+  FAMILY_CATEGORIES,
+  RESEARCH_CATEGORIES,
+  SPACE_CATEGORIES,
+  getCategorySetForType,
+  isCategoryAllowedForType,
   type FamilyRoster,
 } from './model';
 
@@ -89,5 +94,84 @@ describe('canSee', () => {
   });
   it('family Space visible to everyone', () => {
     expect(canSee('robin', { visibility: 'family', people: [] }, roster)).toBe(true);
+  });
+});
+
+// Build Spec 2 Phase R1 — category sets + type-aware validity.
+describe('category sets', () => {
+  it('FAMILY_CATEGORIES is the historic family set, unchanged', () => {
+    expect(FAMILY_CATEGORIES).toEqual(['person', 'routine', 'household', 'commitment', 'document']);
+  });
+
+  it('RESEARCH_CATEGORIES contains the spec set, with `document` shared', () => {
+    expect(RESEARCH_CATEGORIES).toContain('memo');
+    expect(RESEARCH_CATEGORIES).toContain('theme');
+    expect(RESEARCH_CATEGORIES).toContain('participant');
+    expect(RESEARCH_CATEGORIES).toContain('source');
+    expect(RESEARCH_CATEGORIES).toContain('question');
+    expect(RESEARCH_CATEGORIES).toContain('quote');
+    expect(RESEARCH_CATEGORIES).toContain('document');
+  });
+
+  it('SPACE_CATEGORIES is the union with no duplicates', () => {
+    const set = new Set(SPACE_CATEGORIES);
+    expect(set.size).toBe(SPACE_CATEGORIES.length);
+    // `document` is in both sets; must appear exactly once in the union.
+    expect(SPACE_CATEGORIES.filter(c => c === 'document').length).toBe(1);
+  });
+
+  it('SPACE_CATEGORIES contains every member of every set', () => {
+    for (const c of FAMILY_CATEGORIES) expect(SPACE_CATEGORIES).toContain(c);
+    for (const c of RESEARCH_CATEGORIES) expect(SPACE_CATEGORIES).toContain(c);
+  });
+
+  it('getCategorySetForType returns research set for research', () => {
+    expect(getCategorySetForType('research')).toBe(RESEARCH_CATEGORIES);
+  });
+
+  it('getCategorySetForType falls back to family for every other type', () => {
+    for (const t of ['family', 'personal', 'household', 'work', 'project', 'community', 'unknown-future-type']) {
+      expect(getCategorySetForType(t)).toBe(FAMILY_CATEGORIES);
+    }
+  });
+
+  it('isCategoryAllowedForType — family workspace rejects research-only categories', () => {
+    expect(isCategoryAllowedForType('theme', 'family')).toBe(false);
+    expect(isCategoryAllowedForType('memo', 'family')).toBe(false);
+    expect(isCategoryAllowedForType('participant', 'family')).toBe(false);
+  });
+
+  it('isCategoryAllowedForType — research workspace rejects family-only categories', () => {
+    expect(isCategoryAllowedForType('routine', 'research')).toBe(false);
+    expect(isCategoryAllowedForType('person', 'research')).toBe(false);
+    expect(isCategoryAllowedForType('commitment', 'research')).toBe(false);
+    expect(isCategoryAllowedForType('household', 'research')).toBe(false);
+  });
+
+  it('isCategoryAllowedForType — `document` is valid in both worlds', () => {
+    expect(isCategoryAllowedForType('document', 'family')).toBe(true);
+    expect(isCategoryAllowedForType('document', 'research')).toBe(true);
+  });
+
+  it('isCategoryAllowedForType — unknown category rejected for every type', () => {
+    expect(isCategoryAllowedForType('paragraph', 'family')).toBe(false);
+    expect(isCategoryAllowedForType('paragraph', 'research')).toBe(false);
+    expect(isCategoryAllowedForType('', 'research')).toBe(false);
+  });
+});
+
+// Phase R1 — URI parsing must accept the new research categories so a
+// memu:// URI to a `theme` Space round-trips cleanly.
+describe('parseSpaceUri — research categories', () => {
+  it('accepts a theme URI', () => {
+    expect(parseSpaceUri('memu://ws-1/theme/u-1')).toEqual({
+      familyId: 'ws-1', category: 'theme', uuid: 'u-1',
+    });
+  });
+  it('accepts a memo URI', () => {
+    expect(parseSpaceUri('memu://ws-1/memo/u-2')).not.toBeNull();
+  });
+  it('still rejects an invented category', () => {
+    expect(parseSpaceUri('memu://ws-1/paragraph/u-3')).toBeNull();
   });
 });
