@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-focus">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-z-readstate">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -611,6 +611,16 @@ async function api(path, opts = {}) {
         </header>
 
         <div id="spaces-chips" class="spaces-chips"></div>
+
+        <!-- Phase Z Story Z.6b — Continue-reading affordance. Surfaces
+             the user's most-recently-opened Space (excluding the one
+             currently open). Hidden when there's no recently-read
+             history; renderContinueReading() owns the visibility. -->
+        <button id="continue-reading" class="continue-reading hidden" onclick="resumeContinueReading()">
+            <span class="continue-reading-eyebrow">Continue reading</span>
+            <span class="continue-reading-title" id="continue-reading-title">…</span>
+            <span class="continue-reading-meta" id="continue-reading-meta">…</span>
+        </button>
 
         <div id="spaces-empty" class="empty-state hidden">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
 
@@ -3988,6 +3998,11 @@ async function loadSpaces() {
         spacesState.spaces = data.spaces || [];
         renderSpaceChips();
         renderSpaces();
+        // Phase Z Story Z.6b — load the Continue-reading entries
+        // AFTER spacesState.spaces is populated so renderContinueReading
+        // can match recently-read ids against the catalogue. Failures
+        // are non-fatal; the affordance just stays hidden.
+        loadRecentlyRead();
     } catch (err) {
         console.error('[loadSpaces] render error:', err);
         const el = document.getElementById('spaces-empty');
@@ -4070,6 +4085,11 @@ function openSpaceDetail(id) {
     // PDF Space and opening another doesn't leak DOM or workers.
     unmountPdf();
     mountPdfIfAvailable(s);
+    // Phase Z Story Z.6b — record this Space as read by the active
+    // profile. Fire-and-forget; failure shouldn't block the reading
+    // UI. The backend handler is idempotent — re-opening the same
+    // Space just bumps last_read_at.
+    recordSpaceRead(id);
     // Show the Un-nest action only when this Space lives under a parent.
     // Drop-on-canvas in the Spaces Canvas no longer un-parents (would
     // collide with free-position drag), so detail-view is now the only
@@ -4120,6 +4140,82 @@ function closeSpaceDetail() {
 // State lives entirely in a body class — no DB, no persistence. Focus
 // mode is a per-session reading-room toggle; entering a Space afresh
 // starts outside focus by default.
+
+// ========== PHASE Z STORY Z.6b — reading state ==========
+//
+// recordSpaceRead — fire-and-forget POST that bumps last_read_at for
+// the active profile. Idempotent on the server side; we don't await
+// or surface errors because failing to record reading state should
+// never disrupt the act of reading. recentlyReadIds is the in-memory
+// cache populated from /api/spaces/recently-read; it drives the
+// Continue-reading affordance and the small "last opened" hint shown
+// on the Spaces grid in a follow-up slice.
+
+let recentlyRead = []; // [{ spaceId, lastReadAt }, ...] most-recent first
+
+function recordSpaceRead(spaceId) {
+    api('/api/spaces/' + encodeURIComponent(spaceId) + '/read', { method: 'POST' })
+        .then(() => {
+            // Optimistically update the local cache so the
+            // Continue-reading affordance refreshes without a
+            // round-trip on the very next render.
+            const now = new Date().toISOString();
+            recentlyRead = [{ spaceId, lastReadAt: now }]
+                .concat(recentlyRead.filter(e => e.spaceId !== spaceId))
+                .slice(0, 10);
+            renderContinueReading();
+        })
+        .catch(err => console.warn('[Phase Z] recordSpaceRead failed (non-fatal):', err));
+}
+
+async function loadRecentlyRead() {
+    try {
+        const res = await api('/api/spaces/recently-read?limit=10');
+        if (!res.ok) return;
+        const data = await res.json();
+        recentlyRead = Array.isArray(data.entries) ? data.entries : [];
+        renderContinueReading();
+    } catch (err) {
+        // Non-fatal — the affordance just stays hidden.
+        console.warn('[Phase Z] loadRecentlyRead failed (non-fatal):', err);
+    }
+}
+
+function renderContinueReading() {
+    const el = document.getElementById('continue-reading');
+    if (!el) return;
+    // Find the most-recently-read entry that ALSO exists in the
+    // current spacesState (i.e. is in this active Collective and
+    // hasn't been deleted). Skip the Space currently open, if any —
+    // suggesting "Continue reading X" when X is the open Space is
+    // visual noise.
+    const skip = spacesState.currentId;
+    const match = recentlyRead.find(e =>
+        e.spaceId !== skip
+        && spacesState.spaces.some(s => s.id === e.spaceId));
+    if (!match) {
+        el.classList.add('hidden');
+        return;
+    }
+    const space = spacesState.spaces.find(s => s.id === match.spaceId);
+    if (!space) {
+        el.classList.add('hidden');
+        return;
+    }
+    document.getElementById('continue-reading-title').textContent = space.title || 'Untitled';
+    const when = formatSpaceUpdated(match.lastReadAt) || 'Recently';
+    const cat = categoryLabel(space.category) || space.category;
+    document.getElementById('continue-reading-meta').textContent = `${cat} · ${when}`;
+    el.dataset.spaceId = space.id;
+    el.classList.remove('hidden');
+}
+
+function resumeContinueReading() {
+    const el = document.getElementById('continue-reading');
+    const spaceId = el && el.dataset.spaceId;
+    if (!spaceId) return;
+    openSpaceDetail(spaceId);
+}
 
 function isFocusMode() {
     return document.body.classList.contains('focus-mode');

@@ -2278,6 +2278,44 @@ server.get('/api/spaces/:id/document', async (request, reply) => {
   }
 });
 
+// Build Spec 2 Phase Z Story Z.6b — reading state.
+// POST /api/spaces/:id/read — mark a Space as opened by the active
+// profile. Fire-and-forget from the frontend on Space-detail open;
+// idempotent (repeated POSTs just bump last_read_at). RLS scopes the
+// underlying recordRead() to the active Collective, so a Space id
+// from another workspace looks identical to "not found" from here.
+server.post('/api/spaces/:id/read', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    const { recordRead } = await import('./spaces/readingState');
+    const ok = await recordRead(profileId, id);
+    if (!ok) return reply.code(404).send({ error: 'Space not found' });
+    return { ok: true };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to record read' });
+  }
+});
+
+// GET /api/spaces/recently-read — list of recently-opened Spaces for
+// the active profile in the active Collective. Drives the "Continue
+// reading" affordance on the Spaces list view. Default limit 5; cap
+// at 50.
+server.get('/api/spaces/recently-read', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const q = request.query as { limit?: string } | undefined;
+    const limit = q?.limit ? parseInt(q.limit, 10) : 5;
+    const { listRecentlyRead } = await import('./spaces/readingState');
+    const entries = await listRecentlyRead(profileId, Number.isFinite(limit) ? limit : 5);
+    return { entries };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to list recently-read Spaces' });
+  }
+});
+
 // Delete a Space
 server.delete('/api/spaces/:id', async (request, reply) => {
   try {

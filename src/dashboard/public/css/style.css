@@ -3823,7 +3823,52 @@ textarea.input {
 }
 
 /* --------------------------------------------------------------------------
-   Build Spec 2 Phase Z Story Z.6 — focus mode.
+   Build Spec 2 Phase Z Story Z.6b — Continue-reading affordance.
+   Shows above the Spaces grid when the user has a recently-opened
+   Space they could resume. Quiet — a labelled-chip register, not a
+   loud feature card; it surfaces a useful action without dominating
+   the page.
+   -------------------------------------------------------------------------- */
+
+.continue-reading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin: var(--space-md) 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.continue-reading:hover {
+  border-color: var(--indigo-primary);
+}
+.continue-reading:active {
+  transform: scale(0.998);
+}
+.continue-reading-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.continue-reading-title {
+  font-family: var(--font-reading);
+  font-weight: 600;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+}
+.continue-reading-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase Z Story Z.6a — focus mode.
    When body carries .focus-mode, the navigation chrome (sidebar +
    topbar) is hidden and the reading column centres at ~720px so the
    researcher reads without ambient UI. Entered via `.` keyboard
