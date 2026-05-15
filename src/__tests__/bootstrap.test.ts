@@ -82,26 +82,64 @@ describe.skipIf(!SHOULD_RUN)('bootstrap flows — collective + profile creation'
     // Per-collective cleanup with context set so RLS lets the DELETEs
     // actually find the rows. Without context, DELETEs match zero rows
     // and the collective DELETE then fails on FK references.
+    //
+    // Story 3.3: registerProfile + Google first-boot now ALSO create a
+    // type='personal' Collective for every new profile. Those don't
+    // carry the testMarker in their name ("Personal" for everyone), so
+    // we enumerate them by their primary_admin_profile_id — every
+    // testMarker household's profiles also own a personal Collective.
     const client = await setupPool.connect();
     try {
-      // collectives is Tier-C (no RLS) — list directly.
+      // Find all testMarker household collectives by name match.
       const hhRes = await client.query<{ id: string }>(
         `SELECT id FROM collectives WHERE name LIKE $1`,
         [`%${testMarker}%`],
       );
       const hhIds = hhRes.rows.map(r => r.id);
-      for (const hh of hhIds) {
-        // Both FKs (collectives.primary_admin_profile_id → profiles,
-        // profiles.collective_id → collectives) are DEFERRABLE INITIALLY
-        // DEFERRED per migration 026. They validate at COMMIT, so the
-        // deletes have to happen in the SAME transaction or the
-        // surviving row violates its FK to the deleted one.
+
+      // Find every profile in those collectives — these are the test-
+      // created profiles whose personal Collectives also need cleanup.
+      const profileRes = hhIds.length > 0
+        ? await client.query<{ id: string }>(
+            `SELECT id FROM profiles WHERE collective_id = ANY($1::text[])`,
+            [hhIds],
+          )
+        : { rows: [] as { id: string }[] };
+      const profileIds = profileRes.rows.map(r => r.id);
+
+      // Personal Collectives owned by those profiles (Story 3.3).
+      const personalRes = profileIds.length > 0
+        ? await client.query<{ id: string }>(
+            `SELECT id FROM collectives
+              WHERE primary_admin_profile_id = ANY($1::text[])
+                AND type = 'personal'`,
+            [profileIds],
+          )
+        : { rows: [] as { id: string }[] };
+      const personalIds = personalRes.rows.map(r => r.id);
+
+      // Order matters: clean personals FIRST (they reference profiles
+      // we're about to delete), then households. Both FKs
+      // (collectives.primary_admin_profile_id → profiles,
+      // profiles.collective_id → collectives) are DEFERRABLE INITIALLY
+      // DEFERRED per migration 026, so within one transaction the order
+      // among DELETEs doesn't matter for FK validation — but doing
+      // personals first is clearer about intent.
+      const allCollectiveIds = [...personalIds, ...hhIds];
+      for (const collId of allCollectiveIds) {
         await client.query('BEGIN');
-        await client.query("SELECT set_config('memu.collective_id', $1, true)", [hh]);
-        await client.query(`DELETE FROM personas WHERE collective_id = $1`, [hh]);
-        await client.query(`DELETE FROM entity_registry WHERE collective_id = $1`, [hh]);
-        await client.query(`DELETE FROM profiles WHERE collective_id = $1`, [hh]);
-        await client.query(`DELETE FROM collectives WHERE id = $1`, [hh]);
+        await client.query("SELECT set_config('memu.collective_id', $1, true)", [collId]);
+        await client.query(`DELETE FROM personas WHERE collective_id = $1`, [collId]);
+        await client.query(`DELETE FROM entity_registry WHERE collective_id = $1`, [collId]);
+        // collective_memberships has ON DELETE CASCADE on profile_id,
+        // but the profile delete happens AFTER the household's
+        // memberships are still in scope (the personal's memberships
+        // already got cleaned by the personal's profile FK — wait,
+        // profiles don't exist yet to be deleted). Explicit delete to
+        // be safe + RLS-aware.
+        await client.query(`DELETE FROM collective_memberships WHERE collective_id = $1`, [collId]);
+        await client.query(`DELETE FROM profiles WHERE collective_id = $1`, [collId]);
+        await client.query(`DELETE FROM collectives WHERE id = $1`, [collId]);
         await client.query('COMMIT');
       }
     } catch (err) {

@@ -202,6 +202,27 @@ export async function signInWithGoogle(identity: GoogleIdentity) {
       [identity.name.trim(), `Adult-${profile.id.slice(0, 4)}`, collectiveId],
     );
 
+    // Story 3.3 — every new profile also gets a personal Collective
+    // they own. Inline (rather than calling the shared helper from
+    // auth.ts) so this file doesn't take a dependency on auth's
+    // internal helper exports. Same shape: SET LOCAL switches the
+    // session var to the new personal id for the membership WITH
+    // CHECK; then restored to the household id (defensively — no
+    // statements run after this before COMMIT).
+    const personalId = crypto.randomUUID();
+    await client.query("SELECT set_config('memu.collective_id', $1, true)", [personalId]);
+    await client.query(
+      `INSERT INTO collectives (id, type, name, primary_admin_profile_id, status)
+       VALUES ($1, 'personal', 'Personal', $2, 'active')`,
+      [personalId, profile.id],
+    );
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, 'owner', 'active')`,
+      [personalId, profile.id],
+    );
+    await client.query("SELECT set_config('memu.collective_id', $1, true)", [collectiveId]);
+
     await client.query('COMMIT');
     // Hydrate the role onto the returned shape so callers that read
     // `.role` keep working. The DB no longer carries it on profiles —

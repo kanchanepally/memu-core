@@ -428,6 +428,16 @@ async function registerPrimaryCollectiveAndProfile(
       }
     }
 
+    // Story 3.3 — auto-create the personal Collective. Every profile
+    // ends up with TWO active memberships: the household (just
+    // inserted above) and a personal one owned by them. The household
+    // is the social space; the personal is the individual notebook.
+    // See feedback_solid_alignment_test memory: the personal is the
+    // anchor that lets a member leave the household and still have a
+    // place to keep their context. Without it, leave-with-identity
+    // doesn't work.
+    await createPersonalCollectiveInTx(client, profile.id, collectiveId);
+
     await client.query('COMMIT');
     // Story 2.2: pass-through role so the API shape stays
     // { id, display_name, email, role, api_key, collective_id, created_at }
@@ -519,9 +529,66 @@ async function inviteProfileToExistingCollective(
       [displayName.trim(), entityLabel, collectiveId],
     );
 
+    // Story 3.3 — every invited profile gets their own personal
+    // Collective too. The invitee's "home" pointer
+    // (profiles.collective_id) stays at the inviter's collective —
+    // that's the social space they were brought into. Their personal
+    // is a SECOND membership where they're sole owner. Children
+    // included (a child's personal is their own notebook, separate
+    // from any family Space; if/when a child leaves a household the
+    // personal carries their context away).
+    await createPersonalCollectiveInTx(client, profile.id, collectiveId);
+
     // Story 2.2: mirror Flow A — pass-through role on the return
     // shape so callers downstream of registerProfile() see role
     // regardless of which flow ran.
     return { ...profile, role };
   });
+}
+
+/**
+ * Story 3.3 helper — create a personal Collective for a profile inside
+ * an already-open transaction. The caller has already opened a client
+ * with BEGIN and (for Flow A and Google first-boot) set
+ * memu.collective_id to the household's id; this function temporarily
+ * switches the session var to the new personal id so the
+ * collective_memberships WITH CHECK passes, then restores the original
+ * session var so any post-call statements (entity_registry inserts,
+ * etc.) run under the original collective context.
+ *
+ * Idempotent against the migration-045 unique index: if a personal
+ * Collective already exists for this profile (e.g. the migration ran
+ * and the user is somehow being re-registered), the INSERT fails
+ * cleanly on `collectives_one_personal_per_profile_idx`. Caller (Flow
+ * A / Flow B / Google first-boot) is expected to be inserting a NEW
+ * profile, so the duplicate case shouldn't arise — but the index is
+ * the safety net.
+ */
+async function createPersonalCollectiveInTx(
+  client: import('pg').PoolClient,
+  profileId: string,
+  restoreCollectiveId: string,
+): Promise<void> {
+  const personalId = crypto.randomUUID();
+
+  // Switch the session var so the membership WITH CHECK against the
+  // about-to-exist personal Collective passes. SET LOCAL stays
+  // transaction-scoped.
+  await client.query("SELECT set_config('memu.collective_id', $1, true)", [personalId]);
+
+  await client.query(
+    `INSERT INTO collectives (id, type, name, primary_admin_profile_id, status)
+     VALUES ($1, 'personal', 'Personal', $2, 'active')`,
+    [personalId, profileId],
+  );
+
+  await client.query(
+    `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+     VALUES ($1, $2, 'owner', 'active')`,
+    [personalId, profileId],
+  );
+
+  // Restore the original collective context for any subsequent inserts
+  // the caller may run before COMMIT.
+  await client.query("SELECT set_config('memu.collective_id', $1, true)", [restoreCollectiveId]);
 }
