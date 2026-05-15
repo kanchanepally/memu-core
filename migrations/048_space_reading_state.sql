@@ -57,10 +57,17 @@ SET LOCAL search_path TO public;
 -- space_reading_state
 -- ---------------------------------------------------------------------------
 
+-- profiles.id and synthesis_pages.id are both TEXT (gen_random_uuid()::text
+-- per the original schema). The FK column types MUST match — declaring
+-- profile_id/space_id as UUID here caused migration 048 to fail with
+-- "foreign key constraint cannot be implemented: incompatible types"
+-- on first deploy. TEXT for all three id columns; we keep the values
+-- looking like UUIDs because gen_random_uuid()::text is what the FK
+-- targets generate.
 CREATE TABLE IF NOT EXISTS space_reading_state (
-  profile_id UUID NOT NULL
+  profile_id TEXT NOT NULL
     REFERENCES profiles(id) ON DELETE CASCADE,
-  space_id UUID NOT NULL
+  space_id TEXT NOT NULL
     REFERENCES synthesis_pages(id) ON DELETE CASCADE,
   collective_id TEXT NOT NULL
     REFERENCES collectives(id) ON DELETE CASCADE
