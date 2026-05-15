@@ -3940,6 +3940,65 @@ body.focus-mode .focus-exit {
   color: var(--text-muted, var(--text-secondary));
 }
 
+/* --------------------------------------------------------------------------
+   Build Spec 2 Phase R3 — active-reading toolbar + composer.
+   The toolbar floats above a text selection inside a passage-tagged
+   block; clicking a verb opens the composer modal pre-populated
+   with the selection. Memo + Quote ship in this slice; Code +
+   Question chips are visually de-emphasised (deferred to R3.3 / R3.4).
+   -------------------------------------------------------------------------- */
+
+.reading-toolbar {
+  position: absolute;
+  z-index: 9000;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--text-primary);
+  color: var(--color-surface, #fff);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.10);
+  font-size: 13px;
+  user-select: none;
+}
+.reading-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.reading-toolbar-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.reading-toolbar-btn:active { background: rgba(255, 255, 255, 0.2); }
+.reading-toolbar-btn--deferred { opacity: 0.55; }
+.reading-toolbar-btn--deferred:hover { opacity: 0.85; }
+.reading-toolbar-icon { font-size: 14px; line-height: 1; }
+
+/* Composer modal — re-uses the .modal-overlay / .modal-card shell.
+   The passage preview is a real blockquote so the quoted text reads
+   the way it'll read once saved. */
+.reading-composer-passage {
+  background: var(--color-surface);
+  border-left: 3px solid var(--indigo-primary);
+  padding: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-md);
+  font-style: italic;
+  color: var(--text-secondary);
+  border-radius: 0 6px 6px 0;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 /* ==========================================================================
    Calendar tab
    ========================================================================== */

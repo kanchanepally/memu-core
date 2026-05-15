@@ -1765,11 +1765,18 @@ server.register(workspaceRoutes);
 server.post('/api/spaces', async (request, reply) => {
   try {
     const profileId = (request as any).profileId;
-    const { title, category, body_markdown, parent_space_uri } = request.body as {
+    const { title, category, body_markdown, parent_space_uri, source_references, tags } = request.body as {
       title?: string;
       category?: string;
       body_markdown?: string;
       parent_space_uri?: string | null;
+      // R3 — the active-reading toolbar creates memo / quote Spaces
+      // carrying a reference to the source Space and the specific
+      // passage. Shape: `source:<spaceUri>#pid:<pid>` (custom scheme
+      // distinct from `document:` so the PDF viewer doesn't try to
+      // fetch them). Validated below; rejected if malformed.
+      source_references?: string[];
+      tags?: string[];
     };
 
     if (!title || !title.trim()) {
@@ -1802,6 +1809,30 @@ server.post('/api/spaces', async (request, reply) => {
       }
     }
 
+    // Validate source_references shape — each entry must start with a
+    // known scheme prefix. R3 introduces `source:<uri>#pid:<pid>` for
+    // active-reading citations; existing schemes (document:, message:,
+    // autolearn:) pass through unchanged so any caller can attach
+    // provenance. Reject malformed entries with a clear error.
+    const cleanSourceRefs: string[] = [];
+    if (Array.isArray(source_references)) {
+      const SCHEME_RE = /^(source|document|message|autolearn|space):/;
+      for (const ref of source_references) {
+        if (typeof ref !== 'string') continue;
+        const trimmed = ref.trim();
+        if (!trimmed) continue;
+        if (!SCHEME_RE.test(trimmed)) {
+          return reply.code(400).send({
+            error: `source_references entry "${trimmed.slice(0, 80)}" must start with one of source:, document:, message:, autolearn:, space:`,
+          });
+        }
+        cleanSourceRefs.push(trimmed);
+      }
+    }
+    const cleanTags = Array.isArray(tags)
+      ? tags.filter((t): t is string => typeof t === 'string' && t.trim().length > 0).map(t => t.trim())
+      : [];
+
     const space = await upsertSpace({
       familyId: profileId,
       category: category as Parameters<typeof upsertSpace>[0]['category'],
@@ -1809,6 +1840,8 @@ server.post('/api/spaces', async (request, reply) => {
       bodyMarkdown: body_markdown || '',
       actorProfileId: profileId,
       parentSpaceUri: parentUri,
+      sourceReferences: cleanSourceRefs.length > 0 ? cleanSourceRefs : undefined,
+      tags: cleanTags.length > 0 ? cleanTags : undefined,
     });
     return { space };
   } catch (err) {
