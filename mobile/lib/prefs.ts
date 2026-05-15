@@ -76,3 +76,32 @@ export async function setBriefingEnabled(v: boolean): Promise<void> {
 export async function setBriefingTime(hhmm: string): Promise<void> {
   await setItem(KEYS.briefingTime, hhmm);
 }
+
+// ---------------------------------------------------------------------------
+// Active workspace (Build Spec 1 Story 5.3)
+// ---------------------------------------------------------------------------
+//
+// Client-side-only state that records which workspace the user last
+// "switched to" via the workspace switcher. Story 3.2 will make this
+// actually drive per-request scope on the server; until then the value
+// is purely informational — the backend continues to scope reads to
+// the user's home Collective for non-project endpoints. Stored
+// alongside the other prefs (SecureStore on native, localStorage on
+// web) so it survives app restarts without committing to a real
+// session model.
+
+const ACTIVE_WORKSPACE_KEY = 'memu_pref_active_workspace_id';
+
+export async function getActiveWorkspaceId(): Promise<string | null> {
+  return getItem(ACTIVE_WORKSPACE_KEY);
+}
+
+export async function setActiveWorkspaceId(id: string | null): Promise<void> {
+  if (id == null) {
+    const store = await getStore();
+    if (store) await store.deleteItemAsync(ACTIVE_WORKSPACE_KEY);
+    else webStore.del(ACTIVE_WORKSPACE_KEY);
+    return;
+  }
+  await setItem(ACTIVE_WORKSPACE_KEY, id);
+}
