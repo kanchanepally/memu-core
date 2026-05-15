@@ -78,17 +78,18 @@ export async function setBriefingTime(hhmm: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Active workspace (Build Spec 1 Story 5.3)
+// Active workspace (Build Spec 1 Story 5.3 + multi-collective Story 3.2)
 // ---------------------------------------------------------------------------
 //
-// Client-side-only state that records which workspace the user last
-// "switched to" via the workspace switcher. Story 3.2 will make this
-// actually drive per-request scope on the server; until then the value
-// is purely informational — the backend continues to scope reads to
-// the user's home Collective for non-project endpoints. Stored
-// alongside the other prefs (SecureStore on native, localStorage on
-// web) so it survives app restarts without committing to a real
-// session model.
+// Records which workspace the user last "switched to" via the workspace
+// switcher. `mobile/lib/api.ts` reads this on every request and sends
+// it as `X-Memu-Workspace-Id`; the backend resolves it to the active
+// RLS scope (src/auth.ts:resolveActiveWorkspace). When unset, the
+// backend falls back to the personal-then-first default.
+//
+// Stored alongside the other prefs (SecureStore on native, localStorage
+// on web) so it survives app restarts without needing a real session
+// model on the server.
 
 const ACTIVE_WORKSPACE_KEY = 'memu_pref_active_workspace_id';
 

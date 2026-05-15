@@ -181,13 +181,18 @@ export function workspaceRoleLabel(role: WorkspaceRole | string): string {
 }
 
 /**
- * Toast wording when the user taps "Switch to this workspace". The
- * spec asks for this verbatim — it intentionally names the gap
- * (Today / Chat / Lists don't follow yet, that's Story 3.2) rather
- * than overpromising. If the toast wording is ever shortened, do not
- * lose the "still drives" clause: the user needs to know what the
- * switch actually changes today.
+ * Toast wording when the user taps "Switch to this workspace".
+ *
+ * Now that Story 3.2 has landed (X-Memu-Workspace-Id header on every
+ * request) AND `mobile/lib/api.ts` threads `getActiveWorkspaceId()`
+ * into that header, the switch IS real end-to-end. Today, Chat,
+ * Lists, Spaces, Calendar — every authenticated endpoint scopes to
+ * the active workspace. The toast just confirms the change.
+ *
+ * If a future slice needs to call out an endpoint that DOESN'T
+ * follow (e.g. Solid Pod routes that scope by WebID, not workspace),
+ * name it explicitly here rather than weakening the headline.
  */
 export function workspaceSwitchedToastMessage(workspaceName: string): string {
-  return `Switched to ${workspaceName}. You can browse this workspace's projects from here — your main workspace still drives Today, Chat and Lists for now. Cross-workspace browsing for those is coming.`;
+  return `Switched to ${workspaceName}. Today, Chat, Spaces and Lists now show this workspace.`;
 }

@@ -5,6 +5,7 @@
  */
 
 import { loadAuthState } from './auth';
+import { getActiveWorkspaceId } from './prefs';
 
 interface ApiResponse<T> {
   data?: T;
@@ -34,6 +35,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<ApiRespo
 
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    // Build Spec 1 §8 Story 5.1 + multi-collective Story 3.2: send
+    // the active workspace as X-Memu-Workspace-Id when one is set.
+    // The server resolves the request's RLS scope to that workspace
+    // (requireCollective + resolveActiveWorkspace in src/auth.ts).
+    // Header is omitted entirely when no workspace is selected — the
+    // server then falls back to personal-then-first, which today
+    // means the caller's home Collective. Caller-supplied header in
+    // options (rare) wins so callers can opt out for specific calls.
+    const explicitHeaderProvided =
+      headers['X-Memu-Workspace-Id'] !== undefined || headers['x-memu-workspace-id'] !== undefined;
+    if (!explicitHeaderProvided) {
+      const activeWorkspaceId = await getActiveWorkspaceId();
+      if (activeWorkspaceId) {
+        headers['X-Memu-Workspace-Id'] = activeWorkspaceId;
+      }
     }
 
     const res = await fetch(`${baseUrl}${path}`, {

@@ -133,10 +133,18 @@ describe('workspaceTypeLabel + workspaceRoleLabel', () => {
 });
 
 describe('workspaceSwitchedToastMessage', () => {
-  it('names the workspace and the scope-limit caveat', () => {
+  it('confirms the switch and the surfaces it now drives', () => {
+    // Story 3.2 + client-side wiring slice: the switch is real
+    // end-to-end. The toast confirms the new scope explicitly
+    // rather than warning about gaps — there is no gap to warn
+    // about for the surfaces named here.
     const msg = workspaceSwitchedToastMessage('Side Project');
     expect(msg).toContain('Switched to Side Project.');
-    expect(msg).toContain('Today, Chat and Lists');
-    expect(msg).toContain('coming');
+    expect(msg).toContain('Today, Chat, Spaces and Lists');
+    // Negative assertion — make sure no future edit reintroduces
+    // a "but it doesn't really work" framing that contradicts the
+    // shipped behaviour.
+    expect(msg).not.toContain('still drives');
+    expect(msg).not.toContain('coming');
   });
 });
