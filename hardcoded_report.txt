@@ -1,0 +1,632 @@
+Value: #080575 (Found 1 times)
+  :root -> --indigo-on-primary-container: #080575
+
+Value: #0C0E10 (Found 1 times)
+  :root -> --inverse-surface: #0C0E10
+
+Value: #16a34a (Found 1 times)
+  .toast-success -> color: #16a34a
+
+Value: #2E3336 (Found 2 times)
+  :root -> --on-surface: #2E3336
+  :root -> --on-background: #2E3336
+
+Value: #3A7D5C (Found 1 times)
+  :root -> --color-success: #3A7D5C
+
+Value: #4448A8 (Found 1 times)
+  :root -> --indigo-primary-dim: #4448A8
+
+Value: #4D4B85 (Found 1 times)
+  :root -> --indigo-on-secondary-container: #4D4B85
+
+Value: #4ade80 (Found 1 times)
+  .today-provenance-dot -> background: #4ade80
+
+Value: #5054B5 (Found 7 times)
+  :root -> --indigo-primary: #5054B5
+  :root -> --gradient-primary: linear-gradient(135deg, #5054B5, #9094FA)
+  .spaces-canvas-link -> color: #5054B5
+  .spaces-canvas-link:hover -> background: #5054B5
+  .spaces-canvas-link:hover -> border-color: #5054B5
+  ... and 2 more
+
+Value: #534968 (Found 1 times)
+  :root -> --indigo-on-tertiary-container: #534968
+
+Value: #584E6D (Found 1 times)
+  :root -> --indigo-tertiary-dim: #584E6D
+
+Value: #5B5993 (Found 1 times)
+  :root -> --indigo-secondary: #5B5993
+
+Value: #5B6063 (Found 1 times)
+  :root -> --on-surface-variant: #5B6063
+
+Value: #645A7A (Found 1 times)
+  :root -> --indigo-tertiary: #645A7A
+
+Value: #6B0221 (Found 1 times)
+  :root -> --color-error-dim: #6B0221
+
+Value: #6E0523 (Found 1 times)
+  :root -> --color-on-error-container: #6E0523
+
+Value: #777B7F (Found 1 times)
+  :root -> --outline: #777B7F
+
+Value: #7A5A12 (Found 2 times)
+  .bubble.bubble-error -> color: #7A5A12
+  .bubble.bubble-error p,
+.bubble.bubble-error em -> color: #7A5A12
+
+Value: #8387EB (Found 1 times)
+  :root -> --indigo-primary-fixed-dim: #8387EB
+
+Value: #9094FA (Found 3 times)
+  :root -> --indigo-primary-container: #9094FA
+  :root -> --indigo-primary-fixed: #9094FA
+  :root -> --gradient-primary: linear-gradient(135deg, #5054B5, #9094FA)
+
+Value: #9C9D9F (Found 1 times)
+  :root -> --inverse-on-surface: #9C9D9F
+
+Value: #A8364B (Found 1 times)
+  :root -> --color-error: #A8364B
+
+Value: #AEB2B6 (Found 1 times)
+  :root -> --outline-variant: #AEB2B6
+
+Value: #B88843 (Found 1 times)
+  :root -> --color-warning: #B88843
+
+Value: #C26A00 (Found 2 times)
+  .nudge-bubble.nudge-tone-attention -> border-left-color: #C26A00
+  .nudge-bubble.nudge-tone-attention .nudge-eyebrow -> color: #C26A00
+
+Value: #D7DADF (Found 1 times)
+  :root -> --surface-dim: #D7DADF
+
+Value: #DFE3E7 (Found 2 times)
+  :root -> --surface-highest: #DFE3E7
+  :root -> --surface-variant: #DFE3E7
+
+Value: #E2DFFF (Found 1 times)
+  :root -> --indigo-secondary-container: #E2DFFF
+
+Value: #E4D7FD (Found 2 times)
+  :root -> --indigo-tertiary-container: #E4D7FD
+  :root -> --indigo-tertiary-fixed: #E4D7FD
+
+Value: #E6B847 (Found 1 times)
+  .bubble.bubble-error -> border: 1px solid #E6B847
+
+Value: #E6E8EC (Found 1 times)
+  :root -> --surface-high: #E6E8EC
+
+Value: #ECEEF1 (Found 1 times)
+  :root -> --surface-container: #ECEEF1
+
+Value: #F2F4F6 (Found 1 times)
+  :root -> --surface-low: #F2F4F6
+
+Value: #F97386 (Found 1 times)
+  :root -> --color-error-container: #F97386
+
+Value: #F9F9FB (Found 2 times)
+  :root -> --surface: #F9F9FB
+  :root -> --surface-bright: #F9F9FB
+
+Value: #FBF7FF (Found 2 times)
+  :root -> --indigo-on-primary: #FBF7FF
+  :root -> --indigo-on-secondary: #FBF7FF
+
+Value: #FDF7FF (Found 1 times)
+  :root -> --indigo-on-tertiary: #FDF7FF
+
+Value: #FFF7E6 (Found 1 times)
+  .bubble.bubble-error -> background: #FFF7E6
+
+Value: #FFF7F7 (Found 1 times)
+  :root -> --color-on-error: #FFF7F7
+
+Value: #FFFFFF (Found 2 times)
+  :root -> --surface-lowest: #FFFFFF
+  .spaces-canvas-link:hover -> color: #FFFFFF
+
+Value: #bbf7d0 (Found 1 times)
+  .toast-success -> border: 1px solid #bbf7d0
+
+Value: #dc2626 (Found 1 times)
+  .toast-error -> color: #dc2626
+
+Value: #f0f0ff (Found 1 times)
+  .anonymised-block -> background: #f0f0ff
+
+Value: #f0fdf4 (Found 1 times)
+  .toast-success -> background: #f0fdf4
+
+Value: #fecaca (Found 1 times)
+  .toast-error -> border: 1px solid #fecaca
+
+Value: #fef2f2 (Found 2 times)
+  .setting-icon-destructive -> background: #fef2f2
+  .toast-error -> background: #fef2f2
+
+Value: #fff (Found 8 times)
+  .space-chip.active -> color: #fff
+  .spaces-fab -> color: #fff
+  .day-chip.active -> color: #fff
+  .active .day-dot -> background: #fff
+  .lists-segment-btn.active -> background: #fff
+  ... and 3 more
+
+Value: #fffafa (Found 1 times)
+  .event-card-conflict -> background: #fffafa
+
+Value: 0.005em (Found 2 times)
+  .thinking-card-title -> letter-spacing: -0.005em
+  .sidebar-nav-item -> letter-spacing: 0.005em
+
+Value: 0.015em (Found 3 times)
+  h2 -> letter-spacing: -0.015em
+  .today-brief-pointer-greeting -> letter-spacing: -0.015em
+  .briefing-title -> letter-spacing: -0.015em
+
+Value: 0.01em (Found 8 times)
+  h3 -> letter-spacing: -0.01em
+  .sidebar-logo-text -> letter-spacing: -0.01em
+  .topbar-title -> letter-spacing: -0.01em
+  .space-body h1, .space-body h2, .space-body h3 -> letter-spacing: -0.01em
+  .bubble h2,
+.bubble h3,
+.bubble h4 -> letter-spacing: -0.01em
+  ... and 3 more
+
+Value: 0.02em (Found 7 times)
+  h1 -> letter-spacing: -0.02em
+  .today-header-greeting -> letter-spacing: -0.02em
+  .today-lens-pill -> letter-spacing: 0.02em
+  .schedule-more -> letter-spacing: 0.02em
+  .news-card-fallback -> letter-spacing: -0.02em
+  ... and 2 more
+
+Value: 0.04em (Found 6 times)
+  .today-header-date -> letter-spacing: 0.04em
+  .schedule-time -> letter-spacing: 0.04em
+  .zone-news-refreshed -> letter-spacing: 0.04em
+  .connect-target-cat -> letter-spacing: 0.04em
+  .space-body h5 -> letter-spacing: 0.04em
+  ... and 1 more
+
+Value: 0.05em (Found 1 times)
+  .md-preview-btn -> letter-spacing: 0.05em
+
+Value: 0.06em (Found 6 times)
+  .zone-card-head -> letter-spacing: 0.06em
+  .sidebar-account-hint -> letter-spacing: 0.06em
+  .space-card-meta -> letter-spacing: 0.06em
+  .lists-item-source -> letter-spacing: 0.06em
+  .lists-due-chip -> letter-spacing: 0.06em
+  ... and 1 more
+
+Value: 0.08em (Found 7 times)
+  .schedule-clash-badge -> letter-spacing: 0.08em
+  .sidebar-conversations-label -> letter-spacing: 0.08em
+  .space-detail-meta -> letter-spacing: 0.08em
+  .share-label -> letter-spacing: 0.08em
+  .share-divider -> letter-spacing: 0.08em
+  ... and 2 more
+
+Value: 0.12em (Found 1 times)
+  .nudge-eyebrow -> letter-spacing: 0.12em
+
+Value: 0.14em (Found 2 times)
+  .zone-eyebrow -> letter-spacing: 0.14em
+  }
+.noticed-eyebrow -> letter-spacing: 0.14em
+
+Value: 0.1em (Found 3 times)
+  .commitment-eyebrow -> letter-spacing: 0.1em
+  .space-body code -> padding: 0.1em 0.4em
+  .day-week -> letter-spacing: 0.1em
+
+Value: 0.2em (Found 1 times)
+  .space-body blockquote -> padding: 0.2em 0 0.2em 1em
+
+Value: 0.3px (Found 1 times)
+  .ledger-label -> letter-spacing: 0.3px
+
+Value: 0.4em (Found 2 times)
+  .space-body li -> margin-bottom: 0.4em
+  .space-body code -> padding: 0.1em 0.4em
+
+Value: 0.5px (Found 3 times)
+  .section-label -> letter-spacing: 0.5px
+  .calendar-strip-time -> letter-spacing: 0.5px
+  .calendar-strip-more -> letter-spacing: 0.5px
+
+Value: 0.6em (Found 1 times)
+  .space-body h1, .space-body h2, .space-body h3 -> margin: 2em 0 0.6em
+
+Value: 0.8px (Found 2 times)
+  .today-section-label -> letter-spacing: 0.8px
+  .briefing-eyebrow -> letter-spacing: 0.8px
+
+Value: 0.92em (Found 1 times)
+  .space-body code -> font-size: 0.92em
+
+Value: 1.2px (Found 1 times)
+  .chat-briefing-eyebrow -> letter-spacing: 1.2px
+
+Value: 1.4em (Found 1 times)
+  .space-body ul, .space-body ol -> padding-left: 1.4em
+
+Value: 100px (Found 6 times)
+  .chat-briefing-glow -> border-radius: 100px
+  .chat-input -> max-height: 100px
+  }
+
+
+
+#spaces-detail-view -> padding: var(--space-md) var(--space-md) 100px
+  .connect-glow -> top: -100px
+  .connect-glow -> right: -100px
+  ... and 1 more
+
+Value: 10px (Found 41 times)
+  .today-lens-pill -> padding: 6px 12px 6px 10px
+  .zone-eyebrow -> font-size: 10px
+  .zone-card -> gap: 10px
+  .schedule-row -> padding: 8px 10px
+  .schedule-row -> border-radius: 10px
+  ... and 36 more
+
+Value: 110px (Found 1 times)
+  .connect-target-cat -> min-width: 110px
+
+Value: 11px (Found 27 times)
+  .zone-card-head -> font-size: 11px
+  .schedule-more -> font-size: 11px
+  .commitment-more -> font-size: 11px
+  .today-provenance -> font-size: 11px
+  .today-provenance-link -> font-size: 11px
+  ... and 22 more
+
+Value: 12.5px (Found 1 times)
+  .spaces-canvas-link -> font-size: 12.5px
+
+Value: 120px (Found 2 times)
+  textarea.input -> min-height: 120px
+  .today-canvas -> padding: 32px var(--space-md) 120px
+
+Value: 1280px (Found 2 times)
+  body:not(.sidebar-shown) .container-wide -> max-width: 1280px
+  body:not(.sidebar-shown) .today-grid -> max-width: 1280px
+
+Value: 12px (Found 62 times)
+  :root -> --shadow-sm: 0 4px 12px rgba(46, 51, 54, 0.04)
+  .btn-sm -> padding: 6px 12px
+  .section-label -> font-size: 12px
+  .source-pill -> font-size: 12px
+  .stream-card-type -> font-size: 12px
+  ... and 57 more
+
+Value: 13px (Found 28 times)
+  .btn-sm -> font-size: 13px
+  .zone-empty -> font-size: 13px
+  .commitment-title -> font-size: 13px
+  .noticed-empty -> font-size: 13px
+  .noticed-body -> font-size: 13px
+  ... and 23 more
+
+Value: 14px (Found 49 times)
+  .btn -> padding: 14px var(--space-lg)
+  .input -> padding: 14px var(--space-md)
+  .input-label -> font-size: 14px
+  .feature-body -> font-size: 14px
+  .stream-card-body -> font-size: 14px
+  ... and 44 more
+
+Value: 15px (Found 10 times)
+  .briefing-subtitle -> font-size: 15px
+  .chat-blank-state -> font-size: 15px
+  .chat-briefing-body -> font-size: 15px
+  .bubble -> font-size: 15px
+  .chat-input -> font-size: 15px
+  ... and 5 more
+
+Value: 160px (Found 2 times)
+  .zone-thinking-glow -> width: 160px
+  .zone-thinking-glow -> height: 160px
+
+Value: 16px (Found 28 times)
+  :root -> --space-md: 16px
+  :root -> --radius-md: 16px
+  .btn -> font-size: 16px
+  .input -> font-size: 16px
+  .onboarding-subtitle -> font-size: 16px
+  ... and 23 more
+
+Value: 17px (Found 1 times)
+  .space-body h3 -> font-size: 17px
+
+Value: 180px (Found 1 times)
+  .today-grid -> padding-bottom: 180px
+
+Value: 18px (Found 13 times)
+  .zone-card -> padding: 18px 20px
+  .noticed-empty -> padding: 18px 22px
+  .thinking-card:hover -> box-shadow: 0 6px 18px rgba(80, 84, 181, 0.10)
+  .today-provenance -> padding: 18px 0 4px
+  .today-summary-arrow -> font-size: 18px
+  ... and 8 more
+
+Value: 1em (Found 4 times)
+  .space-body p -> margin: 0 0 1em
+  .space-body ul, .space-body ol -> margin: 0 0 1em
+  .space-body blockquote -> padding: 0.2em 0 0.2em 1em
+  .space-body blockquote -> margin: 1em 0
+
+Value: 1px (Found 16 times)
+  .today-lens-pill:hover -> transform: translateY(-1px)
+  .zone-card -> box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04), 0 0 0 1px rgba(20, 17, 40, 0.04)
+  .noticed-card -> box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04)
+  .thinking-card -> box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04)
+  .today-summary:hover -> transform: translateY(-1px)
+  ... and 11 more
+
+Value: 200px (Found 2 times)
+  .chat-briefing-glow -> width: 200px
+  .chat-briefing-glow -> height: 200px
+
+Value: 20px (Found 13 times)
+  :root -> --shadow-lg: 0 20px 40px rgba(80, 84, 181, 0.08)
+  .feature-icon -> font-size: 20px
+  .zone-card -> padding: 18px 20px
+  .noticed-card -> padding: 16px 20px
+  .zone-thinking-glow -> top: -20px
+  ... and 8 more
+
+Value: 22px (Found 9 times)
+  h3 -> font-size: 22px
+  .noticed-empty -> padding: 18px 22px
+  .today-brief-pointer-greeting -> font-size: 22px
+  .today-summary-icon -> font-size: 22px
+  .today-insight-greeting -> font-size: 22px
+  ... and 4 more
+
+Value: 240px (Found 3 times)
+  .sidebar -> width: 240px
+  body.sidebar-shown .quick-composer -> left: 240px
+  .share-people-list -> max-height: 240px
+
+Value: 24px (Found 16 times)
+  :root -> --shadow-md: 0 8px 24px rgba(46, 51, 54, 0.06)
+  :root -> --space-lg: 24px
+  :root -> --radius-lg: 24px
+  .dot-active -> width: 24px
+  .zone-thinking -> border-radius: 24px
+  ... and 11 more
+
+Value: 260px (Found 1 times)
+  .connect-target-list -> max-height: 260px
+
+Value: 26px (Found 5 times)
+  .today-header-greeting -> font-size: 26px
+  .briefing-title -> font-size: 26px
+  .news-card-fallback -> font-size: 26px
+  .space-body h1 -> font-size: 26px
+  .connect-title -> font-size: 26px
+
+Value: 280px (Found 2 times)
+  .chat-artefact-chip -> max-width: 280px
+  }
+
+
+@media (max-width: 768px) -> width: 280px
+
+Value: 28px (Found 13 times)
+  h2 -> font-size: 28px
+  .zone-news-refresh -> width: 28px
+  .zone-news-refresh -> height: 28px
+  .chat-briefing-icon -> width: 28px
+  .chat-briefing-icon -> height: 28px
+  ... and 8 more
+
+Value: 2em (Found 1 times)
+  .space-body h1, .space-body h2, .space-body h3 -> margin: 2em 0 0.6em
+
+Value: 2px (Found 34 times)
+  .feature-title -> margin-bottom: 2px
+  .source-pill -> padding: 2px var(--space-sm)
+  .today-header-meta -> gap: 2px
+  .zone-card -> box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04), 0 0 0 1px rgba(20, 17, 40, 0.04)
+  .noticed-card -> box-shadow: 0 1px 2px rgba(20, 17, 40, 0.04)
+  ... and 29 more
+
+Value: 300px (Found 2 times)
+  .connect-glow -> width: 300px
+  .connect-glow -> height: 300px
+
+Value: 30px (Found 6 times)
+  .onboarding-title -> font-size: 30px
+  .greeting -> font-size: 30px
+  .today-header-greeting -> font-size: 30px
+  .sidebar-account-avatar -> width: 30px
+  .sidebar-account-avatar -> height: 30px
+  ... and 1 more
+
+Value: 320px (Found 2 times)
+  .thinking-pill-text -> max-width: 320px
+  .chat-unsourced-row -> max-width: 320px
+
+Value: 32px (Found 12 times)
+  :root -> --space-xl: 32px
+  :root -> --radius-xl: 32px
+  .today-canvas -> padding: 32px var(--space-md) 120px
+  .thinking-card-icon -> width: 32px
+  .thinking-card-icon -> height: 32px
+  ... and 7 more
+
+Value: 34px (Found 1 times)
+  h1 -> font-size: 34px
+
+Value: 36px (Found 12 times)
+  .today-canvas -> gap: 36px
+  .today-summary-icon -> width: 36px
+  .today-summary-icon -> height: 36px
+  .send-btn -> width: 36px
+  .send-btn -> height: 36px
+  ... and 7 more
+
+Value: 38px (Found 4 times)
+  .topbar-hamburger -> width: 38px
+  .topbar-hamburger -> height: 38px
+  .topbar-search -> width: 38px
+  .topbar-search -> height: 38px
+
+Value: 3px (Found 16 times)
+  .input:focus -> box-shadow: 0 0 0 3px rgba(80, 84, 181, 0.18)
+  .source-dot -> border-radius: 3px
+  .schedule-row -> border-left: 3px solid transparent
+  .commitment-eyebrow -> padding: 3px 7px
+  .noticed-card -> border-left: 3px solid var(--indigo-primary)
+  ... and 11 more
+
+Value: 40px (Found 2 times)
+  :root -> --shadow-lg: 0 20px 40px rgba(80, 84, 181, 0.08)
+  .chat-briefing-card -> box-shadow: 0 18px 40px rgba(80, 84, 181, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05)
+
+Value: 440px (Found 1 times)
+  .connect-subtitle -> max-width: 440px
+
+Value: 44px (Found 6 times)
+  .feature-icon -> width: 44px
+  .feature-icon -> height: 44px
+  .feature-icon -> min-width: 44px
+  .staged-attachment img -> width: 44px
+  .staged-attachment img -> height: 44px
+  ... and 1 more
+
+Value: 460px (Found 1 times)
+  .chat-blank-state -> max-width: 460px
+
+Value: 480px (Found 2 times)
+  .modal-card -> max-width: 480px
+  .lists-edit-card -> max-width: 480px
+
+Value: 48px (Found 3 times)
+  :root -> --space-2xl: 48px
+  .onboarding-icon -> border-radius: 48px
+  .onboarding-icon -> font-size: 48px
+
+Value: 4px (Found 52 times)
+  :root -> --shadow-sm: 0 4px 12px rgba(46, 51, 54, 0.04)
+  :root -> --space-xs: 4px
+  .dot -> border-radius: 4px
+  .stream-card -> border-left-width: 4px
+  .source-pill -> gap: 4px
+  ... and 47 more
+
+Value: 52px (Found 2 times)
+  .import-icon -> width: 52px
+  .import-icon -> height: 52px
+
+Value: 56px (Found 3 times)
+  .navbar -> height: 56px
+  .spaces-fab -> width: 56px
+  .spaces-fab -> height: 56px
+
+Value: 5px (Found 2 times)
+  .day-dot -> width: 5px
+  .day-dot -> height: 5px
+
+Value: 600px (Found 2 times)
+  .container -> max-width: 600px
+  .zone-thinking-intro -> max-width: 600px
+
+Value: 60px (Found 1 times)
+  .schedule-time -> min-width: 60px
+
+Value: 64px (Found 3 times)
+  :root -> --space-3xl: 64px
+  .connect-icon-chip -> width: 64px
+  .connect-icon-chip -> height: 64px
+
+Value: 6px (Found 59 times)
+  .btn-sm -> padding: 6px 12px
+  .source-dot -> width: 6px
+  .source-dot -> height: 6px
+  .today-lens-pill -> gap: 6px
+  .today-lens-pill -> padding: 6px 12px 6px 10px
+  ... and 54 more
+
+Value: 70px (Found 1 times)
+  .calendar-strip-time -> min-width: 70px
+
+Value: 720px (Found 1 times)
+  .lists-canvas -> max-width: 720px
+
+Value: 72px (Found 3 times)
+  .news-card-thumb-wrap -> width: 72px
+  .news-card-thumb-wrap -> height: 72px
+  .day-chip -> flex: 0 0 72px
+
+Value: 760px (Found 2 times)
+  .chat-canvas -> max-width: 760px
+  }
+
+
+
+#spaces-detail-view -> max-width: 760px
+
+Value: 7px (Found 2 times)
+  .commitment-eyebrow -> padding: 3px 7px
+  .spaces-canvas-link -> padding: 7px 13px
+
+Value: 80px (Found 4 times)
+  .zone-now-list -> min-height: 80px
+  .chat-briefing-glow -> top: -80px
+  .chat-briefing-glow -> right: -80px
+  .event-time-chip -> min-width: 80px
+
+Value: 880px (Found 2 times)
+  body:not(.sidebar-shown) .container -> max-width: 880px
+  body:not(.sidebar-shown) .lists-canvas -> max-width: 880px
+
+Value: 8px (Found 58 times)
+  :root -> --shadow-md: 0 8px 24px rgba(46, 51, 54, 0.06)
+  :root -> --space-sm: 8px
+  :root -> --radius-sm: 8px
+  .dot -> width: 8px
+  .dot -> height: 8px
+  ... and 53 more
+
+Value: 920px (Found 3 times)
+  .today-canvas -> max-width: 920px
+  body:not(.sidebar-shown) .chat-canvas -> max-width: 920px
+  body:not(.sidebar-shown) #spaces-detail-view -> max-width: 920px
+
+Value: 960px (Found 1 times)
+  .container-wide -> max-width: 960px
+
+Value: 96px (Found 2 times)
+  .onboarding-icon -> width: 96px
+  .onboarding-icon -> height: 96px
+
+Value: 9999px (Found 1 times)
+  :root -> --radius-pill: 9999px
+
+Value: 999px (Found 11 times)
+  .today-lens-pill -> border-radius: 999px
+  .noticed-btn -> border-radius: 999px
+  .thinking-pill -> border-radius: 999px
+  .nudge-btn -> border-radius: 999px
+  .spaces-canvas-link -> border-radius: 999px
+  ... and 6 more
+
+Value: 9px (Found 2 times)
+  .schedule-clash-badge -> font-size: 9px
+  .commitment-eyebrow -> font-size: 9px
+
