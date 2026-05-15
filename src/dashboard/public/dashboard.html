@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pwa-workspace-switcher">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pwa-switch-apostrophe-fix">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -3461,6 +3461,12 @@ function renderWorkspaces() {
         return;
     }
     const active = effectiveActiveWorkspace();
+    // Render cards WITHOUT inline onclick — workspace names can contain
+    // apostrophes ("Hareesh's household") and quoting them into an
+    // inline JS attribute hits the HTML-decode-before-JS-parse trap:
+    // &#39; becomes ' which terminates the string literal mid-arg.
+    // Use data-workspace-id on the card + event delegation on the
+    // container below. No quoting gymnastics, no failure modes.
     container.innerHTML = workspaceState.items.map(w => {
         const isActive = active && w.id === active.id;
         const isHome = w.id === workspaceState.homeId;
@@ -3472,8 +3478,8 @@ function renderWorkspaces() {
         ].filter(Boolean).join('');
         const switchBtn = isActive
             ? '<button class="btn btn-secondary btn-sm" disabled>Current</button>'
-            : `<button class="btn btn-primary btn-sm" onclick="switchToWorkspace('${esc(w.id)}','${esc(w.name)}')">Switch to this</button>`;
-        return `<div class="workspace-card">
+            : '<button class="btn btn-primary btn-sm workspace-switch-btn">Switch to this</button>';
+        return `<div class="workspace-card" data-workspace-id="${esc(w.id)}">
             <div class="workspace-card-head">
                 <div class="workspace-card-titles">
                     <div class="workspace-card-name">${esc(w.name)}</div>
@@ -3498,6 +3504,22 @@ function renderWorkspaces() {
         createBtn.disabled = true;
         createBtn.title = 'Adults manage workspaces.';
     }
+
+    // Wire the click handler once via event delegation. Re-running
+    // renderWorkspaces() (e.g. after creating a new workspace) doesn't
+    // need to re-bind because the listener is on the container, not on
+    // individual buttons that get replaced on each render. Guard with
+    // a flag to keep this idempotent.
+    if (!container.dataset.switchHandlerBound) {
+        container.addEventListener('click', (e) => {
+            const btn = e.target.closest('.workspace-switch-btn');
+            if (!btn) return;
+            const card = btn.closest('[data-workspace-id]');
+            const id = card?.dataset.workspaceId;
+            if (id) switchToWorkspace(id);
+        });
+        container.dataset.switchHandlerBound = '1';
+    }
 }
 
 function renderWorkspacePill() {
@@ -3507,7 +3529,7 @@ function renderWorkspacePill() {
     pillName.textContent = w ? w.name : '—';
 }
 
-function switchToWorkspace(id, name) {
+function switchToWorkspace(id) {
     setActiveWorkspaceId(id);
     // Switching scope on a long-running SPA is brittle (Spaces +
     // chat history + briefing + lists are all already loaded for
