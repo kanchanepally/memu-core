@@ -2028,16 +2028,32 @@ server.get('/api/family/profiles', async (request, reply) => {
     const callerProfileId = (request as any).profileId;
     const callerProfile = (request as any).profile;
     const isCallerChild = callerProfile?.role === 'child';
+    // Story 2.2: role lives on collective_memberships now. The join
+    // is bounded by the active collective context (RLS scopes both
+    // tables) and status='active'. Children only see non-child rows;
+    // adults see everyone in the collective.
     const params: any[] = [];
-    let where = '';
+    let where = "WHERE cm.status = 'active'";
     if (isCallerChild) {
-      where = 'WHERE role != $1';
+      where += ' AND cm.role != $1';
       params.push('child');
     }
     const res = await db.query(
-      `SELECT id, display_name, email, role FROM profiles ${where} ORDER BY
-          CASE role WHEN 'admin' THEN 1 WHEN 'adult' THEN 2 WHEN 'child' THEN 3 ELSE 4 END,
-          display_name`,
+      `SELECT p.id, p.display_name, p.email, cm.role
+         FROM profiles p
+         JOIN collective_memberships cm
+           ON cm.profile_id = p.id
+          AND cm.collective_id = p.collective_id
+         ${where}
+        ORDER BY
+          CASE cm.role
+            WHEN 'owner' THEN 1
+            WHEN 'admin' THEN 2
+            WHEN 'adult' THEN 3
+            WHEN 'child' THEN 4
+            ELSE 5
+          END,
+          p.display_name`,
       params,
     );
     const profiles = res.rows.map(r => ({
@@ -3077,8 +3093,20 @@ server.patch('/api/profile', async (request, reply) => {
       return reply.code(400).send({ error: 'displayName required' });
     }
     const trimmed = displayName.trim().slice(0, 80);
+    // Story 2.2: profiles.role retired. Update display_name, then
+    // hydrate role from collective_memberships for the response
+    // shape (callers expect { id, display_name, role }).
     const res = await db.query(
-      "UPDATE profiles SET display_name = $1 WHERE id = $2 RETURNING id, display_name, role",
+      `WITH updated AS (
+         UPDATE profiles SET display_name = $1 WHERE id = $2
+         RETURNING id, display_name, collective_id
+       )
+       SELECT u.id, u.display_name, cm.role
+         FROM updated u
+         LEFT JOIN collective_memberships cm
+           ON cm.profile_id = u.id
+          AND cm.collective_id = u.collective_id
+          AND cm.status = 'active'`,
       [trimmed, profileId]
     );
     if (res.rows.length === 0) return reply.code(404).send({ error: 'Profile not found' });
@@ -3106,8 +3134,17 @@ server.post('/api/family/detach', async (request, reply) => {
   try {
     const primaryId = (request as any).profileId;
 
-    // 1. Physically sever the secondary adult into their own parallel household namespace
-    const newAdult = await db.query("INSERT INTO profiles (display_name, role) VALUES ('Detached Adult', 'adult') RETURNING id");
+    // 1. Physically sever the secondary adult into their own parallel household namespace.
+    //
+    // Multi-Collective Membership spec, Story 2.2: role moved off
+    // profiles to collective_memberships. This /api/family/detach
+    // route is a legacy divorce stub; it does NOT yet create a real
+    // new collective (the new profile has no collective_id, no
+    // membership row). Properly severing into a new collective is
+    // the proper job of the multi-Collective creation flow
+    // (Story 3.1). For now, drop role from the profile insert so the
+    // stub at least compiles against the new schema.
+    const newAdult = await db.query("INSERT INTO profiles (display_name) VALUES ('Detached Adult') RETURNING id");
     const detachedId = newAdult.rows[0].id;
 
     // 2. Safely clone the child personas so BOTH parents independently retain the AI's child context going forward
@@ -3547,11 +3584,21 @@ const start = async () => {
         server.log.info(`[CAPTURE NUDGE ${whenHour}h] skipped — weekend`);
         return;
       }
+      // Story 2.2: role moved from profiles to collective_memberships
+      // (status='active', scoped to the profile's home collective).
+      // owner is adult-level by definition; admin and adult are the
+      // adult-bucket roles per the spec's role-to-bucket mapping. The
+      // capture-nudge cron only targets adults — children don't get
+      // capture prompts.
       const recipients = await db.queryAsBootstrap<{ id: string; display_name: string; collective_id: string }>(
         `SELECT p.id, p.display_name, p.collective_id
            FROM profiles p
            JOIN push_tokens t ON t.profile_id = p.id
-          WHERE p.role IN ('adult', 'admin')
+           JOIN collective_memberships cm
+             ON cm.profile_id = p.id
+            AND cm.collective_id = p.collective_id
+            AND cm.status = 'active'
+          WHERE cm.role IN ('owner', 'admin', 'adult')
           GROUP BY p.id, p.display_name, p.collective_id`,
       );
       for (const row of recipients.rows) {

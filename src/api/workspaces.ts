@@ -129,16 +129,24 @@ interface ProjectRow {
 }
 
 async function listWorkspaces(profileId: string) {
-  // Single-membership today — return the caller's collective alongside
-  // their role on profiles.role. RLS scopes to that collective; we
-  // explicitly read the caller's row first to recover the collective_id
-  // and role in one query.
-  const res = await db.query<WorkspaceRow & { role: string }>(
-    `SELECT c.id, c.name, c.type, c.parent_collective_id, c.status, p.role
-       FROM profiles p
-       JOIN collectives c ON c.id = p.collective_id
-      WHERE p.id = $1
-      LIMIT 1`,
+  // Story 2.1: read from the collective_memberships relationship
+  // rather than profiles.role. status='active' filters out
+  // invited/left rows. Single-membership today still returns one
+  // row; the same query widens cleanly when Story 3.2 lifts the
+  // 1:1 constraint and a profile may have multiple active
+  // memberships.
+  //
+  // queryAsBootstrap is needed because the auth path enters this
+  // before requireCollective has bound a context (the caller is
+  // discovering which collective(s) they belong to). Bootstrap is
+  // a READ-only escape hatch on profiles + collective_memberships;
+  // writes still gate on collective match.
+  const res = await db.queryAsBootstrap<WorkspaceRow & { role: string }>(
+    `SELECT c.id, c.name, c.type, c.parent_collective_id, c.status, cm.role
+       FROM collective_memberships cm
+       JOIN collectives c ON c.id = cm.collective_id
+      WHERE cm.profile_id = $1 AND cm.status = 'active'
+      ORDER BY c.created_at ASC`,
     [profileId],
   );
   return res.rows.map(r => ({

@@ -19,10 +19,27 @@ export function generateApiKey(): string {
  * known. The match is by api_key (32-byte random secret) so the read
  * surfaces exactly one row regardless of how many collectives share
  * the deployment.
+ *
+ * Multi-Collective Membership spec, Story 2.2: role is hydrated from
+ * collective_memberships (the relationship table) and joined onto the
+ * returned shape, because every existing caller of this function reads
+ * `profile.role` to gate authorization. The join scopes to the
+ * profile's home collective (profiles.collective_id) and status='active'.
+ * Bootstrap mode is required because collective_memberships is Tier-A
+ * with FORCE RLS — without bootstrap the JOIN returns NULL rows. The
+ * bootstrap flag is safe here: api_key is itself a 32-byte secret and
+ * we're only reading.
  */
 export async function getProfileByApiKey(apiKey: string) {
   const res = await db.queryAsBootstrap(
-    'SELECT id, display_name, role, email, ai_model, daily_query_limit, collective_id FROM profiles WHERE api_key = $1',
+    `SELECT p.id, p.display_name, p.email, p.ai_model, p.daily_query_limit, p.collective_id,
+            cm.role
+       FROM profiles p
+       LEFT JOIN collective_memberships cm
+         ON cm.profile_id = p.id
+        AND cm.collective_id = p.collective_id
+        AND cm.status = 'active'
+      WHERE p.api_key = $1`,
     [apiKey]
   );
   return res.rows[0] || null;
@@ -173,8 +190,19 @@ export async function registerProfile(
     // First-boot / public-register backstop: if a profile already exists,
     // return it instead of creating a duplicate. queryAsBootstrap so the
     // Tier-B policy permits the cross-collective read.
+    //
+    // Story 2.2: hydrate role from collective_memberships so the
+    // returned shape continues to carry it.
     const existingRes = await db.queryAsBootstrap(
-      'SELECT id, display_name, email, role, api_key, collective_id, created_at FROM profiles ORDER BY created_at ASC LIMIT 1'
+      `SELECT p.id, p.display_name, p.email, p.api_key, p.collective_id, p.created_at,
+              cm.role
+         FROM profiles p
+         LEFT JOIN collective_memberships cm
+           ON cm.profile_id = p.id
+          AND cm.collective_id = p.collective_id
+          AND cm.status = 'active'
+        ORDER BY p.created_at ASC
+        LIMIT 1`
     );
     if (existingRes.rowCount && existingRes.rowCount > 0 && existingRes.rows[0]) {
       return existingRes.rows[0];
@@ -233,11 +261,14 @@ async function registerPrimaryCollectiveAndProfile(
 
     // Profile insert — collective_id points at the not-yet-existing
     // collective. Deferred FK lets this through; validated at COMMIT.
+    // Story 2.2: role no longer on profiles — it's a property of the
+    // membership relationship (inserted below after the collective
+    // exists). The function still RETURNs role for API-shape stability.
     const profileRes = await client.query(
-      `INSERT INTO profiles (display_name, email, role, api_key, collective_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, display_name, email, role, api_key, collective_id, created_at`,
-      [displayName, email, role, apiKey, collectiveId],
+      `INSERT INTO profiles (display_name, email, api_key, collective_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, display_name, email, api_key, collective_id, created_at`,
+      [displayName, email, apiKey, collectiveId],
     );
     const profile = profileRes.rows[0];
 
@@ -248,6 +279,14 @@ async function registerPrimaryCollectiveAndProfile(
       `INSERT INTO collectives (id, type, name, primary_admin_profile_id)
        VALUES ($1, 'household', $2, $3)`,
       [collectiveId, collectiveName, profile.id],
+    );
+
+    // Story 2.2: membership row carries role now. session var set to
+    // collectiveId above; collective_memberships' WITH CHECK passes.
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, $3, 'active')`,
+      [collectiveId, profile.id, role],
     );
 
     // Persona — collective_id matches the active session variable, so
@@ -284,7 +323,10 @@ async function registerPrimaryCollectiveAndProfile(
     }
 
     await client.query('COMMIT');
-    return profile;
+    // Story 2.2: pass-through role so the API shape stays
+    // { id, display_name, email, role, api_key, collective_id, created_at }
+    // even though role is no longer a column on profiles.
+    return { ...profile, role };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -339,13 +381,21 @@ async function inviteProfileToExistingCollective(
     // a DIFFERENT collective, the INSERT is rejected by the WITH CHECK
     // (defence-in-depth: caller can't invite into a collective they
     // don't belong to).
+    // Story 2.2: role no longer on profiles. Profile insert drops it;
+    // membership insert below carries the role.
     const profileRes = await client.query(
-      `INSERT INTO profiles (display_name, email, role, api_key, collective_id)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, display_name, email, role, api_key, collective_id, created_at`,
-      [displayName, email, role, apiKey, collectiveId],
+      `INSERT INTO profiles (display_name, email, api_key, collective_id)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, display_name, email, api_key, collective_id, created_at`,
+      [displayName, email, apiKey, collectiveId],
     );
     const profile = profileRes.rows[0];
+
+    await client.query(
+      `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+       VALUES ($1, $2, $3, 'active')`,
+      [collectiveId, profile.id, role],
+    );
 
     const personaId = `${role}-${Date.now()}-${profile.id.slice(0, 4)}`;
     const personaLabel = role === 'child' ? `Child-${profile.id.slice(0, 4)}` : `Adult-${profile.id.slice(0, 4)}`;
@@ -363,6 +413,9 @@ async function inviteProfileToExistingCollective(
       [displayName.trim(), entityLabel, collectiveId],
     );
 
-    return profile;
+    // Story 2.2: mirror Flow A — pass-through role on the return
+    // shape so callers downstream of registerProfile() see role
+    // regardless of which flow ran.
+    return { ...profile, role };
   });
 }

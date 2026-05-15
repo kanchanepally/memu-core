@@ -84,11 +84,22 @@ async function loadProfileLookupRows(): Promise<Array<{ id: string; webid_slug: 
 }
 
 async function loadProfileByWebIdSlug(slug: string): Promise<{ id: string; role: string } | null> {
-  const res = await db.query<{ id: string; role: string }>(
-    `SELECT id, role FROM profiles WHERE webid_slug = $1 LIMIT 1`,
+  // Story 2.2: role lives on collective_memberships now, scoped to
+  // the profile's home collective.
+  const res = await db.query<{ id: string; role: string | null }>(
+    `SELECT p.id, cm.role
+       FROM profiles p
+       LEFT JOIN collective_memberships cm
+         ON cm.profile_id = p.id
+        AND cm.collective_id = p.collective_id
+        AND cm.status = 'active'
+      WHERE p.webid_slug = $1
+      LIMIT 1`,
     [slug],
   );
-  return res.rows[0] ?? null;
+  const row = res.rows[0];
+  if (!row) return null;
+  return { id: row.id, role: row.role ?? 'unknown' };
 }
 
 function baseFromRequest(request: FastifyRequest): string {
@@ -201,8 +212,16 @@ async function authorizeWrite(
 ): Promise<AuthorizedWriter | null> {
   const caller = await authenticateOrReject(request, reply);
   if (!caller) return null;
-  const res = await db.query<{ role: string }>(
-    `SELECT role FROM profiles WHERE id = $1 LIMIT 1`,
+  // Story 2.2: role lives on collective_memberships now.
+  const res = await db.query<{ role: string | null }>(
+    `SELECT cm.role
+       FROM profiles p
+       LEFT JOIN collective_memberships cm
+         ON cm.profile_id = p.id
+        AND cm.collective_id = p.collective_id
+        AND cm.status = 'active'
+      WHERE p.id = $1
+      LIMIT 1`,
     [caller.profileId],
   );
   const role = res.rows[0]?.role ?? 'unknown';

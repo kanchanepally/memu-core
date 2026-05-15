@@ -55,19 +55,28 @@ function rowToStandard(r: CareStandardRow): CareStandard {
   };
 }
 
-async function loadRosterIds(familyId: string): Promise<{
+async function loadRosterIds(_familyId: string): Promise<{
   adults: string[];
   children: string[];
   all: string[];
 }> {
-  const res = await db.query<{ id: string; role: string }>(
-    `SELECT id, role FROM profiles`,
+  // Multi-Collective Membership spec, Story 2.1: read from
+  // collective_memberships, not profiles.role. RLS scopes to the
+  // active Collective; status='active' filters out invited/left
+  // members.
+  //
+  // Role-to-bucket mapping mirrors loadRoster in catalogue.ts —
+  // owner/admin/adult are the "adult-level" roles; child is the
+  // child bucket; member/viewer count in `all` only (no specific
+  // care-standard scope today).
+  const res = await db.query<{ profile_id: string; role: string }>(
+    `SELECT profile_id, role FROM collective_memberships WHERE status = 'active'`,
   );
-  // Today: single-family deployment, family_id = primary adult profile.
-  // When the proper families table lands we filter by family_id here.
-  const all = res.rows.map(r => r.id);
-  const adults = res.rows.filter(r => r.role === 'adult' || r.role === 'admin').map(r => r.id);
-  const children = res.rows.filter(r => r.role === 'child').map(r => r.id);
+  const all = res.rows.map(r => r.profile_id);
+  const adults = res.rows
+    .filter(r => r.role === 'owner' || r.role === 'admin' || r.role === 'adult')
+    .map(r => r.profile_id);
+  const children = res.rows.filter(r => r.role === 'child').map(r => r.profile_id);
   return { adults, children, all };
 }
 

@@ -58,17 +58,27 @@ describe.skipIf(!SHOULD_RUN)('RLS collective isolation', () => {
       await client.query('BEGIN');
 
       // Profile 1 + collective 1
+      //
+      // Multi-Collective Membership spec, Story 2.2: role moved off
+      // profiles onto collective_memberships. The fixture pattern is
+      // now profile → collective → membership, all inside the same
+      // transaction so the deferred FKs settle at COMMIT.
       const profile1 = crypto.randomUUID();
       const hh1 = crypto.randomUUID();
       await client.query("SELECT set_config('memu.collective_id', $1, true)", [hh1]);
       await client.query(
-        `INSERT INTO profiles (id, display_name, role, api_key, collective_id)
-         VALUES ($1, 'RLS Test 1', 'adult', 'memu_rls_test_1_' || gen_random_uuid()::text, $2)`,
+        `INSERT INTO profiles (id, display_name, api_key, collective_id)
+         VALUES ($1, 'RLS Test 1', 'memu_rls_test_1_' || gen_random_uuid()::text, $2)`,
         [profile1, hh1],
       );
       await client.query(
         `INSERT INTO collectives (id, type, name, primary_admin_profile_id)
          VALUES ($1, 'household', 'RLS Test Household 1', $2)`,
+        [hh1, profile1],
+      );
+      await client.query(
+        `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+         VALUES ($1, $2, 'adult', 'active')`,
         [hh1, profile1],
       );
 
@@ -79,13 +89,18 @@ describe.skipIf(!SHOULD_RUN)('RLS collective isolation', () => {
       const hh2 = crypto.randomUUID();
       await client.query("SELECT set_config('memu.collective_id', $1, true)", [hh2]);
       await client.query(
-        `INSERT INTO profiles (id, display_name, role, api_key, collective_id)
-         VALUES ($1, 'RLS Test 2', 'adult', 'memu_rls_test_2_' || gen_random_uuid()::text, $2)`,
+        `INSERT INTO profiles (id, display_name, api_key, collective_id)
+         VALUES ($1, 'RLS Test 2', 'memu_rls_test_2_' || gen_random_uuid()::text, $2)`,
         [profile2, hh2],
       );
       await client.query(
         `INSERT INTO collectives (id, type, name, primary_admin_profile_id)
          VALUES ($1, 'household', 'RLS Test Household 2', $2)`,
+        [hh2, profile2],
+      );
+      await client.query(
+        `INSERT INTO collective_memberships (collective_id, profile_id, role, status)
+         VALUES ($1, $2, 'adult', 'active')`,
         [hh2, profile2],
       );
 
@@ -140,6 +155,11 @@ describe.skipIf(!SHOULD_RUN)('RLS collective isolation', () => {
         await client.query(`DELETE FROM synthesis_pages WHERE collective_id = $1`, [hh]);
         await client.query(`DELETE FROM personas WHERE collective_id = $1`, [hh]);
         await client.query(`DELETE FROM entity_registry WHERE collective_id = $1`, [hh]);
+        // collective_memberships is Tier-A — clear explicitly under the
+        // active context before the profile delete so RLS doesn't
+        // silently leave membership rows behind. FK CASCADE on
+        // profile_id would do the same, but explicit beats implicit.
+        await client.query(`DELETE FROM collective_memberships WHERE collective_id = $1`, [hh]);
         await client.query(`DELETE FROM profiles WHERE collective_id = $1`, [hh]);
       }
       // collectives is Tier-C (no RLS) — no context needed.
@@ -268,8 +288,8 @@ describe.skipIf(!SHOULD_RUN)('RLS collective isolation', () => {
     await expect(
       enterCollectiveContext(collectives.hh1, async () => {
         await db.query(
-          `INSERT INTO profiles (display_name, role, api_key, collective_id)
-           VALUES ('cross-tenant write attempt', 'adult', 'memu_should_not_persist', $1)`,
+          `INSERT INTO profiles (display_name, api_key, collective_id)
+           VALUES ('cross-tenant write attempt', 'memu_should_not_persist', $1)`,
           [collectives.hh2],
         );
       }),
@@ -298,8 +318,8 @@ describe.skipIf(!SHOULD_RUN)('RLS collective isolation', () => {
     // is rejected.
     await expect(
       db.queryAsBootstrap(
-        `INSERT INTO profiles (display_name, role, api_key, collective_id)
-         VALUES ('bootstrap write attempt', 'adult', 'memu_should_not_persist_2', $1)`,
+        `INSERT INTO profiles (display_name, api_key, collective_id)
+         VALUES ('bootstrap write attempt', 'memu_should_not_persist_2', $1)`,
         [collectives.hh2],
       ),
     ).rejects.toThrow(/row[- ]level security|new row violates/i);

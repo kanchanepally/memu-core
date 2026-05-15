@@ -138,7 +138,19 @@ export async function listProviderKeyStatus(profileId: string): Promise<BYOKStat
 }
 
 async function getProfileRole(profileId: string): Promise<string | null> {
-  const res = await db.query(`SELECT role FROM profiles WHERE id = $1`, [profileId]);
+  // Story 2.2: role lives on collective_memberships, scoped to the
+  // profile's home collective. BYOK is gated to adult roles only —
+  // children blocked, viewers/members not given paid-call powers.
+  const res = await db.query(
+    `SELECT cm.role
+       FROM profiles p
+       JOIN collective_memberships cm
+         ON cm.profile_id = p.id
+        AND cm.collective_id = p.collective_id
+        AND cm.status = 'active'
+      WHERE p.id = $1`,
+    [profileId],
+  );
   return res.rows[0]?.role ?? null;
 }
 

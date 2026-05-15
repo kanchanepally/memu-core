@@ -42,20 +42,42 @@ interface CatalogueRow {
 }
 
 /**
- * Load the family's roster — adults, partners, all members — used by
- * the visibility resolver. Today partner status is inferred from the
- * adult role; when Story 2.3 lands we'll read an explicit partners
- * column. Leaving TODO for that rather than over-engineering now.
+ * Load the active Collective's roster — adults, partners, all members —
+ * used by the visibility resolver.
+ *
+ * Multi-Collective Membership spec, Story 2.1: roster comes from
+ * collective_memberships (the relationship table) rather than
+ * profiles.role. The RLS context scopes to the active Collective; we
+ * filter to active status only (invited/left members are not part
+ * of the visibility roster).
+ *
+ * The role-to-bucket mapping is:
+ *   adults   = owner | admin | adult
+ *              (owner and admin are adult-level by definition;
+ *               the legacy code mapped only admin+adult, but
+ *               post-spec the owner role is also adult-level)
+ *   children = child
+ *   member, viewer → in `all` only — generic members are not adults
+ *              by definition; they participate in family visibility
+ *              but not adults_only / partners_only spaces.
+ *
+ * Partner status is still inferred as "first two adults" — same
+ * heuristic as before; an explicit partners flag is a separate slice.
+ *
+ * `familyId` is kept on the signature for source-compatibility with
+ * pre-Story-2.1 callers; the value is no longer used because RLS
+ * does the scoping. To be revisited when multi-Collective switching
+ * (Story 3.2) makes "scope to a specific Collective explicitly"
+ * useful again.
  */
-export async function loadRoster(familyId: string): Promise<FamilyRoster> {
-  const res = await db.query<{ id: string; role: string }>(
-    `SELECT id, role FROM profiles WHERE id = $1 OR id IN (
-        SELECT id FROM profiles WHERE id != $1
-     ) ORDER BY role, created_at`,
-    [familyId],
+export async function loadRoster(_familyId: string): Promise<FamilyRoster> {
+  const res = await db.query<{ profile_id: string; role: string }>(
+    `SELECT profile_id, role FROM collective_memberships WHERE status = 'active' ORDER BY created_at`,
   );
-  const all = res.rows.map(r => r.id);
-  const adults = res.rows.filter(r => r.role === 'adult' || r.role === 'admin').map(r => r.id);
+  const all = res.rows.map(r => r.profile_id);
+  const adults = res.rows
+    .filter(r => r.role === 'owner' || r.role === 'admin' || r.role === 'adult')
+    .map(r => r.profile_id);
   const partners = adults.slice(0, 2);
   return { all, adults, partners };
 }
