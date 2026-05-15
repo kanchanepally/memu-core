@@ -567,6 +567,43 @@ server.post('/api/document', async (request, reply) => {
     if (buffer.length > 25 * 1024 * 1024) {
       return reply.code(413).send({ error: 'document too large (max 25MB)' });
     }
+    // Build Spec 2 Phase R2 — dispatch to the research-flavoured path
+    // when the active workspace is research. Lookup is one query
+    // against `collectives` (Tier-C, no RLS). The two paths share the
+    // same parser + storage helpers (documentIngestion.ts) but produce
+    // different Space shapes: family → Document Space with LLM-extracted
+    // dates/amounts/parties; research → Source Space with the full
+    // extracted text body, no LLM family-summary, anonymisation gate
+    // applied before storage.
+    const wsRes = await db.queryAsBootstrap<{ type: string }>(
+      `SELECT type FROM collectives WHERE id = NULLIF(current_setting('memu.collective_id', true), '') LIMIT 1`,
+    );
+    const workspaceType = wsRes.rows[0]?.type ?? 'family';
+
+    if (workspaceType === 'research') {
+      const { processResearchSourceIngestion } = await import('./intelligence/researchSourceIngestion');
+      const result = await processResearchSourceIngestion({
+        profileId,
+        fileName,
+        buffer,
+        mimeType,
+        channel: 'pwa',
+        messageId,
+      });
+      if (!result.ok) {
+        return reply.code(422).send({ error: result.error, stage: result.stage });
+      }
+      return {
+        ok: true,
+        spaceUri: result.spaceUri,
+        spaceTitle: result.spaceTitle,
+        category: 'source',
+        charCount: result.charCount,
+        truncated: result.truncated,
+        entitiesRegistered: result.entitiesRegistered,
+      };
+    }
+
     const result = await processDocumentIngestion({
       profileId,
       fileName,

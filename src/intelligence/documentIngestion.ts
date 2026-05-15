@@ -52,12 +52,19 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-// Cap parsed text fed to the LLM. ~50k chars ≈ ~12k tokens — generous for
-// typical letters and bills, well inside Sonnet's context. Larger inputs
-// get truncated with a marker so the skill can flag the truncation in its
-// summary rather than the pipeline silently dropping content.
-const MAX_TEXT_CHARS = 50_000;
-const TRUNCATION_NOTICE = '\n\n…[document truncated for processing — only the first 50,000 characters shown]';
+// Cap parsed text fed to the LLM for the family-document path. ~50k chars
+// ≈ ~12k tokens — generous for typical letters and bills, well inside
+// Sonnet's context. Larger inputs get truncated with a marker so the
+// skill can flag the truncation in its summary rather than the pipeline
+// silently dropping content.
+//
+// Phase R2 — the research-source-ingestion path needs the FULL text
+// (researchers code passages from the body) and accepts a much higher
+// cap. Both paths call the same parsers; the cap is parameterised.
+export const FAMILY_MAX_TEXT_CHARS = 50_000;
+export const RESEARCH_MAX_TEXT_CHARS = 500_000; // ~120k tokens — book-scale
+const TRUNCATION_NOTICE_TEMPLATE = (n: number) =>
+  `\n\n…[document truncated — only the first ${n.toLocaleString('en-US')} characters were kept]`;
 
 const SUPPORTED_MIME_TYPES = new Set([
   'application/pdf',
@@ -92,12 +99,19 @@ export interface ParseError {
 
 export type ParseOutcome = ParseResult | ParseError;
 
-function applyTruncation(text: string): { text: string; truncated: boolean } {
-  if (text.length <= MAX_TEXT_CHARS) return { text, truncated: false };
-  return { text: text.slice(0, MAX_TEXT_CHARS) + TRUNCATION_NOTICE, truncated: true };
+export interface ParseOptions {
+  /** Max characters to keep. Anything beyond gets sliced off with a notice
+   *  appended. Defaults to FAMILY_MAX_TEXT_CHARS so the historic path is
+   *  byte-identical when no option is passed. */
+  maxChars?: number;
 }
 
-export async function parsePdf(buffer: Buffer): Promise<ParseOutcome> {
+function applyTruncation(text: string, maxChars: number): { text: string; truncated: boolean } {
+  if (text.length <= maxChars) return { text, truncated: false };
+  return { text: text.slice(0, maxChars) + TRUNCATION_NOTICE_TEMPLATE(maxChars), truncated: true };
+}
+
+export async function parsePdf(buffer: Buffer, options: ParseOptions = {}): Promise<ParseOutcome> {
   try {
     // pdf-parse 2.x is class-based — `new PDFParse({ data })` then
     // `.getText()` returns a TextResult with `.text` containing the
@@ -110,7 +124,7 @@ export async function parsePdf(buffer: Buffer): Promise<ParseOutcome> {
     if (rawText.length === 0) {
       return { ok: false, error: 'PDF parsed but contained no extractable text (likely scanned image — try uploading as a photo via /api/vision)' };
     }
-    const { text, truncated } = applyTruncation(rawText);
+    const { text, truncated } = applyTruncation(rawText, options.maxChars ?? FAMILY_MAX_TEXT_CHARS);
     return {
       ok: true,
       text,
@@ -124,13 +138,13 @@ export async function parsePdf(buffer: Buffer): Promise<ParseOutcome> {
   }
 }
 
-export function parsePlainText(buffer: Buffer): ParseOutcome {
+export function parsePlainText(buffer: Buffer, options: ParseOptions = {}): ParseOutcome {
   try {
     const rawText = buffer.toString('utf8').trim();
     if (rawText.length === 0) {
       return { ok: false, error: 'document is empty' };
     }
-    const { text, truncated } = applyTruncation(rawText);
+    const { text, truncated } = applyTruncation(rawText, options.maxChars ?? FAMILY_MAX_TEXT_CHARS);
     return {
       ok: true,
       text,
@@ -161,12 +175,12 @@ export function resolveMimeType(declaredMime: string, fileName: string): string 
  * with a clear list of supported types so the caller can render a helpful
  * message.
  */
-export async function parseDocument(buffer: Buffer, mimeType: string): Promise<ParseOutcome> {
+export async function parseDocument(buffer: Buffer, mimeType: string, options: ParseOptions = {}): Promise<ParseOutcome> {
   switch (mimeType) {
     case 'application/pdf':
-      return parsePdf(buffer);
+      return parsePdf(buffer, options);
     case 'text/plain':
-      return parsePlainText(buffer);
+      return parsePlainText(buffer, options);
     default:
       return {
         ok: false,
@@ -232,7 +246,10 @@ function safeFileName(name: string): string {
   return stripped.slice(0, 80);
 }
 
-async function persistOriginal(
+// Exported for Phase R2's researchSourceIngestion to reuse — same storage
+// shape across both ingest paths so the /api/spaces/:id/document fetch
+// works identically for family Documents and research Sources.
+export async function persistOriginal(
   familyId: string,
   fileName: string,
   buffer: Buffer,
