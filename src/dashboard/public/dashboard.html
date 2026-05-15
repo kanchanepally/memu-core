@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pdf-and-workspace-fixes">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-16-r3-active-reading">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -908,6 +908,50 @@ async function api(path, opts = {}) {
         <div class="flex gap-sm" style="justify-content:flex-end;">
             <button class="btn btn-secondary btn-sm" onclick="closeCreateWorkspace()">Cancel</button>
             <button class="btn btn-primary btn-sm" id="workspace-create-submit" onclick="submitCreateWorkspace()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Phase R3 — active-reading toolbar. Appears when text is selected
+     inside a passage-tagged block (data-pid present) within a Space's
+     reading body. The selection-handler in JS picks up the
+     containing data-pid block and offers the four verbs (Memo / Code
+     / Question / Quote). Memo + Quote ship in this slice; Code +
+     Question are stubbed onclick handlers that show a "coming soon"
+     toast (the picker UI is R3.3 / R3.4). -->
+<div id="reading-toolbar" class="reading-toolbar hidden" role="toolbar" aria-label="Active reading actions">
+    <button class="reading-toolbar-btn" type="button" onclick="openReadingComposer('memo')" title="Memo this passage — your noticing">
+        <span class="reading-toolbar-icon">&#x1F4DD;</span>
+        <span>Memo</span>
+    </button>
+    <button class="reading-toolbar-btn" type="button" onclick="openReadingComposer('quote')" title="Quote this passage — citable verbatim">
+        <span class="reading-toolbar-icon">&#x275D;</span>
+        <span>Quote</span>
+    </button>
+    <button class="reading-toolbar-btn reading-toolbar-btn--deferred" type="button" onclick="showToast('Code — theme picker lands with the R3.3 batch-coding flow.', false)" title="Code this passage under a theme (R3.3)">
+        <span class="reading-toolbar-icon">&#x1F3F7;</span>
+        <span>Code</span>
+    </button>
+    <button class="reading-toolbar-btn reading-toolbar-btn--deferred" type="button" onclick="showToast('Question — answer-linking surface lands with R3.4.', false)" title="Open a question on this passage (R3.4)">
+        <span class="reading-toolbar-icon">&#x2753;</span>
+        <span>Question</span>
+    </button>
+</div>
+
+<!-- Composer modal for memo + quote. Re-used between the two verbs;
+     openReadingComposer() configures title / placeholder / pre-fill
+     and saveReadingComposer() submits with the right category. -->
+<div class="modal-overlay" id="reading-composer-modal">
+    <div class="modal-card" style="max-width:560px;">
+        <h3 class="mb-sm" id="reading-composer-title">New memo</h3>
+        <div class="text-muted mb-sm" style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;">From <span id="reading-composer-source">…</span></div>
+        <blockquote class="reading-composer-passage" id="reading-composer-passage">…</blockquote>
+        <label class="input-label" id="reading-composer-label">Your noticing</label>
+        <textarea id="reading-composer-body" class="input" rows="6" style="font-family:var(--font-mono,monospace);font-size:13px;"></textarea>
+        <div id="reading-composer-error" class="hidden text-error" style="font-size:13px;margin-top:var(--space-sm);"></div>
+        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
+            <button class="btn btn-secondary btn-sm" onclick="closeReadingComposer()">Cancel</button>
+            <button class="btn btn-primary btn-sm" id="reading-composer-save" onclick="saveReadingComposer()">Save</button>
         </div>
     </div>
 </div>
@@ -4548,6 +4592,180 @@ function unmountPdf() {
     if (container) {
         container.innerHTML = '';
         container.classList.add('hidden');
+    }
+}
+
+// ========== PHASE R3 — active-reading toolbar ==========
+//
+// When the user selects text inside a Space's reading body, walk the
+// DOM up from the selection's container to find the nearest element
+// with a data-pid attribute (assigned server-side by Z.2's
+// assignPassageIds for research-workspace Spaces). If found, surface
+// the floating toolbar with the four verbs (Memo / Quote ship in
+// this slice; Code / Question stubbed to toast pending R3.3 / R3.4).
+//
+// The toolbar gates on data-pid being present, which means it
+// naturally only shows in research workspaces — family Spaces never
+// carry pids on their rendered blocks. No explicit workspace-type
+// check needed.
+
+let activeSelection = null;
+// Shape: { spaceId, spaceUri, spaceTitle, spaceCategory, pid, text }
+let composerVerb = null; // 'memo' | 'quote'
+
+function findPidAncestor(node, scope) {
+    while (node && node !== scope) {
+        if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-pid')) {
+            return node;
+        }
+        node = node.parentNode;
+    }
+    return null;
+}
+
+function hideReadingToolbar() {
+    const t = document.getElementById('reading-toolbar');
+    if (t) t.classList.add('hidden');
+    activeSelection = null;
+}
+
+function showReadingToolbar(rect) {
+    const t = document.getElementById('reading-toolbar');
+    if (!t) return;
+    t.classList.remove('hidden');
+    // Position above the selection's top edge, clamped to viewport.
+    // Width is auto from the contents — we measure after un-hiding.
+    const w = t.offsetWidth || 240;
+    const top = window.scrollY + rect.top - t.offsetHeight - 8;
+    let left = window.scrollX + rect.left + (rect.width / 2) - (w / 2);
+    // Clamp into viewport with an 8px margin.
+    const vpW = document.documentElement.clientWidth;
+    left = Math.max(8, Math.min(left, window.scrollX + vpW - w - 8));
+    t.style.top = `${Math.max(window.scrollY + 8, top)}px`;
+    t.style.left = `${left}px`;
+}
+
+document.addEventListener('mouseup', () => {
+    // Defer one tick so the selection state is settled by the time we
+    // measure (browsers fire mouseup before selection finalises).
+    setTimeout(handleSelectionChange, 0);
+});
+document.addEventListener('keyup', (e) => {
+    // Shift+arrow / Shift+Home / Shift+End extend selection via
+    // keyboard; refresh the toolbar on each keystroke.
+    if (e.shiftKey || e.key === 'Shift') setTimeout(handleSelectionChange, 0);
+});
+
+function handleSelectionChange() {
+    const detailVisible = !document.getElementById('spaces-detail-view').classList.contains('hidden')
+                       && !document.getElementById('space-detail-view').classList.contains('hidden');
+    if (!detailVisible) return hideReadingToolbar();
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return hideReadingToolbar();
+    const text = sel.toString().trim();
+    if (!text) return hideReadingToolbar();
+    const range = sel.getRangeAt(0);
+    const body = document.getElementById('space-detail-body');
+    if (!body || !body.contains(range.commonAncestorContainer)) return hideReadingToolbar();
+    const pidEl = findPidAncestor(range.commonAncestorContainer, body);
+    if (!pidEl) return hideReadingToolbar();
+    const space = spacesState.spaces.find(s => s.id === spacesState.currentId);
+    if (!space) return hideReadingToolbar();
+    activeSelection = {
+        spaceId: space.id,
+        spaceUri: space.uri,
+        spaceTitle: space.title || 'Untitled',
+        spaceCategory: space.category,
+        pid: pidEl.getAttribute('data-pid'),
+        text,
+    };
+    showReadingToolbar(range.getBoundingClientRect());
+}
+
+function openReadingComposer(verb) {
+    if (!activeSelection) return;
+    composerVerb = verb;
+    document.getElementById('reading-composer-title').textContent =
+        verb === 'memo' ? 'New memo' : 'New quote';
+    document.getElementById('reading-composer-source').textContent =
+        `${activeSelection.spaceTitle} (passage ${activeSelection.pid})`;
+    document.getElementById('reading-composer-passage').textContent = activeSelection.text;
+    document.getElementById('reading-composer-label').textContent =
+        verb === 'memo' ? 'Your noticing' : 'Gloss (optional — why this quote matters)';
+    const ta = document.getElementById('reading-composer-body');
+    ta.value = '';
+    ta.placeholder = verb === 'memo'
+        ? 'What did you notice? Memos are your voice — never auto-written.'
+        : 'Optional — context for the quote. Leave blank to keep it verbatim.';
+    document.getElementById('reading-composer-error').classList.add('hidden');
+    document.getElementById('reading-composer-modal').classList.add('open');
+    setTimeout(() => ta.focus(), 50);
+}
+
+function closeReadingComposer() {
+    document.getElementById('reading-composer-modal').classList.remove('open');
+    composerVerb = null;
+}
+
+async function saveReadingComposer() {
+    if (!composerVerb || !activeSelection) return;
+    const errBox = document.getElementById('reading-composer-error');
+    errBox.classList.add('hidden');
+    const body = document.getElementById('reading-composer-body').value.trim();
+
+    // Memos require a body — they're the researcher's voice. Quotes
+    // can ship with no gloss; the captured passage is the artefact.
+    if (composerVerb === 'memo' && !body) {
+        errBox.textContent = 'A memo needs your words — it is your noticing, not just the passage.';
+        errBox.classList.remove('hidden');
+        return;
+    }
+
+    const sourceRef = `source:${activeSelection.spaceUri}#pid:${activeSelection.pid}`;
+    let title, fullBody;
+    if (composerVerb === 'memo') {
+        title = `Memo · ${activeSelection.spaceTitle}`;
+        fullBody = `> ${activeSelection.text}\n\n${body}\n\n_— from [[${activeSelection.spaceTitle}]] (passage \`${activeSelection.pid}\`)_`;
+    } else {
+        title = `Quote · ${activeSelection.spaceTitle}`;
+        const gloss = body ? `\n\n${body}` : '';
+        fullBody = `> ${activeSelection.text}${gloss}\n\n_— [[${activeSelection.spaceTitle}]] (passage \`${activeSelection.pid}\`)_`;
+    }
+
+    const btn = document.getElementById('reading-composer-save');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+        const res = await api('/api/spaces', {
+            method: 'POST',
+            body: JSON.stringify({
+                title,
+                category: composerVerb,
+                body_markdown: fullBody,
+                source_references: [sourceRef],
+                tags: ['active-reading'],
+            }),
+        });
+        if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            errBox.textContent = d.error || `Couldn't save (HTTP ${res.status}).`;
+            errBox.classList.remove('hidden');
+            return;
+        }
+        closeReadingComposer();
+        hideReadingToolbar();
+        // Clear the browser selection so the toolbar doesn't immediately
+        // re-show after the modal closes.
+        try { window.getSelection().removeAllRanges(); } catch { /* fine */ }
+        showToast(composerVerb === 'memo' ? 'Memo saved' : 'Quote captured', false);
+        // Refresh the catalogue so the new Space appears in the chip strip.
+        await loadSpaces();
+    } catch (err) {
+        errBox.textContent = `Network error — ${String(err.message || err)}`;
+        errBox.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
     }
 }
 
