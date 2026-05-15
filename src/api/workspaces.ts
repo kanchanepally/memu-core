@@ -456,7 +456,32 @@ export async function workspaceRoutes(server: FastifyInstance) {
     try {
       const profileId = request.profileId as string;
       if (!profileId) return reply.code(401).send({ error: 'not authenticated' });
-      const validated = validateWorkspaceCreate(request.body);
+
+      // Phase R1 Story R1.5 — if the caller specified a `template`,
+      // look it up and let its workspace_type drive validation. The
+      // template wins over a user-supplied `type` (the PWA picker
+      // sets both consistently; we ignore drift between the two
+      // because the template is the explicit choice). Unknown
+      // template id → 422 — we surface the structured reason so the
+      // PWA can render "Template no longer available".
+      const body = (request.body && typeof request.body === 'object') ? request.body as Record<string, unknown> : {};
+      const templateId = typeof body.template === 'string' && body.template.trim() ? body.template.trim() : null;
+      let validatorInput: Record<string, unknown> = body;
+      if (templateId) {
+        const { getTemplate } = await import('./workspaceTemplates');
+        const template = await getTemplate(templateId);
+        if (!template) {
+          return reply.code(422).send({ error: 'template not found', reason: 'template_not_found', template: templateId });
+        }
+        // Substitute the template's type into the body BEFORE
+        // validation. If the user also pre-filled the name input
+        // with the template's name pattern, that flows through; if
+        // they overwrote it, their name wins (the PWA pre-fills only
+        // when the name input is empty).
+        validatorInput = { ...body, type: template.workspaceType };
+      }
+
+      const validated = validateWorkspaceCreate(validatorInput);
       if (!validated.ok) {
         return reply.code(400).send({ error: validated.reason });
       }
@@ -465,6 +490,24 @@ export async function workspaceRoutes(server: FastifyInstance) {
     } catch (err) {
       server.log.error(err);
       return reply.code(500).send({ error: 'Failed to create workspace' });
+    }
+  });
+
+  // List workspace templates — drives the create-modal "Start with" chip
+  // row in the PWA. No tenant filter; templates are global system records.
+  // Optional ?type= filters to a single workspace type (e.g. for a future
+  // create-from-existing-workspace flow that needs same-type templates).
+  server.get('/api/workspace-templates', async (request: AuthedRequest, reply: FastifyReply) => {
+    try {
+      const profileId = request.profileId as string;
+      if (!profileId) return reply.code(401).send({ error: 'not authenticated' });
+      const q = (request.query as { type?: string } | undefined) ?? {};
+      const { listTemplates } = await import('./workspaceTemplates');
+      const templates = await listTemplates(typeof q.type === 'string' && q.type ? q.type : undefined);
+      return reply.send({ templates });
+    } catch (err) {
+      server.log.error(err);
+      return reply.code(500).send({ error: 'Failed to list workspace templates' });
     }
   });
 
