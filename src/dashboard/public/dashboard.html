@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-phase-r1-categories">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-15-pdf-and-workspace-fixes">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -3630,6 +3630,22 @@ async function loadWorkspaces() {
         await loadSelfContextForWorkspaces();
         renderWorkspaces();
         renderWorkspacePill();
+        // Phase R1 hotfix — the chip strip on the Spaces tab is keyed
+        // on the active workspace's type via effectiveActiveWorkspace().
+        // On initial page load, the Spaces tab can render BEFORE
+        // workspaceState is populated (the user lands on Spaces and the
+        // workspace switcher's initial load hasn't completed yet) —
+        // effectiveActiveWorkspace() returns null and the chips fall
+        // back to FAMILY_SET even when the X-Memu-Workspace-Id header
+        // (sourced from localStorage) is correctly pointing at a
+        // research workspace. Result was the observed split state:
+        // chips say "People / Routines / Household / …" while the
+        // Spaces below are actually the research workspace's content.
+        // Re-rendering chips after workspaceState lands self-heals.
+        if (typeof renderSpaceChips === 'function'
+            && !document.getElementById('view-spaces').classList.contains('hidden')) {
+            renderSpaceChips();
+        }
     } catch (err) {
         console.error('[loadWorkspaces]', err);
         container.innerHTML = `<div class="text-error" style="padding:var(--space-md);">Network error — ${esc(String(err.message || err))}</div>`;
@@ -4495,8 +4511,25 @@ async function mountPdfIfAvailable(space) {
         return;
     }
     try {
+        // Fetch the PDF via api() so auth (Bearer) + workspace header
+        // (X-Memu-Workspace-Id) flow through the same path as every
+        // other request. pdf.js's getDocument({url}) would otherwise
+        // do a plain fetch() without our headers and 401. ArrayBuffer
+        // is handed to pdf.js via the `data` discriminator (handled in
+        // /vendor/memu-pdf-viewer.mjs).
         const url = `/api/spaces/${encodeURIComponent(space.id)}/document${idx > 0 ? '?idx=' + idx : ''}`;
-        __activePdfHandle = await mod.renderPdfInto(url, container);
+        const res = await api(url);
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status}${body ? ' — ' + body.slice(0, 200) : ''}`);
+        }
+        const buffer = await res.arrayBuffer();
+        // Bail if the user navigated away while bytes were in flight.
+        if (spacesState.currentId !== space.id) {
+            container.classList.add('hidden');
+            return;
+        }
+        __activePdfHandle = await mod.renderPdfInto(new Uint8Array(buffer), container);
     } catch (err) {
         console.error('[Phase Z] PDF render failed:', err);
         container.innerHTML = `<div class="pdf-error">Couldn't render PDF: ${esc(String(err && err.message || err))}</div>`;

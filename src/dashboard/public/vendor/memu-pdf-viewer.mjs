@@ -37,14 +37,21 @@ function effectiveScale(baseScale) {
 }
 
 /**
- * Render `pdfUrl` into `container`. Returns a handle with .destroy().
+ * Render a PDF into `container`. Returns a handle with .destroy().
+ *
+ * Accepts either:
+ *   - a string URL — pdf.js fetches it directly (no auth, public PDFs only)
+ *   - a Uint8Array / ArrayBuffer — the caller has already fetched the
+ *     bytes (used by Memu so auth + workspace headers can flow through
+ *     the existing api() helper rather than teaching pdf.js about our
+ *     X-Memu-* headers)
  *
  * The container is wiped on entry — the viewer takes ownership. Pages
  * render sequentially (not all in parallel) to keep memory bounded on
  * large documents; a typical 40-page paper renders progressively in
  * 2–4s on a modern desktop.
  */
-export async function renderPdfInto(pdfUrl, container) {
+export async function renderPdfInto(source, container) {
   if (!container) throw new Error('renderPdfInto: container is required');
 
   container.innerHTML = '';
@@ -69,9 +76,17 @@ export async function renderPdfInto(pdfUrl, container) {
     },
   };
 
+  // Discriminate: string → URL-based fetch (pdf.js handles it);
+  // ArrayBuffer / Uint8Array → already-fetched bytes (Memu's path).
+  // ArrayBuffer must be converted to Uint8Array — pdf.js's `data`
+  // option wants typed-array bytes.
+  const docInit = (typeof source === 'string')
+    ? { url: source }
+    : { data: source instanceof Uint8Array ? source : new Uint8Array(source) };
+
   let pdfDoc;
   try {
-    pdfDoc = await getDocument({ url: pdfUrl }).promise;
+    pdfDoc = await getDocument(docInit).promise;
   } catch (err) {
     if (cancelled) return handle;
     loading.textContent = `Couldn't load the PDF: ${err && err.message ? err.message : err}`;

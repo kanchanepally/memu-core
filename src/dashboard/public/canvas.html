@@ -17,19 +17,34 @@
 <script>
 // Auth gate — same shape as dashboard.html.
 const AUTH_KEY = 'memu_auth';
+const ACTIVE_WORKSPACE_KEY = 'memu_active_workspace_id';
 function getAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY)) || {}; } catch { return {}; } }
+function getActiveWorkspaceId() { return localStorage.getItem(ACTIVE_WORKSPACE_KEY); }
 const auth = getAuth();
 if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
 
+// Mirrors dashboard.html's api() helper post-Build-Spec-1 multi-Collective.
+// Critically threads X-Memu-Workspace-Id from localStorage — without
+// this, the server's resolveActiveWorkspace defaults to the user's
+// personal workspace and /api/spaces/graph returns its (usually empty)
+// graph regardless of which workspace the user thinks they're on.
+// Symptom: blank canvas for any user with > 1 workspace. The header
+// is omitted when nothing's selected; server falls back to
+// personal-then-first per its own resolver.
 async function api(path, opts = {}) {
-    const res = await fetch(auth.serverUrl + path, {
-        ...opts,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + auth.apiKey,
-            ...(opts.headers || {}),
-        },
-    });
+    const callerHeaders = opts.headers || {};
+    const explicitWorkspaceHeader =
+        'X-Memu-Workspace-Id' in callerHeaders || 'x-memu-workspace-id' in callerHeaders;
+    const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + auth.apiKey,
+        ...callerHeaders,
+    };
+    if (!explicitWorkspaceHeader) {
+        const wid = getActiveWorkspaceId();
+        if (wid) headers['X-Memu-Workspace-Id'] = wid;
+    }
+    const res = await fetch(auth.serverUrl + path, { ...opts, headers });
     return res;
 }
 </script>
