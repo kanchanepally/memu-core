@@ -67,16 +67,36 @@ services:
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://memu-hub:3100}
 
       # ---- Database (own pgvector container, on internal network) ----
-      # Standalone default: runtime + migrations both connect as the
-      # entrypoint-created superuser `memu`. RLS policies exist but are
-      # bypassed (acceptable for single-household personal use).
+      # Both URLs are .env-overridable. Default: runtime + migrations
+      # both connect as the entrypoint-created superuser `memu`. RLS
+      # policies exist but are bypassed (acceptable for single-household
+      # personal use, breaks down the moment multi-Collective is in play).
       #
-      # To enforce RLS (TD-01): set MEMU_APP_DB_PASSWORD in .env, then
-      # change DATABASE_URL below to use `memu_app:${MEMU_APP_DB_PASSWORD}`
-      # and add MEMU_DB_MIGRATE_URL pointing at `memu:${DB_PASSWORD}`.
-      # The boot assertion will confirm with a green check on next start.
-      - DATABASE_URL=postgresql://memu:${DB_PASSWORD}@memu_core_standalone_db:5432/memu_core
-      - MEMU_DB_MIGRATE_URL=${MEMU_DB_MIGRATE_URL:-}
+      # To enforce RLS (TD-01) — required for multi-Collective scoping
+      # to actually filter:
+      #
+      #   1. Generate a runtime password: openssl rand -hex 24
+      #   2. Add to .env:
+      #        MEMU_APP_DB_PASSWORD=<that hex>
+      #   3. Delete the schema_migrations row for 036 so it re-runs:
+      #        DELETE FROM schema_migrations WHERE filename = '036_app_role.sql';
+      #   4. Recreate the api container:
+      #        docker compose up -d --force-recreate memu_core_standalone_api
+      #      Migration 036 now creates the memu_app NOSUPERUSER role.
+      #   5. Add to .env (substitute the values from step 1 + your
+      #      existing DB_PASSWORD):
+      #        DATABASE_URL=postgresql://memu_app:<MEMU_APP_DB_PASSWORD>@memu_core_standalone_db:5432/memu_core
+      #        MEMU_DB_MIGRATE_URL=postgresql://memu:<DB_PASSWORD>@memu_core_standalone_db:5432/memu_core
+      #   6. Recreate again. Boot logs should now show
+      #      "✅ Runtime DB role 'memu_app' is NOSUPERUSER + NOBYPASSRLS".
+      #
+      # MEMU_DB_MIGRATE_URL default mirrors the superuser DATABASE_URL
+      # default — so an operator who overrides ONLY DATABASE_URL to
+      # memu_app still gets a working migration pool out of the box
+      # (without this default, migrations would inherit the memu_app
+      # URL and fail on DDL).
+      - DATABASE_URL=${DATABASE_URL:-postgresql://memu:${DB_PASSWORD}@memu_core_standalone_db:5432/memu_core}
+      - MEMU_DB_MIGRATE_URL=${MEMU_DB_MIGRATE_URL:-postgresql://memu:${DB_PASSWORD}@memu_core_standalone_db:5432/memu_core}
       - MEMU_APP_DB_PASSWORD=${MEMU_APP_DB_PASSWORD:-}
       - MEMU_REQUIRE_NOSUPERUSER=${MEMU_REQUIRE_NOSUPERUSER:-}
 
