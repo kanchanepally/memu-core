@@ -627,39 +627,66 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== SPACES TAB ==================== -->
-<div id="view-spaces" class="container-wide hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+<!-- v3 redesign: list-view re-skinned against pwa-redesign/screens/spaces.html.
+     The detail-view + edit-view + share/connect/create modals below
+     are left intact — they're not covered by the template and altering
+     them risks breaking the share-to-edit / inline-edit / Connect
+     wiring. Preserved ids: view-spaces, spaces-list-view,
+     spaces-canvas-link (link → /canvas.html), spaces-chips (renderer
+     target), continue-reading + continue-reading-title +
+     continue-reading-meta + resumeContinueReading(), spaces-empty,
+     spaces-feature (renderer target), spaces-grid (renderer target).
+     The detail-view / edit-view / modals below preserve every existing
+     id and onclick verbatim. -->
+<div id="view-spaces" class="container-wide memu-glow-bg hidden" style="padding: 40px 48px 80px;">
     <!-- List view: chips + grid + feature card -->
     <div id="spaces-list-view">
-        <header class="spaces-masthead">
-            <div class="spaces-masthead-row">
-                <div>
-                    <div class="briefing-eyebrow">Spaces</div>
-                    <div class="briefing-title">What Memu knows</div>
-                    <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
+        <div style="max-width: 1080px; margin: 0 auto;">
+            <header class="spaces-masthead">
+                <div class="spaces-masthead-row" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 8px;">
+                    <div>
+                        <div class="briefing-eyebrow eyebrow">Spaces</div>
+                        <h1 class="briefing-title serif-display" style="font-size: 48px; line-height: 1.05;">
+                            What Memu <em class="serif-accent">knows</em>
+                        </h1>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                        <a class="spaces-canvas-link btn-pill btn-pill-secondary" href="/canvas.html" title="Open the Spaces Canvas">
+                            <svg class="icon" width="13" height="13"><use href="/marks/icons.svg#icon-link"></use></svg>
+                            <span>Canvas view</span>
+                        </a>
+                        <button class="btn-pill btn-pill-primary" onclick="openSpaceCreate()" title="New Space">
+                            <svg class="icon" width="13" height="13"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                            <span>New Space</span>
+                        </button>
+                    </div>
                 </div>
-                <a class="spaces-canvas-link" href="/canvas.html" title="Open the Spaces Canvas">
-                    <svg class="icon" width="16" height="16"><use href="#icon-23"></use></svg>
-                    <span>Canvas view</span>
-                </a>
-            </div>
-        </header>
+                <p class="briefing-subtitle italic-quiet" style="font-size: 17px; max-width: 620px; line-height: 1.5; margin-bottom: 20px;">
+                    Compiled understanding — one page per topic. Every Space is a living context Memu reasons across.
+                </p>
+            </header>
 
-        <div id="spaces-chips" class="spaces-chips"></div>
+            <!-- Category chips — populated per workspace type by JS. -->
+            <div id="spaces-chips" class="spaces-chips" style="display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border-soft); margin-bottom: 24px;"></div>
 
-        <!-- Phase Z Story Z.6b — Continue-reading affordance. Surfaces
-             the user's most-recently-opened Space (excluding the one
-             currently open). Hidden when there's no recently-read
-             history; renderContinueReading() owns the visibility. -->
-        <button id="continue-reading" class="continue-reading hidden" onclick="resumeContinueReading()">
-            <span class="continue-reading-eyebrow">Continue reading</span>
-            <span class="continue-reading-title" id="continue-reading-title">…</span>
-            <span class="continue-reading-meta" id="continue-reading-meta">…</span>
-        </button>
+            <!-- Phase Z Story Z.6b — Continue-reading affordance. -->
+            <button id="continue-reading" class="continue-reading memu-card hidden" onclick="resumeContinueReading()" style="display: flex; align-items: center; gap: 16px; padding: 14px 18px; margin-bottom: 28px; cursor: pointer; text-align: left; width: 100%;">
+                <div style="font-size: 22px;">📄</div>
+                <div style="flex: 1; min-width: 0;">
+                    <span class="continue-reading-eyebrow eyebrow" style="display: block; margin-bottom: 3px;">Continue reading</span>
+                    <span class="continue-reading-title serif-display" id="continue-reading-title" style="font-size: 16px; font-style: italic; font-weight: 500; display: block;">…</span>
+                </div>
+                <span class="continue-reading-meta mono" id="continue-reading-meta" style="font-size: 12px; color: var(--text-3); flex-shrink: 0;">…</span>
+            </button>
 
-        <div id="spaces-empty" class="empty-state hidden">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
+            <div id="spaces-empty" class="empty-state hidden italic-quiet" style="font-size: 17px; padding: 56px 24px; text-align: center; color: var(--text-2);">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
 
-        <div id="spaces-feature" class="spaces-feature"></div>
-        <div id="spaces-grid" class="spaces-grid"></div>
+            <!-- Feature card target — populated by JS (first item, larger). -->
+            <div id="spaces-feature" class="spaces-feature"></div>
+
+            <!-- Remaining-spaces grid target. -->
+            <div id="spaces-grid" class="spaces-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;"></div>
+        </div>
     </div>
 
     <!-- Detail view: full-canvas Space page. Replaces the old modal.
