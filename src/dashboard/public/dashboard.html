@@ -999,30 +999,43 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== LISTS TAB ==================== -->
-<div id="view-lists" class="container lists-canvas hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
-    <header class="spaces-masthead">
-        <div class="briefing-eyebrow">Lists</div>
-        <div class="briefing-title">What's on your plate</div>
-        <div class="briefing-subtitle">Tasks and shopping, committed.</div>
-    </header>
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/lists.html.
+     Preserved ids: view-lists (outer wrapper), lists-seg-tasks +
+     lists-seg-shopping (active class is toggled by switchListKind),
+     lists-count-task + lists-count-shopping, lists-add-input,
+     lists-add-btn, addListItemSubmit(), lists-items (renderer
+     target), lists-empty. -->
+<div id="view-lists" class="container lists-canvas memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 820px; margin: 0 auto;">
+        <header class="spaces-masthead">
+            <div class="briefing-eyebrow eyebrow">Lists</div>
+            <h1 class="briefing-title serif-display" style="font-size: 48px; line-height: 1.05;">Get it <em class="serif-accent">done</em>.</h1>
+            <p class="briefing-subtitle italic-quiet" style="font-size: 17px; max-width: 540px; line-height: 1.5; margin-bottom: 28px;">
+                Quick capture for tasks and shopping. Tag with categories, set due dates, or let Memu parse your natural language.
+            </p>
+        </header>
 
-    <div class="lists-segment" role="tablist">
-        <button class="lists-segment-btn active" id="lists-seg-tasks" onclick="switchListKind('task')" role="tab">
-            <span>Tasks</span><span class="lists-count-badge" id="lists-count-task">0</span>
-        </button>
-        <button class="lists-segment-btn" id="lists-seg-shopping" onclick="switchListKind('shopping')" role="tab">
-            <span>Shopping</span><span class="lists-count-badge" id="lists-count-shopping">0</span>
-        </button>
+        <div class="lists-segment" role="tablist" style="display: inline-flex; padding: 3px; border-radius: 100px; background: rgba(14,12,30,0.04); border: 1px solid var(--border-soft); margin-bottom: 20px;">
+            <button class="lists-segment-btn active" id="lists-seg-tasks" onclick="switchListKind('task')" role="tab" style="padding: 7px 20px; border-radius: 100px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; border: none; box-shadow: var(--shadow-card); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <span>Tasks</span><span class="lists-count-badge mono" id="lists-count-task" style="font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 100px; background: var(--brand-soft); color: var(--brand);">0</span>
+            </button>
+            <button class="lists-segment-btn" id="lists-seg-shopping" onclick="switchListKind('shopping')" role="tab" style="padding: 7px 20px; border-radius: 100px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <span>Shopping</span><span class="lists-count-badge mono" id="lists-count-shopping" style="font-size: 11px; font-weight: 600;">0</span>
+            </button>
+        </div>
+
+        <form class="lists-add-row" onsubmit="event.preventDefault();addListItemSubmit();" style="display: flex; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px 12px 18px; box-shadow: var(--shadow-card); margin-bottom: 10px;">
+            <svg class="icon" width="16" height="16" style="color: var(--text-3);"><use href="/marks/icons.svg#icon-plus"></use></svg>
+            <input type="text" id="lists-add-input" class="input" placeholder='Add a task — try "call HMRC by Friday #work"' maxlength="200" autocomplete="off" style="flex: 1; border: none; outline: none; background: transparent; font-family: var(--font-ui); font-size: 14.5px; color: var(--text);">
+            <button type="submit" class="btn btn-primary btn-sm btn-pill btn-pill-primary" id="lists-add-btn" style="padding: 7px 16px;">Add</button>
+        </form>
+        <div class="text-muted italic-quiet" style="font-size: 12px; padding: 0 4px 24px; line-height: 1.6;">
+            Click an item to edit category or due date. Use <span class="mono-chip" style="font-size: 11px;">#category</span> and natural dates like <span class="mono-chip" style="font-size: 11px;">by Friday</span>, <span class="mono-chip" style="font-size: 11px;">tomorrow</span>.
+        </div>
+
+        <div id="lists-items"></div>
+        <div id="lists-empty" class="empty-state hidden italic-quiet" style="font-size: 16px; padding: 40px 0; text-align: center;">Nothing here yet. Add one above, or just tell Memu in chat.</div>
     </div>
-
-    <form class="lists-add-row" onsubmit="event.preventDefault();addListItemSubmit();">
-        <input type="text" id="lists-add-input" class="input" placeholder="Add a task… try &quot;call HMRC by Friday #work&quot;" maxlength="200" autocomplete="off">
-        <button type="submit" class="btn btn-primary btn-sm" id="lists-add-btn">Add</button>
-    </form>
-    <div class="text-muted" style="font-size:12px;padding:0 4px 8px;">Click an item to edit category or due date. Use <code>#category</code> and "by Friday" / "tomorrow" / "in 3 days" to set them on creation.</div>
-
-    <div id="lists-items"></div>
-    <div id="lists-empty" class="empty-state hidden">Nothing here yet. Add one above, or just tell Memu in chat.</div>
 </div>
 
 <!-- Lists edit modal — opens on item click. Lets the user edit text, note,
