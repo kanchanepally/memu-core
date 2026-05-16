@@ -394,48 +394,50 @@ async function api(path, opts = {}) {
      Privacy provenance footer pinned at the end.
 
      Tab id stays 'today' to avoid breaking switchTab() callers. -->
-<div id="view-today" class="today-canvas hidden">
+<!-- v3 redesign: Today/Dashboard re-skin against pwa-redesign/screens/dashboard.html.
+     Five zones preserved — header / what's happening / what I noticed /
+     what I'm thinking / news. Every JS-bound id is verbatim: date-text,
+     greeting, today-lens-pill, today-lens-label, banner-error,
+     schedule-lens-meta, calendar-section, open-commitments,
+     noticed-container, zone-thinking-glow, three askMemuStarter buttons,
+     news-refreshed-at, news-refresh-btn, news-feed, news-more-btn,
+     news-more-label, today-provenance. The outer wrapper keeps
+     id="view-today" + class="today-canvas hidden" so switchTab() and
+     style.css continue to work. -->
+<div id="view-today" class="today-canvas memu-glow-bg hidden" style="padding: 40px 48px 80px; max-width: 1080px; margin: 0 auto;">
 
     <!-- ─── Zone 0 — Context header ─────────────────────────────────── -->
-    <header class="today-header">
+    <header class="today-header" style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 44px; gap: 16px;">
         <div class="today-header-meta">
-            <span class="today-header-date" id="date-text"></span>
-            <h1 class="today-header-greeting" id="greeting"></h1>
+            <div class="mono today-header-date" id="date-text" style="font-size: 13px; color: var(--text-3); letter-spacing: 0.04em; margin-bottom: 10px;"></div>
+            <h1 class="today-header-greeting serif-display" id="greeting" style="font-size: 52px; line-height: 1.0;"></h1>
         </div>
-        <button class="today-lens-pill" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
-            <svg class="icon" width="13" height="13"><use href="#icon-11"></use></svg>
-            <span id="today-lens-label">Me</span>
-            <svg class="icon" width="10" height="10"><use href="#icon-12"></use></svg>
+        <button class="today-lens-pill btn-pill btn-pill-secondary" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
+            <span class="pulse-dot"></span>
+            <span>Lens: <span id="today-lens-label">Me</span></span>
+            <svg class="icon" width="10" height="10"><use href="/marks/icons.svg#icon-chev"></use></svg>
         </button>
     </header>
 
     <div id="banner-error" class="banner-error hidden"></div>
 
     <!-- ─── Zone 1 — What's happening ───────────────────────────────── -->
-    <!-- Two-column grid on desktop: schedule (55%) + open commitments (45%).
-         Stacks on mobile via the responsive breakpoint. Each card lives in
-         its own surface; the eye groups them as the "today" zone. -->
-    <section class="zone zone-now">
-        <div class="zone-eyebrow">
-            <svg class="icon" width="11" height="11"><use href="#icon-13"></use></svg>
-            <span>What's happening</span>
-        </div>
-        <div class="zone-now-grid">
-            <article class="zone-card zone-now-schedule">
-                <header class="zone-card-head">
-                    <svg class="icon" width="14" height="14"><use href="#icon-5"></use></svg>
-                    <span>Schedule</span>
-                    <!-- Phase A.9.1 — show-the-work: when the lens widens to
-                         Family, name exactly how many calendars were merged
-                         so the user can read what the pill actually did. -->
-                    <span class="zone-card-head-meta" id="schedule-lens-meta"></span>
+    <section class="zone zone-now" style="margin-bottom: 48px;">
+        <div class="zone-eyebrow eyebrow">What's happening</div>
+        <div class="zone-now-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px;">
+            <article class="zone-card zone-now-schedule memu-card">
+                <header class="zone-card-head" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft);">
+                    <svg class="icon" width="14" height="14" style="color: var(--text-2);"><use href="/marks/icons.svg#icon-cal"></use></svg>
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--text);">Schedule</span>
+                    <!-- Phase A.9.1 — when lens=family, render N calendars merged. -->
+                    <span class="zone-card-head-meta mono" id="schedule-lens-meta" style="font-size: 11px; color: var(--text-3); margin-left: auto;"></span>
                 </header>
                 <div id="calendar-section" class="zone-now-list"></div>
             </article>
-            <article class="zone-card zone-now-open">
-                <header class="zone-card-head">
-                    <svg class="icon" width="14" height="14"><use href="#icon-14"></use></svg>
-                    <span>Open commitments</span>
+            <article class="zone-card zone-now-open memu-card">
+                <header class="zone-card-head" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft);">
+                    <svg class="icon" width="14" height="14" style="color: var(--text-2);"><use href="/marks/icons.svg#icon-check"></use></svg>
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--text);">Open commitments</span>
                 </header>
                 <div id="open-commitments" class="zone-now-list"></div>
             </article>
@@ -443,90 +445,71 @@ async function api(path, opts = {}) {
     </section>
 
     <!-- ─── Zone 2 — What I noticed ─────────────────────────────────── -->
-    <!-- Reflection findings, contradictions, stale facts, patterns, lapses.
-         Sits on a tonally-recessed surface so it reads as "Memu's thinking"
-         rather than "things to do". The eyebrow diamond ◈ marks every
-         observation card as Memu-sourced. -->
-    <section class="zone zone-noticed">
-        <div class="zone-eyebrow">
-            <svg class="icon" width="11" height="11"><use href="#icon-15"></use></svg>
-            <span>What I noticed</span>
-        </div>
-        <div id="noticed-container" class="zone-noticed-stack"></div>
+    <section class="zone zone-noticed" style="margin-bottom: 48px;">
+        <div class="zone-eyebrow eyebrow">What I noticed</div>
+        <div id="noticed-container" class="zone-noticed-stack" style="display: flex; flex-direction: column; gap: 12px;"></div>
     </section>
 
     <!-- ─── Zone 3 — What I'm thinking ──────────────────────────────── -->
-    <!-- MVP empty state. Three starter prompts that route to chat with a
-         seeded message — these are the discovery surfaces that will land
-         in Phase A.10 (curated local events / recipes / activity matching).
-         The soft radial glow distinguishes this zone as the "where Memu
-         earns its keep" surface. -->
-    <section class="zone zone-thinking">
+    <!-- Three starter prompts route to chat with a seeded message. The
+         soft radial glow distinguishes this zone as the "where Memu earns
+         its keep" surface. Card illustrations come from /marks/. -->
+    <section class="zone zone-thinking" style="margin-bottom: 48px; position: relative;">
         <div class="zone-thinking-glow" aria-hidden="true"></div>
-        <div class="zone-eyebrow">
-            <svg class="icon" width="11" height="11"><use href="#icon-16"></use></svg>
-            <span>What I'm thinking</span>
-        </div>
-        <div class="zone-thinking-intro">
+        <div class="zone-eyebrow eyebrow">What I'm thinking</div>
+        <div class="zone-thinking-intro italic-quiet" style="font-size: 17px; line-height: 1.5; max-width: 620px; margin-bottom: 18px;">
             Memu is starting to learn what matters to you. Try one of these to surface
             what's worth your attention this week.
         </div>
-        <div class="zone-thinking-grid">
-            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth doing this weekend with the family? Consider Robin's age and our recent activities.')">
-                <div class="thinking-card-icon">
-                    <svg class="icon" width="16" height="16"><use href="#icon-17"></use></svg>
-                </div>
-                <div class="thinking-card-title">Weekend ideas</div>
-                <div class="thinking-card-sub">Local events that fit our family</div>
+        <div class="zone-thinking-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+            <button class="thinking-card memu-card memu-card-illustrated" type="button" onclick="askMemuStarter('What's worth doing this weekend with the family? Consider Robin's age and our recent activities.')" style="padding: 24px; min-height: 170px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px;">
+                <div class="card-mark thinking-card-icon"><img src="/marks/mark-weekend.svg" alt="" width="56" height="56" style="color: var(--brand);"></div>
+                <div class="thinking-card-title serif-display" style="font-size: 22px; font-weight: 500; margin-top: 40px; max-width: 200px; line-height: 1.2;">Weekend ideas</div>
+                <div class="thinking-card-sub" style="font-size: 13px; color: var(--text-3); line-height: 1.5; max-width: 220px;">Local events that fit our family</div>
+                <div style="margin-top: auto; font-size: 12px; color: var(--brand); font-weight: 600;">Ask Memu →</div>
             </button>
-            <button class="thinking-card" type="button" onclick="askMemuStarter('What should we eat this week? Suggest 3 recipes that work for our household given anything you know about our preferences.')">
-                <div class="thinking-card-icon">
-                    <svg class="icon" width="16" height="16"><use href="#icon-18"></use></svg>
-                </div>
-                <div class="thinking-card-title">Meals this week</div>
-                <div class="thinking-card-sub">Recipes from what you've told me</div>
+            <button class="thinking-card memu-card memu-card-illustrated" type="button" onclick="askMemuStarter('What should we eat this week? Suggest 3 recipes that work for our household given anything you know about our preferences.')" style="padding: 24px; min-height: 170px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px;">
+                <div class="card-mark thinking-card-icon"><img src="/marks/mark-meals.svg" alt="" width="56" height="56" style="color: var(--brand);"></div>
+                <div class="thinking-card-title serif-display" style="font-size: 22px; font-weight: 500; margin-top: 40px; max-width: 200px; line-height: 1.2;">Meals this week</div>
+                <div class="thinking-card-sub" style="font-size: 13px; color: var(--text-3); line-height: 1.5; max-width: 220px;">Recipes from what you've told me</div>
+                <div style="margin-top: auto; font-size: 12px; color: var(--brand); font-weight: 600;">Ask Memu →</div>
             </button>
-            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth my attention this week? Look across my Spaces, calendar, and any patterns you''ve noticed and tell me what I might be missing.')">
-                <div class="thinking-card-icon">
-                    <svg class="icon" width="16" height="16"><use href="#icon-10"></use></svg>
-                </div>
-                <div class="thinking-card-title">What I'm missing</div>
-                <div class="thinking-card-sub">Across Spaces, calendar, patterns</div>
+            <button class="thinking-card memu-card memu-card-illustrated" type="button" onclick="askMemuStarter('What's worth my attention this week? Look across my Spaces, calendar, and any patterns you''ve noticed and tell me what I might be missing.')" style="padding: 24px; min-height: 170px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px;">
+                <div class="card-mark thinking-card-icon"><img src="/marks/mark-missing.svg" alt="" width="56" height="56" style="color: var(--brand);"></div>
+                <div class="thinking-card-title serif-display" style="font-size: 22px; font-weight: 500; margin-top: 40px; max-width: 200px; line-height: 1.2;">What I'm missing</div>
+                <div class="thinking-card-sub" style="font-size: 13px; color: var(--text-3); line-height: 1.5; max-width: 220px;">Across Spaces, calendar, patterns</div>
+                <div style="margin-top: auto; font-size: 12px; color: var(--brand); font-weight: 600;">Ask Memu →</div>
             </button>
         </div>
     </section>
 
     <!-- ─── Zone 4 — News (demoted) ─────────────────────────────────── -->
-    <section class="zone zone-news">
-        <div class="zone-news-head">
-            <div class="zone-eyebrow">
-                <svg class="icon" width="11" height="11"><use href="#icon-19"></use></svg>
+    <section class="zone zone-news" style="margin-bottom: 32px;">
+        <div class="zone-news-head" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+            <div class="zone-eyebrow eyebrow" style="margin-bottom: 0;">
                 <span>News</span>
-                <span class="zone-news-refreshed" id="news-refreshed-at"></span>
+                <span class="zone-news-refreshed mono" id="news-refreshed-at" style="font-size: 11px; color: var(--text-3); margin-left: 8px; letter-spacing: 0; text-transform: none; font-weight: 500;"></span>
             </div>
-            <button class="zone-news-refresh" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button">
-                <svg class="icon" width="14" height="14"><use href="#icon-20"></use></svg>
+            <button class="zone-news-refresh btn-pill btn-pill-secondary" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button" style="padding: 4px 10px;">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-arrow"></use></svg>
             </button>
         </div>
         <div id="news-feed" class="news-feed">
-            <div class="news-loading">Pulling today's headlines…</div>
+            <div class="news-loading italic-quiet">Pulling today's headlines…</div>
         </div>
-        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button">
+        <button class="news-more-btn btn-pill btn-pill-secondary hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button" style="margin-top: 12px;">
             <span id="news-more-label">More news</span>
-            <svg class="icon" width="12" height="12"><use href="#icon-12"></use></svg>
+            <svg class="icon" width="12" height="12"><use href="/marks/icons.svg#icon-chev"></use></svg>
         </button>
     </section>
 
     <!-- ─── Privacy provenance footer ───────────────────────────────── -->
-    <!-- Replaces the older single-line footer with show-the-work content:
-         which models / data sources touched this view. A live dot signals
-         the privacy promise is mechanical, not marketing. -->
-    <footer class="today-provenance">
-        <span class="today-provenance-dot" aria-hidden="true"></span>
+    <footer class="today-provenance" style="display: flex; align-items: center; gap: 10px; padding: 16px 4px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border-soft);">
+        <span class="today-provenance-dot" aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); flex-shrink: 0;"></span>
         <span class="today-provenance-text">
-            Anonymised via Digital Twin · External models touched: <strong>0</strong> · Data left your household: <strong>0</strong>
+            Anonymised via Digital Twin · External models touched: <strong class="mono" style="color: var(--text-2); font-weight: 600;">0</strong> · Data left your household: <strong class="mono" style="color: var(--text-2); font-weight: 600;">0</strong>
         </span>
-        <a class="today-provenance-link" href="#" onclick="switchTab('ledger');return false;">See the ledger →</a>
+        <a class="today-provenance-link" href="#" onclick="switchTab('ledger');return false;" style="margin-left: auto; color: var(--brand); font-weight: 600;">See the ledger →</a>
     </footer>
 </div>
 
