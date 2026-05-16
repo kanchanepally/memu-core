@@ -4837,13 +4837,16 @@ function showReadingToolbar(rect) {
     t.classList.remove('hidden');
     // Position above the selection's top edge, clamped to viewport.
     // Width is auto from the contents — we measure after un-hiding.
+    // v3 scroll-model: .app-main owns scroll (not body), so window.scrollY
+    // is always 0. rect.* are viewport-relative; the toolbar is now
+    // position: fixed so we can use rect coords directly.
     const w = t.offsetWidth || 240;
-    const top = window.scrollY + rect.top - t.offsetHeight - 8;
-    let left = window.scrollX + rect.left + (rect.width / 2) - (w / 2);
+    const top = rect.top - t.offsetHeight - 8;
+    let left = rect.left + (rect.width / 2) - (w / 2);
     // Clamp into viewport with an 8px margin.
     const vpW = document.documentElement.clientWidth;
-    left = Math.max(8, Math.min(left, window.scrollX + vpW - w - 8));
-    t.style.top = `${Math.max(window.scrollY + 8, top)}px`;
+    left = Math.max(8, Math.min(left, vpW - w - 8));
+    t.style.top = `${Math.max(8, top)}px`;
     t.style.left = `${left}px`;
 }
 

@@ -2477,7 +2477,18 @@ textarea.input {
    App shell — collapsible sidebar (Littlebird-inspired layout, 2026-04-26)
 
    Two viewports, two default behaviours: - Desktop (≥769px): sidebar is part of the flex row, takes 240px when visible. When hidden, its width collapses to 0 (padding/border too) so the canvas naturally absorbs the freed space. - Mobile (≤768px): sidebar is `position: fixed` overlay sliding in from the left, with a backdrop that dismisses on tap. The flex layout becomes single-column (sidebar is out of flow). The persisted state is `body.sidebar-shown`. JS sets it on boot based on viewport (default visible on desktop, default hidden on mobile) and updates it on toggle. CSS interprets "shown" appropriately per viewport. State persists in sessionStorage across page nav. IMPORTANT — uses flex, not grid. An earlier grid attempt put sidebar at `position: fixed` which removed it from grid flow, so `app-main` got auto-placed into column 1 (the 0-width column) and collapsed to ~0px. Flex with width transitions sidesteps that entirely — `app-main` always takes `flex: 1` of whatever's left. ========================================================================== */ .app-shell { display: flex;
-  min-height: 100vh;
+  /* v3 scroll-model fix: lock the shell to viewport height and let the
+     canvas (.app-main) own the scroll. Previously the body scrolled and
+     the sidebar was position: sticky inside .app-shell {min-height:100vh}
+     — sticky disengages once the body scrolls past the containing block,
+     so the sidebar scrolled away on long pages (Today, Spaces). Pinning
+     the shell to height: 100vh + overflow: hidden, and giving .app-main
+     overflow-y: auto, means the sidebar is always visible regardless of
+     canvas scroll depth. 100dvh is the dynamic viewport (Android Chrome
+     URL bar) preferred when supported. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   align-items: stretch;
 }
 
@@ -2837,6 +2848,11 @@ textarea.input {
   flex: 1;
   min-width: 0;
   position: relative;
+  /* v3 scroll-model: app-main is now the canvas scroll container.
+     The shell is locked to 100vh so the body never scrolls; main content
+     scrolls internally and the sidebar remains fixed. */
+  overflow-y: auto;
+  height: 100%;
 }
 
 /* Topbar — sticky hamburger + page title at the top of the canvas. */
@@ -3954,7 +3970,13 @@ body.focus-mode .focus-exit {
    -------------------------------------------------------------------------- */
 
 .reading-toolbar {
-  position: absolute;
+  /* v3 scroll-model: switched from absolute to fixed. Since .app-main is
+     now the scroll container (not body), window.scrollY is always 0 and
+     getBoundingClientRect() returns viewport-relative coords. fixed
+     position consumes those directly without needing scroll-offset math.
+     Note: showReadingToolbar() in dashboard.html JS now sets t.style.top
+     and t.style.left without adding window.scrollY/scrollX. */
+  position: fixed;
   z-index: 9000;
   display: inline-flex;
   align-items: center;
