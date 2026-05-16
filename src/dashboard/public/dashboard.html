@@ -264,65 +264,67 @@ async function api(path, opts = {}) {
      State persists in sessionStorage. -->
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
 <div class="app-shell">
-<aside class="sidebar" id="sidebar">
+<!-- v3 redesign: sidebar refreshed against pwa-redesign/screens/sidebar.html.
+     PRESERVED: every JS-wired id and onclick — sidebar id, sidebar-workspace-pill
+     (filled by initWorkspaceSwitcher), tab-chat/tab-spaces/tab-lists/tab-calendar/
+     tab-today buttons + their switchTab() handlers, sidebar-chat-children +
+     sidebar-conversations + sidebar-conversations-empty + sidebar-new-chat-btn,
+     sidebar-account-pill + tab-settings + sidebar-account-avatar + sidebar-account-name.
+     ADDED: #theme-toggle (theme-toggle.js auto-wires it on load). -->
+<aside class="sidebar memu-glow-bg" id="sidebar">
     <a class="sidebar-logo" href="/dashboard.html">
-        <svg class="sidebar-logo-mark icon"><use href="#icon-1"></use></svg>
-        <span class="sidebar-logo-text">Memu</span>
+        <img class="sidebar-logo-mark" src="/marks/logo-venn.svg" alt="" width="26" height="26">
+        <span class="sidebar-logo-text serif-display" style="font-style:italic;font-weight:500;">memu</span>
     </a>
     <!-- Workspace switcher pill — shows the active workspace below the
          brand mark, opens the Workspaces tab on click. Visible from every
          tab so the active scope is always legible. Filled lazily by
-         initWorkspaceSwitcher() once GET /api/workspaces returns. -->
+         initWorkspaceSwitcher() once GET /api/workspaces returns. Label
+         (#sidebar-workspace-name) stays JS-driven so we don't hardcode
+         "Hareesh's Pod" — the reference template's copy is a placeholder. -->
     <button class="sidebar-workspace-pill" id="sidebar-workspace-pill"
             onclick="switchTab('workspaces')" aria-label="Switch workspace">
-        <span class="sidebar-workspace-pill-eyebrow">Workspace</span>
-        <span class="sidebar-workspace-pill-name" id="sidebar-workspace-name">Loading…</span>
+        <span class="sidebar-workspace-pill-eyebrow eyebrow" style="margin-bottom:0;">Workspace</span>
+        <span class="sidebar-workspace-pill-name serif-display" id="sidebar-workspace-name" style="font-style:italic;font-weight:500;">Loading…</span>
     </button>
     <!-- Top region: primary + secondary nav. Fixed natural height. Conversations
          do NOT live here any more — they had been pushing Settings off-screen
          once 20+ threads accumulated. They now live in the bottom region. -->
     <!-- Phase A.7 — primary nav culled to 5 surfaces for parity with the
          mobile SideDrawer. Ledger + Import moved into Settings (they're
-         audit / power-user surfaces, not daily flow). Icons swapped to
-         Lucide-calibrated paths at stroke-width 1.5 — thinner, cleaner
-         terminals at the 18px display size than the prior 1.8 weight. -->
+         audit / power-user surfaces, not daily flow). v3: icons routed
+         through the shared marks/icons.svg sprite (stroke-width 1.7). -->
     <nav class="sidebar-nav">
         <button class="sidebar-nav-item active" id="tab-chat" onclick="switchTab('chat')">
-            <svg class="icon"><use href="#icon-2"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-chat"></use></svg>
             <span>Chat</span>
         </button>
         <button class="sidebar-nav-item" id="tab-spaces" onclick="switchTab('spaces')">
-            <svg class="icon"><use href="#icon-3"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-spaces"></use></svg>
             <span>Spaces</span>
         </button>
         <button class="sidebar-nav-item" id="tab-lists" onclick="switchTab('lists')">
-            <svg class="icon"><use href="#icon-4"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-lists"></use></svg>
             <span>Lists</span>
         </button>
         <button class="sidebar-nav-item" id="tab-calendar" onclick="switchTab('calendar')">
-            <svg class="icon"><use href="#icon-5"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-cal"></use></svg>
             <span>Calendar</span>
         </button>
-        <!-- Phase A.4 — 'Dashboard' (was 'Today'). Sits below the daily-action
-             surfaces — chat landing now surfaces briefings and action nudges
-             inline; Dashboard is the structured at-a-glance view. The
-             underlying tab id stays 'today' to avoid breaking switchTab()
-             callers and the loadDashboard / loadBrief wiring. -->
+        <!-- Phase A.4 — 'Dashboard' (was 'Today'). Underlying tab id stays 'today'
+             to avoid breaking switchTab() and loadBrief wiring. -->
         <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
-            <svg class="icon"><use href="#icon-6"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-dash"></use></svg>
             <span>Dashboard</span>
         </button>
     </nav>
 
-    <!-- Phase A.8 — conversations region promoted directly under primary
-         nav (no divider, no Settings inline). Takes the remaining vertical
-         space; scrolls independently. Conversation history is the highest-
-         density surface in the rail — it earns the room. -->
+    <!-- Phase A.8 — conversations region promoted directly under primary nav. -->
     <div class="sidebar-conversations-region" id="sidebar-chat-children">
         <div class="sidebar-conversations-head">
-            <span class="sidebar-conversations-label">Conversations</span>
+            <span class="sidebar-conversations-label eyebrow" style="margin-bottom:0;">Conversations</span>
             <button class="sidebar-new-chat-btn" onclick="startNewConversation()" title="Start new chat">
-                <svg class="icon" width="14" height="14"><use href="#icon-7"></use></svg>
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-plus"></use></svg>
                 <span>New</span>
             </button>
         </div>
@@ -331,19 +333,20 @@ async function api(path, opts = {}) {
         </div>
     </div>
 
-    <!-- Phase A.8 — account pill at bottom-left, Claude/Linear/Granola
-         pattern. Avatar (initial in indigo tint) + display name + small
-         settings-gear hint on the right. Whole pill is the tap target →
-         Settings tab. Settings as a nav row is retired; everything that
-         lived there is reachable via this pill. -->
-    <button class="sidebar-account-pill" id="tab-settings" onclick="switchTab('settings')" aria-label="Open settings">
-        <span class="sidebar-account-avatar" id="sidebar-account-avatar">?</span>
-        <span class="sidebar-account-meta">
-            <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
-            <span class="sidebar-account-hint">Settings</span>
-        </span>
-        <svg class="sidebar-account-gear icon" width="14" height="14"><use href="#icon-8"></use></svg>
-    </button>
+    <!-- Phase A.8 — account pill at bottom-left. Whole pill is the tap target →
+         Settings tab. v3: theme toggle lives alongside it; theme-toggle.js
+         auto-wires #theme-toggle on load. -->
+    <div class="sidebar-account-row" style="display:flex;align-items:center;gap:8px;padding:0 14px 14px;">
+        <button class="sidebar-account-pill" id="tab-settings" onclick="switchTab('settings')" aria-label="Open settings" style="flex:1;">
+            <span class="sidebar-account-avatar" id="sidebar-account-avatar">?</span>
+            <span class="sidebar-account-meta">
+                <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
+                <span class="sidebar-account-hint">Settings</span>
+            </span>
+            <svg class="sidebar-account-gear icon" width="14" height="14"><use href="/marks/icons.svg#icon-chev-r"></use></svg>
+        </button>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme"></button>
+    </div>
 </aside>
 <main class="app-main">
 
