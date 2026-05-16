@@ -26,10 +26,124 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
-### v3 visual redesign — pickup point (added 2026-05-16 late-night close)
+### Researcher writing pipeline — pickup point (added 2026-05-17 evening close)
+
+**Trigger phrase from Hareesh:** "let's design the researcher experience"
+or any reference to the writing pipeline / Workbench / Writing Spaces /
+the strategic reframe from 2026-05-17.
+
+**The strategic shift (captured 2026-05-17 morning).** Memu has been
+scoped as Reader + per-Source notepad. Hareesh pushed back: a researcher
+synthesises ACROSS sources, writes literature reviews, drafts chapters
+and articles. That writing happens OUTSIDE Memu today (Word / Scrivener /
+Notion / LaTeX) — meaning Memu becomes ANOTHER tool in the stack, not
+the tool that replaces the stack. Newport's bottleneck lens applied
+cleanly: we accelerated capture (the not-bottleneck) and didn't touch
+writing (THE bottleneck).
+
+**The three things that close the loop (elevated from "post-beta
+strategic" to CORE researcher product):**
+
+1. **R5 — Workbench (cross-corpus aggregation).** A dedicated surface
+   per research workspace showing all memos / quotes / codes / questions
+   / connections across all Source + Field Spaces. Filter by code,
+   source, theme, date. Searchable. Themable. This is where the
+   literature-review thinking happens BEFORE writing — when you need
+   to see "all my codes around caste mobility" or "every quote I pulled
+   from Ambedkar".
+
+2. **R6 — Writing Spaces (citable writing).** A new first-class Space
+   category alongside Source / Field / Memo / Code. Long-form editor
+   (Newsreader serif, generous column). Right-hand panel of your
+   workspace artefacts, draggable into the text. Inline citation
+   insertion (`@` or `[[` → fuzzy-search across your captured artefacts
+   → pick one → inserts as citation-with-quote, linked back to source
+   page+rect). Live cross-references that update when source memos
+   change. **Trial versions** (your "writing trials" — fork a draft,
+   diff between versions, merge changes back). Multi-format export
+   (DOCX, LaTeX, Pandoc Markdown, BibTeX). The literature review
+   gets written IN Memu, citing YOUR captured work.
+
+3. **R4.2 — Agentic grounding.** Local AI agent (routed through
+   anonymisation + Twin) reasons over YOUR corpus + YOUR captured
+   artefacts. Drafts paragraphs with inline citations to your memos.
+   Surfaces patterns ("you've coded 4 sources as 'methodology gap' —
+   want a paragraph?"). Identifies absences ("you have no memos on
+   caste mobility in Northeast India — your literature is thin there").
+   All outputs are DRAFTS the user edits or rejects — never auto-apply.
+   This is what makes Memu a research COPILOT rather than a digital
+   filing cabinet.
+
+**The end-to-end researcher journey, restated:**
+
+```
+1. CAPTURE       Drop PDF/transcript → Source/Field Space        [SHIPPED]
+2. READ          Highlight → memo/quote/code/question per Source [SHIPPED — PR awaiting test]
+3. PER-SOURCE    Synthesis below source with backlinks            [SHIPPED — PR awaiting test]
+4. AGGREGATE     Workbench: all artefacts cross-source            [R5 — NEXT]
+5. WRITE         Writing Spaces with inline citations + trials   [R6 — NEXT]
+6. AGENT-ASSIST  Local agent drafts grounded in YOUR corpus      [R4.2 — NEXT]
+7. EXPORT        DOCX/LaTeX/Pandoc/BibTeX with citations         [R6 continued]
+```
+
+Phases 1-3 are the reading half (current PR). Phases 4-7 are the
+writing half — and they're inseparable: Writing without aggregation is
+a notepad; aggregation without writing is a dashboard; both without
+agentic grounding is mechanical.
+
+**Worked example for design conversations — "Caste in India" research:**
+
+- Workspace: `Caste in India`
+- ~30 Source Spaces (Ambedkar, Dirks, Deshpande, ...)
+- Field Spaces (Hyderabad interviews, field notes, voice memos)
+- Each source has memos, codes, quotes, questions attached to passages
+- **Workbench**: search "caste mobility" → see every memo/quote/code
+  across all 30 sources + field. Filter by source. Group by theme.
+- **Writing Space**: open "Lit Review v1". Type "Caste mobility in
+  contemporary urban India is best understood through @" → autocomplete
+  surfaces your captured artefacts. Pick three. They insert as
+  citations with quoted passages, linked back to the source page+rect.
+- **Agent**: "summarise the contradictions between Dirks and Ambedkar
+  in my captured quotes" → produces a draft paragraph citing YOUR
+  quotes, you edit it.
+- Export "Lit Review v3" as DOCX with footnote-style citations or as
+  LaTeX with BibTeX bibliography.
+
+**What was demoted (still on roadmap, just no longer same tier):**
+
+- R7 (cross-workspace compounding — research-to-family bridge) —
+  strategic but secondary to the researcher experience itself.
+- Founding-50 hosting backend items (DPIA polish, Hetzner deploy
+  refinements, magic-link auth UX). Better to have 20 researcher-
+  product-complete users than 50 fancy-reader users churning out.
+
+**Reading recommended before the design session:** the three Cal
+Newport pieces Hareesh shared 2026-05-17 morning — *Avoiding Digital
+Productivity Traps*, *Easy is Overrated*, *On Bottlenecks and
+Productivity*. They frame why this elevation is the right call.
+
+**Companion memory:** `project_memu_writing_pipeline_reframe.md`
+**Sister thread:** `project_memu_thinking_platform_shift.md` (2026-05-14)
+
+---
+
+### v3 visual redesign — pickup point (added 2026-05-16 late-night close, **updated 2026-05-17**)
 
 **Trigger phrase from Hareesh:** "let's pick up v3 redesign work" (or
 any reference to the redesign / pwa-redesign / mobile-redesign folders).
+
+**UPDATE 2026-05-17:** Original `feat/v3-redesign` MERGED to main via
+PR #38 at `e71107b`. A follow-on polish + PDF reading sprint then
+shipped to branch **`feat/v3-polish-combined` @ `29ad69e`**, awaiting
+test + merge. That branch carries: dark-mode cascade fix, inline logo
+SVG (so currentColor works), app-shell scroll model (sidebar stays
+visible), chat composer rebuild + speaker avatars, font consistency,
+modal + Workspaces + Import reskin, mobile per-screen content polish
+(all 6 (tabs) screens to v3 shapes via useTokens), and the **PDF
+reading workbench** per Hareesh's design mocks (three-column layout,
+top-right action row, PDF viewer chrome, anchored verb pills,
+redesigned composer modal, synthesis section below PDF, Passage/All
+toggle, GET /api/spaces/:id/insights endpoint).
 
 **Where we are.** Branch `feat/v3-redesign` at `9ed3809` carries the
 full v3 visual redesign — design system foundation + 8 PWA per-screen
@@ -99,31 +213,35 @@ Phase 3 — mobile theme + drawer (`ef6d208` → `1319c9a`, 6 commits):
 
 **Known incomplete — for the follow-on session(s):**
 
-1. **PWA — Spaces detail / edit / share / Connect / Manual-create
-   modals not re-skinned.** Agent A flagged: these are JS-wired with
-   cancel/submit flows; reskinning blind would risk breaking. The
-   list view (chips, feature card, grid, continue-reading) is fully
-   ported.
-2. **PWA — Workspaces (`view-workspaces`) + Import (`view-import`)
-   tabs not re-skinned.** Not in the brief's 9-view list, no template
-   in pwa-redesign/. They continue to work via compat aliases.
-3. **PWA — Ledger four-up stats + provider filter + CSV export.**
+**Resolved in the 2026-05-17 sprint (now on `feat/v3-polish-combined`):**
+- ~~PWA modals + Workspaces/Import tabs reskin~~ — DONE
+- ~~Mobile per-screen content ports~~ — DONE (all 6 (tabs) screens)
+- ~~Mobile SideDrawer dark-mode parity~~ — DONE (TODO at SideDrawer.tsx:20 cleared)
+
+**Still pending after the 2026-05-17 sprint:**
+1. **PWA — Ledger four-up stats + provider filter + CSV export.**
    Two `<!-- TODO(v3) -->` markers in dashboard.html ledger section.
    Render as empty layout placeholders. Need a `/api/ledger/stats`
    endpoint + backend wiring for filter + export.
-4. **Mobile — per-screen content ports for Today, Chat, Spaces,
-   Lists, Calendar.** Agent B deliberately deferred the JSX swap
-   because the reference screens are 90-145 line mockups with
-   hardcoded placeholders ("FRIDAY 16 MAY · 09:14", "Hareesh", "Home
-   Garden has been dormant 3 weeks") vs live screens at 600-1400
-   lines with real data hooks. A literal swap would have lost
-   hundreds of lines of working features. The next session per-screen
-   port renders the brief data inside v3 "What I noticed" / "What I'm
-   thinking" card shapes for Today, indigo bubbles + anonymised pill
-   for Chat, asymmetric grid for Spaces, etc.
-5. **Mobile — SideDrawer dark-mode parity.** Static `styles.*` colors
-   need lifting into a per-render closure reading `useTokens()`.
-   Note at `mobile/components/SideDrawer.tsx:20`.
+2. **PDF reading — Connections artefact type (5th kind).** Memo /
+   Quote / Code / Question all shipped with persistence. Connection
+   (`{from_id, to_id, relation}`) deferred — needs a schema design
+   conversation (new table `space_connections` with relation enum,
+   or a JSONB column on `synthesis_pages`) + endpoint + creation
+   UI + graph-aware right-panel render.
+3. **PDF reading — Synthesis backlinks.** The synthesis section
+   structure is in place (`▼ YOUR SYNTHESIS` eyebrow, empty state,
+   body container) but the markup convention for indigo-italic
+   passage-backlinks (e.g. `[[memo:abc123]]` → click-to-jump) isn't
+   wired. Body renders via existing `renderSpaceBody` which handles
+   wikilinks generically; a memo-specific render pass is needed.
+4. **PDF reading — Find-in-document.** Search icon in the PDF
+   chrome is a stub button — pdf.js v4 findController integration
+   is a multi-session feature on its own.
+
+**(These four are smaller polish items. The strategic next move is
+not closing these — it's the writing pipeline at the top of this
+file.)**
 
 **Test status at merge:** 786 backend tests passing (no regression
 vs main), backend tsc clean, mobile tsc clean.
