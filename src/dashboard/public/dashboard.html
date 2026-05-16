@@ -511,8 +511,14 @@ async function api(path, opts = {}) {
                 <span>News</span>
                 <span class="zone-news-refreshed mono" id="news-refreshed-at" style="font-size: 11px; color: var(--text-3); margin-left: 8px; letter-spacing: 0; text-transform: none; font-weight: 500;"></span>
             </div>
-            <button class="zone-news-refresh btn-pill btn-pill-secondary" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button" style="padding: 4px 10px;">
-                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-arrow"></use></svg>
+            <button class="zone-news-refresh btn-pill btn-pill-secondary" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button" style="padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8" />
+                    <path d="M21 3v5h-5" />
+                    <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16" />
+                    <path d="M3 21v-5h5" />
+                </svg>
+                <span style="font-size: 11px; font-weight: 600;">Refresh</span>
             </button>
         </div>
         <div id="news-feed" class="news-feed">
@@ -576,7 +582,7 @@ async function api(path, opts = {}) {
             <h2 id="calendar-selected-full" class="day-header-title serif-display" style="font-size: 28px;"></h2>
             <div id="calendar-selected-meta" class="day-header-meta italic-quiet" style="font-size: 14px;"></div>
         </div>
-        <div id="calendar-events" class="calendar-events-list" style="display: grid; grid-template-columns: 60px 1fr; gap: 16px;"></div>
+        <div id="calendar-events" class="calendar-events-list" style="display: flex; flex-direction: column; gap: 12px;"></div>
     </div>
 </div>
 
@@ -966,17 +972,23 @@ async function api(path, opts = {}) {
 
 <!-- Space Create Modal -->
 <div class="modal-overlay" id="space-create-modal">
-    <div class="modal-card" style="max-width:560px;">
-        <h3 class="mb-md">New Space</h3>
+    <div class="modal-card" style="max-width:880px; width: 92vw;">
+        <h3 class="mb-sm serif-display" style="font-size: 28px;">New Space</h3>
+        <p class="italic-quiet" style="font-size: 13.5px; margin-bottom: 18px; line-height: 1.55;">
+            A Space is a living page Memu reasons across. Give it a tight title, pick a category, and start writing — Memu will weave it in.
+        </p>
         <label class="input-label">Category</label>
         <div id="space-create-categories" class="spaces-chips" style="margin-bottom:var(--space-md);"></div>
         <label class="input-label">Title</label>
-        <input type="text" id="space-create-title" class="input mb-md" placeholder="e.g. Robin's piano lessons">
-        <label class="input-label">Body (Markdown, optional)</label>
-        <textarea id="space-create-body" class="input" rows="6" style="font-family:var(--font-mono,monospace);font-size:13px;" placeholder="## Notes&#10;..."></textarea>
-        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
-            <button class="btn btn-secondary btn-sm" onclick="closeSpaceCreate()">Cancel</button>
-            <button class="btn btn-primary btn-sm" id="space-create-save" onclick="saveSpaceCreate()">Create</button>
+        <input type="text" id="space-create-title" class="input mb-sm" placeholder="A short, specific title">
+        <div class="italic-quiet" style="font-size: 12px; margin-bottom: 18px; color: var(--text-3);">
+            Tip: use Markdown wikilinks in the body — <span class="mono-chip" style="font-size: 11px;">[[caste-mobility]]</span> creates a connection to that Space if it exists, or stages one for later.
+        </div>
+        <label class="input-label">Body</label>
+        <textarea id="space-create-body" class="input" rows="14" style="font-family:var(--font-serif, Newsreader, Georgia, serif);font-size:15px; line-height: 1.55; min-height: 320px; padding: 18px;" placeholder="Start writing. Markdown supported — # headings, **bold**, *italic*, [[wikilinks]], > blockquotes."></textarea>
+        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);gap:8px;">
+            <button class="btn btn-secondary btn-sm btn-pill btn-pill-secondary" onclick="closeSpaceCreate()">Cancel</button>
+            <button class="btn btn-primary btn-sm btn-pill btn-pill-primary" id="space-create-save" onclick="saveSpaceCreate()">Create Space</button>
         </div>
     </div>
 </div>
@@ -1776,7 +1788,10 @@ function refreshLensFootnote() {
         return;
     }
     if (todayLensCalendarCount <= 1) {
-        el.textContent = '· Just yours — no other calendars connected';
+        // Honest copy: Family lens is selected but no household members
+        // have linked their calendars yet, so this lens is showing the
+        // same as Me. Surface that openly + nudge to invite/connect.
+        el.textContent = '· Family lens shows your calendar only — invite household members to share theirs';
     } else {
         el.textContent = `· ${todayLensCalendarCount} calendars merged`;
     }
@@ -3336,8 +3351,21 @@ function listsTitleCase(s) {
 
 function switchListKind(kind) {
     listsKind = kind;
-    document.getElementById('lists-seg-tasks').classList.toggle('active', kind === 'task');
-    document.getElementById('lists-seg-shopping').classList.toggle('active', kind === 'shopping');
+    const tasks = document.getElementById('lists-seg-tasks');
+    const shop  = document.getElementById('lists-seg-shopping');
+    tasks.classList.toggle('active', kind === 'task');
+    shop.classList.toggle('active', kind === 'shopping');
+    // The visual differentiation lives in inline styles, so toggling the
+    // class isn't enough \u2014 flip the inline background/color/weight/shadow
+    // here too so the active pill is visibly distinct.
+    const applyState = (btn, active) => {
+        btn.style.background = active ? 'var(--surface)' : 'transparent';
+        btn.style.color = active ? 'var(--text)' : 'var(--text-2)';
+        btn.style.fontWeight = active ? '600' : '500';
+        btn.style.boxShadow = active ? 'var(--shadow-card)' : 'none';
+    };
+    applyState(tasks, kind === 'task');
+    applyState(shop, kind === 'shopping');
     const input = document.getElementById('lists-add-input');
     input.placeholder = kind === 'task' ? 'Add a task\u2026' : 'Add groceries\u2026';
     renderLists();
@@ -5389,20 +5417,28 @@ function closeReadingComposer() {
     composerVerb = null;
 }
 
-// Build the source-reference string for the current activeSelection.
+// Build the source-reference string for a selection snapshot.
 // Mirrors src/spaces/insightSourceRef.ts formatInsightSourceRef.
-function buildSourceRefForActiveSelection() {
-    if (!activeSelection) return null;
-    const head = `source:${activeSelection.spaceUri}`;
-    if (activeSelection.kind === 'body') {
-        return `${head}#pid:${activeSelection.pid}`;
+// Takes an explicit snapshot rather than reading global activeSelection
+// because callers in async contexts must avoid the global being nulled
+// by selectionchange events while their await is in-flight.
+function buildSourceRefFromSelection(sel) {
+    if (!sel) return null;
+    const head = `source:${sel.spaceUri}`;
+    if (sel.kind === 'body') {
+        return `${head}#pid:${sel.pid}`;
     }
-    if (activeSelection.kind === 'pdf') {
-        const r = activeSelection.rect || { x: 0, y: 0, w: 0, h: 0 };
+    if (sel.kind === 'pdf') {
+        const r = sel.rect || { x: 0, y: 0, w: 0, h: 0 };
         const fmt = (n) => Math.round(n * 100) / 100;
-        return `${head}#page=${activeSelection.pageNumber}&rect=${fmt(r.x)},${fmt(r.y)},${fmt(r.w)},${fmt(r.h)}`;
+        return `${head}#page=${sel.pageNumber}&rect=${fmt(r.x)},${fmt(r.y)},${fmt(r.w)},${fmt(r.h)}`;
     }
     return head;
+}
+
+// Back-compat for any caller still using the activeSelection global.
+function buildSourceRefForActiveSelection() {
+    return buildSourceRefFromSelection(activeSelection);
 }
 
 async function saveReadingComposer() {
@@ -5411,6 +5447,15 @@ async function saveReadingComposer() {
     if (!display) return;
     const errBox = document.getElementById('reading-composer-error');
     errBox.classList.add('hidden');
+
+    // Snapshot activeSelection BEFORE any await. The Save click bubbles
+    // up to document.mouseup → handleSelectionChange → hideReadingToolbar
+    // which nulls activeSelection mid-flight. Without this snapshot,
+    // post-save reads like `activeSelection.spaceUri` throw
+    // "Cannot read properties of null" (memo saves but the error toast
+    // shows; Code modal doesn't close because the throw blocks
+    // closeReadingComposer).
+    const selection = activeSelection;
 
     // Read input per variant. Code = (tag + optional note); the
     // others = textarea.
@@ -5432,18 +5477,21 @@ async function saveReadingComposer() {
         }
     }
 
-    const sourceRef = buildSourceRefForActiveSelection();
-    const anchorLabel = activeSelection.kind === 'pdf'
-        ? `p. ${activeSelection.pageNumber}`
-        : `passage \`${activeSelection.pid}\``;
+    // Build source ref + body from the snapshot — not from activeSelection,
+    // which may have been nulled by a stray selectionchange while the
+    // user reached for Save.
+    const sourceRef = buildSourceRefFromSelection(selection);
+    const anchorLabel = selection.kind === 'pdf'
+        ? `p. ${selection.pageNumber}`
+        : `passage \`${selection.pid}\``;
     let title, fullBody;
     if (composerVerb === 'memo') {
-        title = `Memo · ${activeSelection.spaceTitle}`;
-        fullBody = `> ${activeSelection.text}\n\n${bodyText}\n\n_— from [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+        title = `Memo · ${selection.spaceTitle}`;
+        fullBody = `> ${selection.text}\n\n${bodyText}\n\n_— from [[${selection.spaceTitle}]] (${anchorLabel})_`;
     } else if (composerVerb === 'quote') {
-        title = `Quote · ${activeSelection.spaceTitle}`;
+        title = `Quote · ${selection.spaceTitle}`;
         const gloss = bodyText ? `\n\n${bodyText}` : '';
-        fullBody = `> ${activeSelection.text}${gloss}\n\n_— [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+        fullBody = `> ${selection.text}${gloss}\n\n_— [[${selection.spaceTitle}]] (${anchorLabel})_`;
     } else if (composerVerb === 'code') {
         // Code = a tag the user attaches to a passage. The Space's
         // TITLE is the code name. Multiple passages tagged with the
@@ -5455,10 +5503,10 @@ async function saveReadingComposer() {
         // follow-up — for now duplicate codes get separate Spaces
         // and Hareesh can merge in Edit).
         title = codeName;
-        fullBody = `**Coded passage:**\n\n> ${activeSelection.text}\n\n${codeNote ? codeNote + '\n\n' : ''}_— [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+        fullBody = `**Coded passage:**\n\n> ${selection.text}\n\n${codeNote ? codeNote + '\n\n' : ''}_— [[${selection.spaceTitle}]] (${anchorLabel})_`;
     } else { // question
-        title = `Q · ${bodyText.slice(0, 80) || activeSelection.spaceTitle}`;
-        fullBody = `**Question:** ${bodyText}\n\n**Raised by passage:**\n\n> ${activeSelection.text}\n\n_— [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+        title = `Q · ${bodyText.slice(0, 80) || selection.spaceTitle}`;
+        fullBody = `**Question:** ${bodyText}\n\n**Raised by passage:**\n\n> ${selection.text}\n\n_— [[${selection.spaceTitle}]] (${anchorLabel})_`;
     }
 
     const btn = document.getElementById('reading-composer-save');
@@ -5481,7 +5529,7 @@ async function saveReadingComposer() {
             errBox.classList.remove('hidden');
             return;
         }
-        const savedSpaceUri = activeSelection.spaceUri;
+        const savedSpaceUri = selection.spaceUri;
         closeReadingComposer();
         hideReadingToolbar();
         // Clear the browser selection so the toolbar doesn't immediately

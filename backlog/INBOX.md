@@ -246,6 +246,97 @@ Productivity*. They frame why this elevation is the right call.
 **Companion memory:** `project_memu_writing_pipeline_reframe.md`
 **Sister thread:** `project_memu_thinking_platform_shift.md` (2026-05-14)
 
+**Additional surfaces from 2026-05-17 Z2 dogfood (fold into this sprint, NOT bolt-ons):**
+
+These surfaced during PWA testing of the merged v3 polish + PDF reading
+workbench. They are NOT polish — they're the gaps that prove the
+writing-pipeline thesis. Fold each into the R5/R6/R4.2 design:
+
+1. **Workspace "About" / Project-style harness.** Like ChatGPT
+   Projects, Claude Projects, Gems. Each workspace has a long-form
+   "what is this workspace about + what should Memu know" document
+   that gets fed into every chat turn in that workspace's context.
+   Hareesh's phrasing: *"If I said something like, I am planning to
+   write a novel and one of the key themes is caste, it should
+   update the particular workspace memory or something like that."*
+   The agent grounding (R4.2) NEEDS this as input — without it the
+   agent has no top-of-mind about what the workspace is for. Should
+   live as a first-class Settings page per workspace + editable from
+   the workspace pill dropdown.
+
+2. **Save chat response as a Space / Source.** When Memu replies with
+   something valuable in chat, the user must be able to one-click
+   "Save as Memo in this workspace" / "Save as Source". Today the
+   reply is conversational, ephemeral. The writing pipeline turns
+   conversation into accumulating corpus. Implementation: a small
+   pill on each Memu reply bubble — "Save → Memo / Quote / Code /
+   Source" — that opens the same composer modal pre-filled with the
+   reply text + chat turn provenance.
+
+3. **Workspace-type-aware web search default.** For research
+   workspaces, the default search target should be academic
+   (Semantic Scholar, arXiv, Google Scholar, JSTOR), not generic web.
+   Hareesh: *"For researchers specifically, how can we extend this
+   search to be by default academic papers etc rather than just
+   web?"* Implementation: extend `web_search` skill to consult the
+   active workspace type; route accordingly. Could also surface a
+   small selector in the search results UI to override per query.
+
+4. **Chat thinking ticker — live updates while in-flight.** Today
+   the tool-call summary footer ("Memu just: searched the web ·
+   appended 3 lines to a Space") shows after completion. While the
+   agent is mid-call, there are long silent pauses. Stream the
+   tool-call lifecycle to the UI (SSE events already exist for
+   thinking events) — show "searching web…", "checking Spaces…",
+   "drafting reply…" as they happen. Reduces the "is it stuck?"
+   anxiety on slow turns.
+
+5. **Connections artefact (5th kind) + synthesis backlinks.** The
+   PDF reading workbench shipped Memo / Quote / Code / Question but
+   NOT Connections (explicit links between artefacts:
+   `{from_id, to_id, relation}`). Also: synthesis section structure
+   is in place but indigo-italic passage backlinks
+   (`[[memo:abc123]]` → click-to-jump) aren't wired. Both are
+   prerequisites for the citable writing experience (R6) — a
+   citation in a Writing Space IS a connection between the prose
+   and a captured artefact.
+
+**Smaller polish items from 2026-05-17 Z2 dogfood (Pass 2 — already
+in `fix/v3-z2-test-feedback` branch, NOT in this researcher sprint):**
+
+- Canvas dark mode (add missing CSS var aliases)
+- Lists Tasks/Shopping pill highlight (JS toggling class, styles
+  were inline)
+- Memo save "Cannot read properties of null (reading 'spaceUri')"
+  + Code save modal not closing (snapshot activeSelection before
+  await)
+- Top-right action row scrolls away (sticky)
+- Verb pills scroll away (sticky)
+- PDF chrome scrolls away on page 2 (align-self stretch +
+  full-width)
+- Insights panel overlaps PDF (grid + page max-width)
+- Calendar events squashed (removed bad grid inline)
+- News refresh button just a dot (inlined refresh SVG)
+- Lens: Family copy mismatch (clearer message + nudge to invite
+  household members)
+- PDF too small in focus mode + no zoom (focus expands main column
+  to 1100px, added zoom +/- controls to PDF chrome)
+- Manual Create Space modal too small + "Robin's piano lessons"
+  family placeholder (modal expanded to 880px / 92vw, generic
+  placeholder + Markdown wikilink hint + serif body editor)
+
+**Still NOT addressed in Pass 2 (need their own investigation):**
+
+- Conversation history wiping when starting a new chat — most likely
+  a backend question (when does a conversation get persisted? Does
+  it surface in GET /api/chat/conversations immediately?). Needs a
+  deeper dig.
+- Canvas view design not per brief (full canvas-page redesign — bigger
+  slice).
+- Dashboard "What I'm thinking" cards not wired (placeholder — will
+  populate when R4.2 agent ships).
+- Top-right Search is a stub (known; needs search infrastructure).
+
 ---
 
 ### v3 visual redesign — pickup point (added 2026-05-16 late-night close, **updated 2026-05-17**)

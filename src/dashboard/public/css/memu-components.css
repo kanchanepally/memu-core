@@ -339,6 +339,11 @@ body {
   --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.02), 0 4px 16px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+
+  /* canvas.css aliases — Spaces graph view */
+  --bg-canvas: #0A0815;
+  --bg-elevated: #15131F;
+  --text-tertiary: #6E6A88;
 }
 
 /* Tighten the scrollbar tint in dark mode so it doesn't read as a pale
