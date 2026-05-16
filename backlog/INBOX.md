@@ -26,6 +26,96 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### Researcher space — pickup point (added 2026-05-16 evening close)
+
+**Trigger phrase from Hareesh:** "let's pick up researcher space work".
+
+**Where we are.** Build Spec 2 Phase Z (reading surface) + Phase R1–R4
+are all shipped, deployed to Z2, and verified by Hareesh tonight on a
+research workspace with a real PDF upload. The researcher track is a
+parallel thread to Milestone C (Founding-50 beta) — both are live;
+neither blocks the other.
+
+**Branch state.** Local repo is on `main` only (plus
+`feat/pwa-workspace-switcher` kept by Hareesh's call). All R-cluster
+and Phase-Z branches deleted from local + origin. `main` is at
+`267ed68` — the boot deep-link + upload reply crash fixes (PR #37).
+
+**What shipped today (2026-05-15 → 2026-05-16):**
+
+- **Phase R1** — workspace_templates table, research_blank template,
+  per-workspace category sets (Source / Memo / Question / Code /
+  Synthesis / Output), Memo creator wired (PR #29/#30 family of merges).
+- **Phase R2** — unified source ingestion: `/api/document` dispatches
+  to `processResearchSourceIngestion` for research workspaces, raw
+  text → Source-category Space, no LLM call (deterministic), Twin
+  registration runs BEFORE storage. Family vs research truncation
+  caps (50k vs 500k chars).
+- **Phase R3** — active-reading toolbar (floating selection handler →
+  data-pid ancestor walk → composer modal pre-populated with quoted
+  passage + source ref). Memo + Quote verbs functional; Code +
+  Question stubbed pending R4.2 agent runtime.
+- **Phase R4** — three-tier AI + eval harness (deterministic services
+  tier: `nearDuplicates.ts` cosine via pgvector, `walkConnections.ts`
+  BFS over space_connections, with unit-test coverage).
+- **Phase Z (reading)** — markdown-it + footnote/deflist/task-lists/
+  abbr/sub/sup plugins, stable passage IDs via `<!-- pid:XYZ -->` HTML
+  comments + custom plugin extracting to `data-pid` attrs, PDF inline
+  rendering via pdf.js v4 ESM, reading state + Continue-reading,
+  visible Focus mode button (was keyboard-only).
+- **Workspace rename** — PATCH /api/workspaces/:id + PWA UI.
+- **Three fix-branches** — migration 048 TEXT FK types; PDF auth +
+  workspace headers across canvas/kids/onboarding; R2/R3 workspace-
+  type dispatch via `currentCollectiveId()` + session GUC (the
+  cascade fix that made R2/R3 actually work); boot deep-link skipping
+  initWorkspaceSwitcher + upload reply crash on research responses.
+
+**Open from today's dogfood — these are the actual next slices:**
+
+1. **Canvas hardcoded family chips.** `canvas.html` still renders
+   person / routine / household / commitment / document chips even
+   when viewing a research workspace. Per-workspace-type rewiring
+   needed — mirror dashboard.html's `getActiveCategorySet()` /
+   `CATEGORY_DISPLAYS` / `FAMILY_SET` / `RESEARCH_SET` pattern.
+   `canvas.html` already has `getActiveWorkspaceId()` + workspace
+   header; just needs the chip-set lookup. Should be ~30 minutes.
+
+2. **Duplicate Spaces on PDF upload.** Hareesh observed "Two
+   'document' spaces created when i uploaded an article pdf. one
+   with actual rendered pdf space." Two creation paths fire and
+   neither dedups. Need to trace: `/api/document` (research path)
+   vs whatever other path the PDF picker is hitting. The two have
+   different shapes (one with `document:` source ref + inline PDF,
+   one without).
+
+3. **Family-shape AI summary in research workspace.** Hareesh: "Still
+   keeps talking about family stuff." Some prompt/skill is still
+   using family vocab in a research context. Probably the chat
+   `interactive_query` skill — needs a per-workspace-type framing
+   variant or a system-prompt extension that names the active
+   workspace type and category set.
+
+**Then the planned phases (in order):**
+
+- **R3.2** — memo suggestion skill (Claude proposes a memo when
+  the user dwells on a passage)
+- **R3.3** — coding-proposal batch flow (Code verb — needs R4.2)
+- **R3.4** — question linking (Question verb — needs R4.2)
+- **R4.2** — agent runtime (background workers that consume the
+  deterministic services from R4.1, gated by per-workspace budget)
+- **R5** — cross-corpus intelligence (link findings across research
+  workspaces — the compounding payoff)
+- **R6** — citable export + output fan-out (PDF / DOCX / .bib /
+  Markdown bundles with stable passage citations)
+- **R7** — cross-workspace compounding (the family ↔ research
+  bridge — e.g. parenting research informs a family decision)
+
+**The researcher work and Milestone C run in parallel.** Don't merge
+the two priority lists. The 2026-05-06 Founding-50 pickup below is
+still live; the researcher track is its own line of work.
+
+---
+
 ### Pickup for the next session (added 2026-05-06 evening close)
 
 **Priority shift confirmed by Hareesh tonight: get Founding-50 beta
