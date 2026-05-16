@@ -521,34 +521,41 @@ async function api(path, opts = {}) {
 <div id="quick-composer" class="quick-composer hidden" hidden></div>
 
 <!-- ==================== CALENDAR TAB ==================== -->
-<div id="view-calendar" class="container-wide hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/calendar.html.
+     Preserved ids: view-calendar (outer wrapper), calendar-date-meta,
+     calendar-connect (empty-state wrapper), calendar-active (week view),
+     calendar-day-strip (renderer target), calendar-selected-relative,
+     calendar-selected-full, calendar-selected-meta, calendar-events
+     (event rows renderer target), handleCalendarConnect(). -->
+<div id="view-calendar" class="container-wide memu-glow-bg hidden" style="padding: 40px 48px 80px; max-width: 1080px; margin: 0 auto;">
     <header class="morning-briefing-header">
-        <div class="briefing-eyebrow">The shape of your week</div>
-        <div class="briefing-title">Time, gently held.</div>
-        <div class="briefing-subtitle" id="calendar-date-meta">Loading...</div>
+        <div class="briefing-eyebrow eyebrow">Calendar</div>
+        <h1 class="briefing-title serif-display" style="font-size: 44px; line-height: 1.05;">
+            Time, <em class="serif-accent">gently held</em>.
+        </h1>
+        <div class="briefing-subtitle italic-quiet" style="font-size: 16px; margin-top: 8px;" id="calendar-date-meta">Loading…</div>
     </header>
 
-    <div id="calendar-connect" class="connect-wrap hidden">
-        <div class="connect-card">
-            <div class="connect-glow"></div>
-            <div class="connect-icon-chip">
-                <svg class="icon" width="24" height="24"><use href="#icon-21"></use></svg>
+    <div id="calendar-connect" class="connect-wrap hidden" style="margin-top: 32px;">
+        <div class="connect-card memu-card" style="padding: 48px; text-align: center; max-width: 480px; margin: 0 auto;">
+            <div class="connect-icon-chip" style="width: 56px; height: 56px; border-radius: 16px; background: var(--brand-soft); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                <svg class="icon" width="24" height="24" style="color: var(--brand);"><use href="/marks/icons.svg#icon-cal"></use></svg>
             </div>
-            <h2 class="connect-title">Connect Google Calendar</h2>
-            <p class="connect-subtitle">Memu will show your schedule here—and spot the quiet conflicts before they bite.</p>
-            <button class="btn btn-primary" onclick="handleCalendarConnect()">Connect calendar</button>
-            <p class="privacy-note">Your events stay on your server. Memu never shares them.</p>
+            <h2 class="connect-title serif-display" style="font-size: 28px; margin-bottom: 12px;">Connect Google Calendar</h2>
+            <p class="connect-subtitle" style="color: var(--text-2); margin-bottom: 24px; font-size: 14px; line-height: 1.55;">Memu will show your schedule here — and spot the quiet conflicts before they bite.</p>
+            <button class="btn btn-primary btn-pill btn-pill-primary" onclick="handleCalendarConnect()">Connect calendar</button>
+            <p class="privacy-note" style="font-size: 12px; color: var(--text-3); margin-top: 16px;">Your events stay on your server. Memu never shares them.</p>
         </div>
     </div>
 
-    <div id="calendar-active" class="hidden">
-        <div id="calendar-day-strip" class="calendar-day-strip"></div>
-        <div class="day-header">
-            <div id="calendar-selected-relative" class="day-header-eyebrow"></div>
-            <div id="calendar-selected-full" class="day-header-title"></div>
-            <div id="calendar-selected-meta" class="day-header-meta"></div>
+    <div id="calendar-active" class="hidden" style="margin-top: 24px;">
+        <div id="calendar-day-strip" class="calendar-day-strip" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 24px;"></div>
+        <div class="day-header" style="margin-bottom: 16px;">
+            <div id="calendar-selected-relative" class="day-header-eyebrow eyebrow"></div>
+            <h2 id="calendar-selected-full" class="day-header-title serif-display" style="font-size: 28px;"></h2>
+            <div id="calendar-selected-meta" class="day-header-meta italic-quiet" style="font-size: 14px;"></div>
         </div>
-        <div id="calendar-events" class="calendar-events-list"></div>
+        <div id="calendar-events" class="calendar-events-list" style="display: grid; grid-template-columns: 60px 1fr; gap: 16px;"></div>
     </div>
 </div>
 
