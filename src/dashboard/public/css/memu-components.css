@@ -237,3 +237,121 @@ body {
   transform: translateY(-1px);
   color: var(--text);
 }
+
+/* ============================================================================
+   Dark-theme cascade override for legacy var names.
+   --------------------------------------------------------------------------
+   style.css declares a :root block with HARDCODED light values for the
+   Indigo Sanctuary legacy vars (--surface, --surface-lowest, --on-surface,
+   --text-primary, --color-bg, --color-surface, --indigo-primary, --border,
+   --gradient-primary, etc.). That block loads AFTER memu-tokens.css's
+   [data-theme="dark"], so source-order wins and dark mode is clobbered.
+
+   This block — in memu-components.css which loads LAST — re-declares every
+   legacy alias with appropriate dark values drawn from the v3 dark palette
+   already declared in tokens.css ([data-theme="dark"]). Once this is in
+   place, every rule in style.css that references one of these vars
+   inherits dark values correctly in dark mode.
+   ============================================================================ */
+[data-theme="dark"] {
+  /* ---- Indigo brand (matches tokens.css dark brand) ---- */
+  --indigo-primary: #A1A5FF;
+  --indigo-primary-dim: #6B6FE0;
+  --indigo-primary-container: #8387EB;
+  --indigo-primary-fixed: #8387EB;
+  --indigo-primary-fixed-dim: #6B6FE0;
+  --indigo-on-primary: #0E0C1E;
+  --indigo-on-primary-container: #EAE7F0;
+
+  --indigo-secondary: #9994B5;
+  --indigo-secondary-container: rgba(161, 165, 255, 0.12);
+  --indigo-on-secondary: #0E0C1E;
+  --indigo-on-secondary-container: #EAE7F0;
+
+  --indigo-tertiary: #9994B5;
+  --indigo-tertiary-container: rgba(161, 165, 255, 0.10);
+  --indigo-tertiary-fixed: rgba(161, 165, 255, 0.10);
+  --indigo-tertiary-dim: #8387EB;
+  --indigo-on-tertiary: #0E0C1E;
+  --indigo-on-tertiary-container: #EAE7F0;
+
+  /* ---- Surface tonal stack (dark canvas, layered above) ---- */
+  --surface: #15131F;
+  --surface-lowest: #15131F;
+  --surface-low: #0A0815;
+  --surface-container: #1A1828;
+  --surface-high: #1A1828;
+  --surface-highest: #252234;
+  --surface-variant: #252234;
+  --surface-dim: #1E1B2A;
+  --surface-bright: #1A1828;
+  --inverse-surface: #EAE7F0;
+  --inverse-on-surface: #0E0C1E;
+
+  /* ---- Text scale ---- */
+  --on-surface: #EAE7F0;
+  --on-surface-variant: #9994B5;
+  --on-background: #EAE7F0;
+  --outline: #6E6A88;
+  --outline-variant: #252234;
+
+  /* ---- Legacy aliases consumed throughout style.css ---- */
+  --color-bg: #0A0815;
+  --color-surface: #15131F;
+  --color-surface-hover: #1A1828;
+
+  --text-primary: #EAE7F0;
+  --text-secondary: #9994B5;
+  --text-muted: #6E6A88;
+  --text-inverse: #0E0C1E;
+
+  --color-accent: #A1A5FF;
+  --color-accent-end: #8387EB;
+  --color-accent-light: rgba(161, 165, 255, 0.16);
+  --color-accent-hover: #6B6FE0;
+  --gradient-primary: linear-gradient(135deg, #6B6FE0, #A1A5FF);
+
+  /* ---- Semantic (dark-tuned, never alarm) ---- */
+  --color-success: #6FCE9A;
+  --color-warning: #E0A85E;
+  --color-on-warning: #0E0C1E;
+  --color-warning-container: rgba(224, 168, 94, 0.16);
+  --color-on-warning-container: #E0A85E;
+  --color-error: #E07A8E;
+  --color-error-container: rgba(224, 122, 142, 0.18);
+  --color-error-dim: #E07A8E;
+  --color-on-error: #0E0C1E;
+  --color-on-error-container: #E07A8E;
+  --color-info: #A1A5FF;
+
+  /* ---- Source colours ---- */
+  --source-chat: #9994B5;
+  --source-calendar: #A1A5FF;
+  --source-email: #E0A85E;
+  --source-document: #9994B5;
+  --source-photo: #9994B5;
+  --source-manual: #A1A5FF;
+  --source-proactive: #9994B5;
+
+  /* ---- Borders & shadows ---- */
+  --border: #252234;
+  --border-focus: #A1A5FF;
+  --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.02), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Tighten the scrollbar tint in dark mode so it doesn't read as a pale
+   light artefact. */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(161, 165, 255, 0.18);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 165, 255, 0.32);
+}
+
+/* ── Import option card hover — v3 reskin (Z2) ── */
+.import-option-v3:hover {
+  border-color: var(--brand);
+  transform: translateY(-1px);
+}

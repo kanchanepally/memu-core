@@ -166,7 +166,15 @@
   --radius-pill: 9999px;
 
   /* ---- Typography: Source Sans 3 UI, Lora reading (matches mobile) ---- */ /* ---- Typography: Source Sans 3 UI, Lora reading (matches mobile) ---- */ --font-ui: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-reading: 'Lora', Georgia, serif;
+  /* v3 typography: --font-reading is now an alias of --font-serif
+     (Newsreader, from memu-tokens.css). All 18 usages of
+     var(--font-reading) below — h1/h2/h3, sidebar wordmark, chat
+     headings, Space body, etc. — now resolve to Newsreader, matching
+     the v3 design language. The legacy Lora @font-face declarations
+     stay (kept as a Georgia/serif system fallback in --font-serif
+     until those fonts roll over) but Newsreader is loaded via the
+     Google Fonts @import at the top of memu-tokens.css. */
+  --font-reading: var(--font-serif, 'Newsreader', 'Source Serif 4', Georgia, serif);
 
     --font-size-xs: 11px;
   --font-size-sm: 13px;
@@ -208,44 +216,59 @@ h3 { font-family: var(--font-reading); font-size: var(--font-size-xl); font-weig
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
+  gap: 7px;
+  padding: 10px 18px;
   font-family: var(--font-ui);
   font-weight: 600;
-  font-size: var(--font-size-body);
-  border-radius: var(--radius-lg);
-  border: none;
+  font-size: 13px;
+  border-radius: 100px;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: var(--transition);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease;
   text-decoration: none;
 }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
 
 .btn-primary {
-  background: var(--color-accent);
+  background: var(--indigo-primary);
   color: var(--text-inverse);
+  box-shadow: 0 4px 12px var(--brand-glow, rgba(80, 84, 181, 0.18));
 }
-.btn-primary: hover { background: var(--color-accent-hover); }
+.btn-primary:hover:not(:disabled) {
+  background: var(--indigo-primary-dim);
+}
 
 .btn-secondary {
   background: var(--color-surface);
   color: var(--text-primary);
-  border: 1px solid var(--color-outline-variant);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
-.btn-secondary: hover { background: var(--color-surface-hover); }
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--indigo-primary);
+  color: var(--indigo-primary);
+}
 
 .btn-sm {
-  padding: var(--space-xs) var(--space-md);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 100px;
 }
 
 .btn-destructive {
   color: var(--color-error);
   border-color: var(--color-error);
+  background: transparent;
+}
+.btn-destructive:hover:not(:disabled) {
+  background: var(--color-error-container);
+  color: var(--color-error);
 }
 
-.btn: disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:hover { transform: none; }
 
 /* ==========================================================================
    Cards
@@ -2028,6 +2051,147 @@ textarea.input {
   border-top: 1px solid var(--border);
 }
 
+/* v3 composer — rebuilt 2026-05-16. The original 760px-wide pill with
+   10px padding read as a tooltip against the dark canvas, not a
+   primary affordance. Wider column, more generous padding, larger
+   send button, foot row hosting attach + kbd hint. JS bindings
+   (chat-input, chat-send, chat-attach, chat-file) preserved verbatim. */
+.chat-input-bar-v3 {
+  display: block;
+  padding: 8px 32px 28px;
+  background: transparent;
+  border-top: none;
+}
+.chat-composer {
+  max-width: 960px;
+  margin: 0 auto;
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px 18px 10px;
+  box-shadow: 0 4px 16px rgba(14, 12, 30, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.2s ease;
+}
+[data-theme="dark"] .chat-composer {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.chat-composer:focus-within {
+  border-color: var(--indigo-primary);
+  box-shadow: 0 6px 24px var(--brand-glow, rgba(80, 84, 181, 0.18));
+}
+.chat-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.chat-composer .chat-input {
+  /* Override the generic .chat-input pill above — inside the composer
+     the input is borderless and inherits typographic settings from the
+     surrounding card. */
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 10px 4px;
+  min-height: 28px;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  max-height: 160px;
+  outline: none;
+  transition: none;
+}
+.chat-composer .chat-input:focus {
+  border-color: transparent;
+}
+.chat-composer .chat-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+.chat-composer .send-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--indigo-primary);
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0 0 1px;
+  box-shadow: 0 6px 18px rgba(80, 84, 181, 0.32);
+  transition: transform 0.12s ease, box-shadow 0.2s ease, opacity 0.15s ease, background 0.15s ease;
+}
+[data-theme="dark"] .chat-composer .send-btn {
+  box-shadow: 0 6px 18px rgba(161, 165, 255, 0.32);
+}
+.chat-composer .send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--indigo-primary-dim);
+}
+.chat-composer .send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.chat-composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+.chat-composer-foot .attach-btn {
+  /* Inline link-shaped, NOT the round pill from the generic
+     .attach-btn rule. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  width: auto;
+  height: auto;
+  padding: 6px 10px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.chat-composer-foot .attach-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--text-primary);
+}
+.chat-composer-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-composer-hint kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--color-bg);
+}
+@media (max-width: 768px) {
+  .chat-input-bar-v3 { padding: 6px 16px 18px; }
+  .chat-composer { padding: 12px 14px 8px; border-radius: 16px; }
+  .chat-composer .send-btn { width: 36px; height: 36px; border-radius: 10px; }
+  .chat-composer-hint { display: none; }
+}
+
 /* Staged attachment pill — shown above chat-input-bar when a photo/file
    has been picked but not yet sent. Lets the user type intent before
    triggering the vision pipeline. */
@@ -2355,24 +2519,62 @@ textarea.input {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  /* v3 — scrim uses the token-defined ink wash rather than flat black,
+     and the dark-mode override deepens it. */
+  background: rgba(14, 12, 30, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
   justify-content: center;
   align-items: center;
   padding: var(--space-lg);
 }
+[data-theme="dark"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.65);
+}
 
 .modal-overlay.open { display: flex; }
 
 .modal-card {
+  /* v3 reskin — uses the same surface tokens as memu-card so light and
+     dark themes inherit correctly. The shadow stack pulls --shadow-lg
+     (which is overridden per-theme), giving more lift in dark mode. */
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px 26px;
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
+}
+
+.modal-card h3 {
+  font-family: var(--font-reading);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.modal-card .input-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: block;
+  margin: 14px 0 6px;
+}
+.modal-card .input-label:first-child { margin-top: 0; }
+.modal-card .input {
+  background: var(--color-bg);
+  border-color: var(--border);
+}
+.modal-card .input:focus {
+  border-color: var(--indigo-primary);
+  box-shadow: 0 0 0 3px var(--brand-glow, rgba(80, 84, 181, 0.15));
 }
 
 /* ==========================================================================
@@ -2477,7 +2679,18 @@ textarea.input {
    App shell — collapsible sidebar (Littlebird-inspired layout, 2026-04-26)
 
    Two viewports, two default behaviours: - Desktop (≥769px): sidebar is part of the flex row, takes 240px when visible. When hidden, its width collapses to 0 (padding/border too) so the canvas naturally absorbs the freed space. - Mobile (≤768px): sidebar is `position: fixed` overlay sliding in from the left, with a backdrop that dismisses on tap. The flex layout becomes single-column (sidebar is out of flow). The persisted state is `body.sidebar-shown`. JS sets it on boot based on viewport (default visible on desktop, default hidden on mobile) and updates it on toggle. CSS interprets "shown" appropriately per viewport. State persists in sessionStorage across page nav. IMPORTANT — uses flex, not grid. An earlier grid attempt put sidebar at `position: fixed` which removed it from grid flow, so `app-main` got auto-placed into column 1 (the 0-width column) and collapsed to ~0px. Flex with width transitions sidesteps that entirely — `app-main` always takes `flex: 1` of whatever's left. ========================================================================== */ .app-shell { display: flex;
-  min-height: 100vh;
+  /* v3 scroll-model fix: lock the shell to viewport height and let the
+     canvas (.app-main) own the scroll. Previously the body scrolled and
+     the sidebar was position: sticky inside .app-shell {min-height:100vh}
+     — sticky disengages once the body scrolls past the containing block,
+     so the sidebar scrolled away on long pages (Today, Spaces). Pinning
+     the shell to height: 100vh + overflow: hidden, and giving .app-main
+     overflow-y: auto, means the sidebar is always visible regardless of
+     canvas scroll depth. 100dvh is the dynamic viewport (Android Chrome
+     URL bar) preferred when supported. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   align-items: stretch;
 }
 
@@ -2518,9 +2731,14 @@ textarea.input {
   padding: 0 var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border);
   text-decoration: none;
+  /* v3 fix: drive the inline logo-venn SVG via currentColor. The SVG
+     uses stop-color="currentColor" in its gradient; setting color here
+     makes the mark indigo in light mode, light indigo in dark mode
+     (the legacy alias --indigo-primary flips with [data-theme]). */
+  color: var(--indigo-primary);
 }
 
-.sidebar-logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
+.sidebar-logo-mark { width: 26px; height: 26px; flex-shrink: 0; color: var(--indigo-primary); }
 
 .sidebar-logo-text {
   font-family: var(--font-reading);
@@ -2723,16 +2941,25 @@ textarea.input {
 .workspace-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 12px;
 }
 .workspace-card {
+  /* v3 reskin — same surface + radius + shadow as .memu-card so the
+     Workspaces tab reads as a sibling of Spaces / Lists. */
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-  padding: var(--space-md);
+  gap: 10px;
+  padding: 18px 22px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.15s ease;
+}
+.workspace-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--indigo-primary);
+  box-shadow: var(--shadow-md);
 }
 .workspace-card-head {
   display: flex;
@@ -2753,8 +2980,9 @@ textarea.input {
 }
 .workspace-card-name {
   font-family: var(--font-reading);
-  font-size: var(--font-size-lg);
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
 }
 .workspace-rename-btn {
@@ -2832,6 +3060,11 @@ textarea.input {
   flex: 1;
   min-width: 0;
   position: relative;
+  /* v3 scroll-model: app-main is now the canvas scroll container.
+     The shell is locked to 100vh so the body never scrolls; main content
+     scrolls internally and the sidebar remains fixed. */
+  overflow-y: auto;
+  height: 100%;
 }
 
 /* Topbar — sticky hamburger + page title at the top of the canvas. */
@@ -3361,12 +3594,39 @@ textarea.input {
   background: transparent;
   padding: 0;
   overflow: visible;
+  /* v3 — let the Venn mark in AVATAR_MARK_SVG (icon-29, three indigo
+     circles) sit on its own without the secondary-container pill the
+     base .avatar class applied. */
+  color: var(--indigo-primary);
 }
 
 .avatar-mark svg {
   width: 28px;
   height: 28px;
   display: block;
+}
+
+/* v3 — user speaker glyph for chat rows. Small indigo disc with the
+   user's first initial in white serif. Sits on the trailing edge of
+   user rows (justify-content: flex-end) so the bubble + avatar form a
+   right-aligned cluster mirroring the Memu (avatar-left) pattern. */
+.avatar-user {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  background: var(--indigo-primary);
+  color: var(--text-inverse);
+  font-family: var(--font-reading);
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+  margin-bottom: var(--space-lg);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(80, 84, 181, 0.18);
 }
 
 /* ==========================================================================
@@ -3441,27 +3701,28 @@ textarea.input {
   gap: var(--space-xs);
   padding: var(--space-sm) 13px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--color-outline-variant);
-  background: rgba(80, 84, 181, 0.06);
-  color: #5054B5;
+  border: 1px solid var(--border);
+  background: var(--brand-softer, rgba(80, 84, 181, 0.06));
+  color: var(--indigo-primary);
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.spaces-canvas-link: hover { background: #5054B5;
-  border-color: #5054B5;
-  color: #FFFFFF;
+.spaces-canvas-link:hover {
+  background: var(--indigo-primary);
+  border-color: var(--indigo-primary);
+  color: var(--text-inverse);
 }
 
 /* Connect-Spaces modal — picker list of candidate targets. */
 .connect-target-list {
   max-height: 260px;
   overflow-y: auto;
-  border: 1px solid var(--color-outline-variant);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated, #FFFFFF);
+  background: var(--color-bg);
 }
 .connect-target-row {
   display: flex;
@@ -3936,7 +4197,7 @@ body.focus-mode .focus-exit {
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--border);
-  background: var(--color-surface-elevated, white);
+  background: var(--color-bg);
   color: var(--text-muted, var(--text-secondary));
 }
 
@@ -3949,7 +4210,13 @@ body.focus-mode .focus-exit {
    -------------------------------------------------------------------------- */
 
 .reading-toolbar {
-  position: absolute;
+  /* v3 scroll-model: switched from absolute to fixed. Since .app-main is
+     now the scroll container (not body), window.scrollY is always 0 and
+     getBoundingClientRect() returns viewport-relative coords. fixed
+     position consumes those directly without needing scroll-offset math.
+     Note: showReadingToolbar() in dashboard.html JS now sets t.style.top
+     and t.style.left without adding window.scrollY/scrollX. */
+  position: fixed;
   z-index: 9000;
   display: inline-flex;
   align-items: center;
@@ -4100,7 +4367,7 @@ body.focus-mode .focus-exit {
   border-radius: 50%;
   background: var(--indigo-primary-container);
 }
-.active .day-dot { background: #fff; }
+.active .day-dot { background: var(--text-inverse); }
 
 .day-header {
   margin: var(--space-xl) 0 var(--space-lg);
@@ -4270,10 +4537,10 @@ body.focus-mode .focus-exit {
   transition: all .15s ease;
 }
 .lists-segment-btn.active {
-  background: #fff;
+  background: var(--color-surface);
   color: var(--indigo-primary);
   font-weight: 700;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 .lists-count-badge {
   display: inline-flex;
@@ -4305,10 +4572,10 @@ body.focus-mode .focus-exit {
   gap: var(--space-md);
   padding: var(--space-md) var(--space-md);
   margin-bottom: var(--space-sm);
-  background: #fff;
-  border: 1px solid var(--color-outline-variant);
+  background: var(--color-surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  transition: opacity .2s ease, transform .2s ease;
+  transition: opacity .2s ease, transform .2s ease, border-color .15s ease;
 }
 .lists-item: hover { border-color: var(--indigo-primary);
 }
@@ -4317,8 +4584,8 @@ body.focus-mode .focus-exit {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: var(--space-xs) solid var(--border-color, #cfd2de);
-  background: #fff;
+  border: var(--space-xs) solid var(--border);
+  background: var(--color-surface);
   color: transparent;
   cursor: pointer;
   display: inline-flex;
