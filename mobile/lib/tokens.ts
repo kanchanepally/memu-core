@@ -1,23 +1,172 @@
 /**
- * Memu Design Tokens — Indigo Sanctuary
- * Source: assets/stitch_family_knowledge_system/indigo_sanctuary/DESIGN.md
+ * Memu Mobile — Design tokens (v3).
  *
- * Principles:
- *   - Slow UX. No 1px borders for sectioning — separation by tonal surface.
- *   - Depth via stacking (surface-container-lowest on surface-container-low).
- *   - AI elements use tertiary (#645A7A) + soft radial glow.
- *   - Errors are muted (#A8364B) not alarm-red.
- *   - Generous padding (24–48px); higher end of the 8px scale.
+ * Two parallel token maps for light & dark. Use `useTokens()` from theme.tsx
+ * to get the current map. All existing tokens from the pre-v3 file
+ * (mobile/lib/tokens.ts) are preserved as aliases so existing components
+ * keep working during transition.
  */
 
+const fonts = {
+  ui: 'Inter_500Medium',
+  uiRegular: 'Inter_400Regular',
+  uiBold: 'Inter_700Bold',
+  serif: 'Newsreader_500Medium',
+  serifRegular: 'Newsreader_400Regular',
+  serifItalic: 'Newsreader_400Regular_Italic',
+  mono: 'JetBrainsMono_500Medium',
+};
+
+export const lightTokens = {
+  name: 'light' as 'light' | 'dark',
+  // Brand
+  brand: '#5054B5',
+  brandDeep: '#3A3D8F',
+  brandSoft: '#EEEDF8',
+  brandSofter: '#F6F5FB',
+  brandMuted: '#9094FA',
+  brandGlow: 'rgba(80, 84, 181, 0.10)',
+
+  // Surfaces
+  bg: '#FAF9FB',
+  bgWarm: '#F8F6F1',
+  surface: '#FFFFFF',
+  surfaceAlt: '#FBFAFD',
+  sidebar: '#F4F2F8',
+  scrim: 'rgba(14, 12, 30, 0.5)',
+
+  // Text
+  text: '#0E0C1E',
+  text2: '#5B5980',
+  text3: '#9994B5',
+  textInverse: '#FFFFFF',
+
+  // Lines
+  border: '#E8E4F0',
+  borderSoft: '#EFEDF4',
+
+  // Semantic
+  amber: '#B88843',
+  amberBg: 'rgba(184, 136, 67, 0.12)',
+  green: '#3A7D5C',
+  greenBg: 'rgba(58, 125, 92, 0.10)',
+  red: '#A8364B',
+  redBg: 'rgba(168, 54, 75, 0.10)',
+
+  // Type
+  ...fonts,
+
+  // ── Legacy aliases (for compat with the pre-v3 names) ──
+  primary: '#5054B5',
+  primaryDim: '#4448A8',
+  primaryContainer: '#9094FA',
+  onPrimary: '#FBF7FF',
+  onSurface: '#0E0C1E',
+  onSurfaceVariant: '#5B5980',
+  outline: '#9994B5',
+  outlineVariant: '#E8E4F0',
+};
+
+export const darkTokens: typeof lightTokens = {
+  name: 'dark' as const,
+  brand: '#A1A5FF',
+  brandDeep: '#6B6FE0',
+  brandSoft: 'rgba(161, 165, 255, 0.12)',
+  brandSofter: 'rgba(161, 165, 255, 0.06)',
+  brandMuted: '#8387EB',
+  brandGlow: 'rgba(161, 165, 255, 0.18)',
+
+  bg: '#0A0815',
+  bgWarm: '#0E0C1E',
+  surface: '#15131F',
+  surfaceAlt: '#1A1828',
+  sidebar: '#0E0C1E',
+  scrim: 'rgba(0, 0, 0, 0.7)',
+
+  text: '#EAE7F0',
+  text2: '#9994B5',
+  text3: '#6E6A88',
+  textInverse: '#0E0C1E',
+
+  border: '#252234',
+  borderSoft: '#1E1B2A',
+
+  amber: '#E0A85E',
+  amberBg: 'rgba(224, 168, 94, 0.14)',
+  green: '#6FCE9A',
+  greenBg: 'rgba(111, 206, 154, 0.12)',
+  red: '#E07A8E',
+  redBg: 'rgba(224, 122, 142, 0.14)',
+
+  ...fonts,
+
+  primary: '#A1A5FF',
+  primaryDim: '#6B6FE0',
+  primaryContainer: '#8387EB',
+  onPrimary: '#0E0C1E',
+  onSurface: '#EAE7F0',
+  onSurfaceVariant: '#9994B5',
+  outline: '#6E6A88',
+  outlineVariant: '#252234',
+};
+
+export type Tokens = typeof lightTokens;
+
+// Spacing — preserved from existing mobile/lib/tokens.ts
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  '2xl': 48,
+  '3xl': 64,
+} as const;
+
+// Type scale
+export const typeScale = {
+  caption: 11,
+  small: 13,
+  body: 15,
+  large: 18,
+  h4: 22,
+  h3: 28,
+  h2: 34,
+  h1: 44,
+  display: 56,
+};
+
+// Radii
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 22,
+  pill: 9999,
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────
+// Back-compat re-exports
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The pre-v3 tokens file exported `colors`, `typography`, `shadows`, and
+// `motion` as flat static constants. The new v3 design system is theme-
+// aware via `useTokens()`, but ~41 files still import these names. We
+// keep them as aliases pointing at the light theme so legacy code paths
+// compile and render unchanged until each screen is ported. After step 5
+// (per-screen ports) these aliases can shrink.
+//
+// `colors` is intentionally the *light* token map. Components that need
+// dark-mode support should migrate to `useTokens()`.
+
 export const colors = {
-  // ---- Indigo Sanctuary core ----
-  primary: '#5054B5',            // signature indigo — used sparingly for intent
-  primaryDim: '#4448A8',         // pressed states
-  primaryContainer: '#9094FA',   // silk gradient endpoint
+  // Indigo Sanctuary core (mapped to v3 light brand palette)
+  primary: lightTokens.primary,
+  primaryDim: lightTokens.primaryDim,
+  primaryContainer: lightTokens.primaryContainer,
   primaryFixed: '#9094FA',
   primaryFixedDim: '#8387EB',
-  onPrimary: '#FBF7FF',
+  onPrimary: lightTokens.onPrimary,
   onPrimaryContainer: '#080575',
 
   secondary: '#5B5993',
@@ -25,17 +174,17 @@ export const colors = {
   onSecondary: '#FBF7FF',
   onSecondaryContainer: '#4D4B85',
 
-  tertiary: '#645A7A',           // ALL AI elements use this colour
+  tertiary: '#645A7A',
   tertiaryContainer: '#E4D7FD',
   tertiaryFixed: '#E4D7FD',
   tertiaryDim: '#584E6D',
   onTertiary: '#FDF7FF',
   onTertiaryContainer: '#534968',
 
-  // ---- Surface tonal stack (no borders — depth via stacking) ----
-  surface: '#F9F9FB',                  // base canvas
-  surfaceContainerLowest: '#FFFFFF',   // most prominent interactive cards
-  surfaceContainerLow: '#F2F4F6',      // secondary structural areas
+  // Surfaces
+  surface: '#F9F9FB',
+  surfaceContainerLowest: '#FFFFFF',
+  surfaceContainerLow: '#F2F4F6',
   surfaceContainer: '#ECEEF1',
   surfaceContainerHigh: '#E6E8EC',
   surfaceContainerHighest: '#DFE3E7',
@@ -45,14 +194,14 @@ export const colors = {
   inverseSurface: '#0C0E10',
   inverseOnSurface: '#9C9D9F',
 
-  // ---- Text (on-surface scale) ----
+  // Text
   onSurface: '#2E3336',
   onSurfaceVariant: '#5B6063',
   onBackground: '#2E3336',
   outline: '#777B7F',
-  outlineVariant: '#AEB2B6',         // use at 15% opacity for "ghost borders"
+  outlineVariant: '#AEB2B6',
 
-  // ---- Semantic (muted, sanctuary-calm) ----
+  // Semantic
   error: '#A8364B',
   errorContainer: '#F97386',
   errorDim: '#6B0221',
@@ -65,14 +214,14 @@ export const colors = {
   warningContainer: '#FFF7E6',
   onWarningContainer: '#7A5A12',
 
-  // ---- Source semantics (stream card origin) ----
+  // Source semantics
   sourceChat: '#5B5993',
   sourceCalendar: '#5054B5',
   sourceEmail: '#B88843',
   sourceDocument: '#645A7A',
   sourceManual: '#5054B5',
 
-  // ---- Legacy aliases (kept so older screens still compile during migration) ----
+  // Legacy aliases
   accent: '#5054B5',
   accentEnd: '#9094FA',
   accentLight: '#E2DFFF',
@@ -87,27 +236,12 @@ export const colors = {
   info: '#5054B5',
 } as const;
 
-// ---- Spacing: rhythm of slowness. Move in 8px but favour the high end. ----
-export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  '2xl': 48,
-  '3xl': 64,
-} as const;
-
-// ---- Radius: never 90deg. Cards live in lg (24) or xl (48). ----
-export const radius = {
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 48,
-  pill: 9999,
-} as const;
-
-// ---- Typography: Source Sans 3 UI + Lora reading ----
+// Typography — pre-v3 shape preserved.
+// `families` references the old Source Sans 3 / Lora font names that were
+// loaded in `_layout.tsx`. The v3 root layout now loads Inter + Newsreader +
+// JetBrains Mono via `useMemuFonts()`, AND continues to load the legacy
+// Source Sans + Lora set, so existing components that hardcoded the old
+// family names keep rendering until they migrate to `useTokens()`.
 export const typography = {
   fontFamily: 'SourceSans3_400Regular',
   headlineFamily: 'SourceSans3_800ExtraBold',
@@ -130,14 +264,12 @@ export const typography = {
     bold: '700' as const,
     extrabold: '800' as const,
   },
-  // Letter spacing: editorial tightness on headlines, widening on labels
   tracking: {
     tight: -0.5,
     normal: 0,
     wide: 0.5,
     widest: 2.2,
   },
-  // Family tokens — use these via `fontFamily` directly, not the root one above
   families: {
     headline: 'SourceSans3_800ExtraBold',
     headlineLight: 'SourceSans3_300Light',
@@ -152,8 +284,7 @@ export const typography = {
   },
 } as const;
 
-// ---- Elevation: Tonal Morphism. Two tiers. ----
-// Low = passive cards. High = floating AI Insight cards only.
+// Elevation — Tonal Morphism. Two tiers.
 export const shadows = {
   none: {},
   low: {
@@ -170,7 +301,6 @@ export const shadows = {
     shadowRadius: 24,
     elevation: 4,
   },
-  // Ambient indigo glow — AI cards, primary modals
   high: {
     shadowColor: '#5054B5',
     shadowOffset: { width: 0, height: 20 },
@@ -178,7 +308,6 @@ export const shadows = {
     shadowRadius: 40,
     elevation: 10,
   },
-  // Legacy aliases
   sm: {
     shadowColor: '#2E3336',
     shadowOffset: { width: 0, height: 4 },
@@ -202,13 +331,9 @@ export const shadows = {
   },
 } as const;
 
-// ---- Motion: deliberate, never bouncy ----
 export const motion = {
-  // Tactile feedback: buttons scale to 0.98 on press, never change colour to muddy grey
   pressScale: 0.98,
-  // Skeleton "pulse of life" — slow 3s breath, opacity 0.4 → 1
   breathDuration: 3000,
-  // Default transition for colour/opacity shifts
   fast: 150,
   normal: 250,
   slow: 400,

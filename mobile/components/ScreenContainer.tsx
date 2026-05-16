@@ -1,6 +1,7 @@
 import React from 'react';
-import { ScrollView, View, StyleSheet, RefreshControl, StyleProp, ViewStyle } from 'react-native';
-import { colors, spacing } from '../lib/tokens';
+import { ScrollView, View, RefreshControl, StyleProp, ViewStyle } from 'react-native';
+import { useTokens } from '../lib/theme';
+import { spacing } from '../lib/tokens';
 
 interface Props {
   children: React.ReactNode;
@@ -13,8 +14,9 @@ interface Props {
 }
 
 /**
- * Standard screen surface. Cool-neutral background, generous bottom inset
- * so content clears the floating tab bar. Use under the ScreenHeader.
+ * Standard screen surface. Background tracks the v3 theme via useTokens(),
+ * generous bottom inset so content clears the floating tab bar. Use under
+ * the ScreenHeader.
  */
 export default function ScreenContainer({
   children,
@@ -24,9 +26,13 @@ export default function ScreenContainer({
   scrollable = true,
   bottomInset = 120,
 }: Props) {
+  const t = useTokens();
+  const rootStyle = { flex: 1, backgroundColor: t.bg };
+  const contentStyleBase = { paddingTop: spacing.lg };
+
   if (!scrollable) {
     return (
-      <View style={[styles.root, { paddingBottom: bottomInset }, contentStyle]}>
+      <View style={[rootStyle, { paddingBottom: bottomInset }, contentStyle]}>
         {children}
       </View>
     );
@@ -34,14 +40,14 @@ export default function ScreenContainer({
 
   return (
     <ScrollView
-      style={styles.root}
-      contentContainerStyle={[styles.content, { paddingBottom: bottomInset }, contentStyle]}
+      style={rootStyle}
+      contentContainerStyle={[contentStyleBase, { paddingBottom: bottomInset }, contentStyle]}
       refreshControl={
         onRefresh ? (
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.primary}
+            tintColor={t.brand}
           />
         ) : undefined
       }
@@ -51,13 +57,3 @@ export default function ScreenContainer({
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.surface,
-  },
-  content: {
-    paddingTop: spacing.lg,
-  },
-});

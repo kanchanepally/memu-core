@@ -24,6 +24,7 @@ import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
 import GradientButton from '../../components/GradientButton';
 import { useToast } from '../../components/Toast';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 interface RowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -569,6 +570,14 @@ export default function SettingsScreen() {
             subtitle="Join, leave, share Spaces from another Pod"
             onPress={() => router.push('/household')}
           />
+        </View>
+
+        {/* Appearance — v3 ThemeToggle (Auto / Light / Dark). Renders its
+            own section card so it visually parallels the other settings
+            groups; persists user choice to AsyncStorage via the
+            ThemeProvider. */}
+        <View style={{ marginTop: spacing.lg, marginHorizontal: spacing.md }}>
+          <ThemeToggle />
         </View>
 
         {/* Privacy */}
