@@ -273,7 +273,22 @@ async function api(path, opts = {}) {
      ADDED: #theme-toggle (theme-toggle.js auto-wires it on load). -->
 <aside class="sidebar memu-glow-bg" id="sidebar">
     <a class="sidebar-logo" href="/dashboard.html">
-        <img class="sidebar-logo-mark" src="/marks/logo-venn.svg" alt="" width="26" height="26">
+        <!-- v3 fix: logo-venn.svg was loaded via <img>, which means
+             stop-color="currentColor" inside its gradient does NOT inherit
+             from the parent's CSS color (an SVG loaded as an image is its
+             own document). Result: gray-on-everything regardless of theme.
+             Inline the SVG here so currentColor picks up
+             color: var(--brand) on the parent <a>, which is set in
+             style.css and switches per [data-theme]. -->
+        <svg class="sidebar-logo-mark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="26" height="26" aria-hidden="true" focusable="false">
+            <defs><linearGradient id="sidebar-logo-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="currentColor"></stop><stop offset="1" stop-color="currentColor" stop-opacity="0.7"></stop></linearGradient></defs>
+            <circle cx="40" cy="40" r="37" fill="none" stroke="url(#sidebar-logo-grad)" stroke-width="1" opacity="0.3"></circle>
+            <g style="mix-blend-mode:multiply">
+                <circle cx="30" cy="50" r="17" fill="url(#sidebar-logo-grad)" opacity="0.85"></circle>
+                <circle cx="50" cy="50" r="17" fill="url(#sidebar-logo-grad)" opacity="0.85"></circle>
+                <circle cx="40" cy="32" r="17" fill="url(#sidebar-logo-grad)" opacity="0.85"></circle>
+            </g>
+        </svg>
         <span class="sidebar-logo-text serif-display" style="font-style:italic;font-weight:500;">memu</span>
     </a>
     <!-- Workspace switcher pill — shows the active workspace below the

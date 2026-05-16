@@ -2518,9 +2518,14 @@ textarea.input {
   padding: 0 var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border);
   text-decoration: none;
+  /* v3 fix: drive the inline logo-venn SVG via currentColor. The SVG
+     uses stop-color="currentColor" in its gradient; setting color here
+     makes the mark indigo in light mode, light indigo in dark mode
+     (the legacy alias --indigo-primary flips with [data-theme]). */
+  color: var(--indigo-primary);
 }
 
-.sidebar-logo-mark { width: 36px; height: 36px; flex-shrink: 0; }
+.sidebar-logo-mark { width: 26px; height: 26px; flex-shrink: 0; color: var(--indigo-primary); }
 
 .sidebar-logo-text {
   font-family: var(--font-reading);
