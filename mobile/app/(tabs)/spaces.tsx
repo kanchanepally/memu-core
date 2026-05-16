@@ -477,9 +477,24 @@ export default function SpacesScreen() {
               style={styles.detailScroll}
               contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
             >
-              <Markdown style={markdownStyles}>
-                {selectedPage.body_markdown || ''}
-              </Markdown>
+              {/* PDF / document fallback (option B per pickup brief).
+                  pdf.js / react-native-pdf is a deep native integration; for now,
+                  for document-category Spaces we render the OCR'd body text as
+                  plain serif text and skip markdown parsing. This avoids the
+                  crash class where embedded HTML / pdf.js worker references in
+                  body_markdown blew up react-native-markdown-display.
+                  Tier-2 native slice would: add `react-native-pdf` + plugin,
+                  resolve `sourceReferences` for `document:<path>`, fetch via
+                  Tailscale, render natively. */}
+              {selectedPage.category === 'document' ? (
+                <Text style={pdfFallbackStyles.body}>
+                  {selectedPage.body_markdown || ''}
+                </Text>
+              ) : (
+                <Markdown style={markdownStyles}>
+                  {selectedPage.body_markdown || ''}
+                </Markdown>
+              )}
             </ScrollView>
           )}
 
@@ -979,6 +994,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     fontFamily: typography.families.body,
+  },
+});
+
+// Plain-text fallback for document-category Spaces. Uses the serif
+// reading family so OCR'd PDF text reads close to the original tone.
+const pdfFallbackStyles = StyleSheet.create({
+  body: {
+    fontSize: typography.sizes.body,
+    fontFamily: typography.families.reading,
+    color: colors.onSurface,
+    lineHeight: 24,
   },
 });
 
