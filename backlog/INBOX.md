@@ -91,23 +91,144 @@ writing half — and they're inseparable: Writing without aggregation is
 a notepad; aggregation without writing is a dashboard; both without
 agentic grounding is mechanical.
 
-**Worked example for design conversations — "Caste in India" research:**
+**Worked example end-to-end — "Caste in India" research:**
 
-- Workspace: `Caste in India`
-- ~30 Source Spaces (Ambedkar, Dirks, Deshpande, ...)
-- Field Spaces (Hyderabad interviews, field notes, voice memos)
-- Each source has memos, codes, quotes, questions attached to passages
-- **Workbench**: search "caste mobility" → see every memo/quote/code
-  across all 30 sources + field. Filter by source. Group by theme.
-- **Writing Space**: open "Lit Review v1". Type "Caste mobility in
-  contemporary urban India is best understood through @" → autocomplete
-  surfaces your captured artefacts. Pick three. They insert as
-  citations with quoted passages, linked back to the source page+rect.
-- **Agent**: "summarise the contradictions between Dirks and Ambedkar
-  in my captured quotes" → produces a draft paragraph citing YOUR
-  quotes, you edit it.
-- Export "Lit Review v3" as DOCX with footnote-style citations or as
-  LaTeX with BibTeX bibliography.
+Day 1 — workspace setup
+- Create research workspace `Caste in India`
+- Pick a workspace template (when R1 templates are extended for
+  research personas)
+- Drop in 30 PDFs (Ambedkar's *Annihilation of Caste*, Dirks' *Castes
+  of Mind*, Deshpande's *Contemporary India*, plus 27 others) → 30
+  Source Spaces auto-created via the unified ingestion pipeline (R2),
+  each with OCR'd `body_markdown` + the original PDF stored at
+  `MEMU_DOCUMENTS_ROOT/<workspace>/<yyyy-mm>/<uuid>-file.pdf`
+- Drop in interview transcripts from Hyderabad fieldwork → Field
+  Spaces (likely a new category alongside Source)
+- Drop in voice memo transcripts → also Field Spaces
+
+Days 2-30 — reading phase (the bottleneck this PR supports)
+- Open each Source one at a time. Three-column layout: nav | PDF |
+  insights panel.
+- Highlight passages → verb pills (Memo / Quote / Code / Question)
+  arm at top right. Click Memo → composer with the passage quoted,
+  type your noticing, save. Card appears in right panel.
+- Codes are tags with autocomplete: as you code your 5th paper, "caste
+  mobility" and "Dalit pedagogy" and "structural exclusion" auto-
+  suggest from your accumulated taxonomy.
+- Synthesis section below each PDF: you write per-paper analytical
+  prose. Indigo-italic spans backlink to captured artefacts. The
+  per-paper synthesis IS the per-paper view.
+
+Day 31+ — the writing pipeline (R5 + R6 + R4.2, NEXT SPRINT)
+- **Workbench** (R5): open the workspace-level Workbench surface.
+  Search "caste mobility" → every memo / quote / code / question
+  across all 30 Sources + the field data, filterable by source / date
+  / verb. Discover that "structural exclusion" appears in 8 papers
+  and 12 interviews. See contradictions surface as the agent flags
+  them.
+- **Writing Space — "Lit Review v1"** (R6): new Space category.
+  Long-form editor (Newsreader serif, generous column, full markdown).
+  Type "Caste mobility in contemporary urban India must be read
+  against @" — `@` fuzzy-searches your captured artefacts. Pick three
+  quotes from Ambedkar, Deshpande, and a Hyderabad interviewee. They
+  insert as citations-with-quoted-passages, indigo italic spans
+  linked back to source page+rect.
+- **Agent grounding** (R4.2): "Memu, draft a paragraph on the
+  contradictions between Dirks' colonial-construct argument and
+  Ambedkar's intrinsic-religious argument, citing my captured
+  quotes." → produces a DRAFT paragraph using YOUR quotes, YOUR
+  memos, YOUR field codes. You edit it. Never auto-applied.
+- "Methodology section" — another Writing Space. Cites your field
+  procedure decisions captured as memos in your Hyderabad interview
+  Sources.
+- "Findings chapter v1, v2, v3" — three Writing Spaces (your
+  "writing trials"). Fork v1 → v2 with a different argument
+  structure. Diff between them. Merge changes back if useful.
+- Export "Lit Review v3" as DOCX with footnote-style citations OR
+  as LaTeX with auto-generated BibTeX bibliography, OR as Pandoc
+  Markdown for a journal's submission system.
+
+Compounding (the months-and-years dimension)
+- 6 months in: codebook of 80 codes is a personal taxonomy. Reusable
+  across new papers — you don't re-invent "caste mobility" coding
+  scheme every time.
+- "What did I think about caste mobility 4 months ago?" — searchable.
+  Past memos stay surfaced via the agent.
+- Memo-to-memo connections (when Connections artefact ships) build a
+  personal knowledge graph. Themes emerge across years of work.
+- The agent's grounding gets RICHER as your corpus grows — its
+  draft-paragraphs improve as it has more of your prior thinking to
+  cite.
+- A new paper drops on caste mobility in Northeast India → import it
+  → the agent surfaces "this argues against your captured memo from
+  Deshpande p.144" within minutes of import. The corpus comes alive.
+
+Public / publishing (the outward dimension — sister vision)
+- Some Writing Spaces should be publishable. Finished literature
+  review, methodology white paper, completed chapter, blog essay.
+  Render as static HTML at a subdomain like
+  `hareesh.memu.digital/caste-mobility-lit-review`.
+- Citations preserved as hyperlinks (public-only links to public
+  sources; auth-gated to the source memo for private work).
+- Inspirations to study: Obsidian Publish, Notion published pages,
+  TiddlyWiki, Quartz (open-source digital garden tool).
+- Enables: sharing work-in-progress with collaborators, soft-
+  publishing chapters before formal journal submission, building a
+  personal academic website that's the LIVE output of your Memu
+  workspace rather than a separate maintenance burden.
+- Privacy posture: the publishable Writing Space is OPT-IN per
+  Space; default is private-to-workspace. Anonymisation applied at
+  publish time (your field interviewees stay anonymous in the public
+  view). The Show-the-Work footer Memu uses elsewhere applies:
+  "Compiled from N captured artefacts across N sources" with a
+  link to the public methodology.
+
+**Honest gaps to close before R4.2 agent-drafting can ship safely:**
+
+1. **No at-rest encryption.** PDFs sit as plaintext bytes on the Z2
+   under `MEMU_DOCUMENTS_ROOT`; `body_markdown` sits as plaintext in
+   Postgres. The Twin only protects the LLM interface, not storage.
+   Filesystem-level compromise = data compromise. Pod-drive vision
+   (per-person LUKS USB) addresses this for Tier-2 future; today on
+   standalone Z2 you rely on disk-level encryption you set up
+   yourself.
+
+2. **Twin guard is opt-in per skill.** Skills with `requires_twin:
+   true` are protected; skills without that flag bypass the guard.
+   A developer adding a new skill who forgets the flag = unprotected
+   path. Belt-and-braces would be "default ON, opt-out for genuinely
+   non-sensitive skills". Currently the other way around.
+
+3. **Research-mode Twin destroys public-figure semantics.** The Twin
+   was designed for family content (Mrs Patel the piano teacher →
+   Person-N). Applied to research content, it would scramble
+   Ambedkar / Dirks / Deshpande into `Person-7 argues that Person-3
+   misread Person-12`. Public authors and historical figures must be
+   exempt from auto-registration; only the researcher's own
+   identifiers (the researcher's name, their interviewees) should be
+   anonymised. **This is a prereq for R4.2 — the agent drafting
+   paragraphs needs to write "Ambedkar argues...", not "Person-7
+   argues...".**
+
+4. **Cross-workspace identity smearing.** The Twin registry is
+   `family_id` (workspace) scoped. The same real person mentioned in
+   your research workspace AND your family workspace may get
+   different anonymous labels. Not catastrophic, but means a
+   workspace-internal LLM context can't safely be passed across
+   workspaces without re-anonymisation.
+
+5. **Local LLM (Ollama) not wired.** The ModelRouter knows about
+   `provider: 'ollama'` but the dispatch throws explicitly with
+   "not yet implemented — Story 1.5 / Tier 3 work". Tier-3
+   sovereign-mode is therefore real today only for the surfaces that
+   don't need LLM (capture, reading, the entire PDF workbench). The
+   moment R4.2 ships agentic drafting, Tier 3 needs Ollama wired or
+   the agent can only run on Tier 1/2 with cloud LLMs.
+
+These five gaps don't block the writing-pipeline build, but each
+needs an explicit decision in the design conversation. #3 is the most
+pressing — without research-mode Twin semantics, R4.2 drafting is
+unusable. #1 is the most user-facing privacy promise.
 
 **What was demoted (still on roadmap, just no longer same tier):**
 
