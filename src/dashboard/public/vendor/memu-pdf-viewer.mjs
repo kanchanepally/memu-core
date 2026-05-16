@@ -6,21 +6,24 @@
  * and exposed to the rest of the dashboard via window.MemuPdfViewer so
  * the classic <script> inline JS can call it.
  *
- * Scope deliberately minimal:
+ * Scope:
  *   - Continuous scroll, one canvas per page
- *   - Page numbers shown above each page
- *   - Text-selectable via pdf.js's TextLayer
+ *   - Page numbers shown above each page (`data-page-number` attr too)
+ *   - Text-selectable via pdf.js's TextLayer (R3 — selection is read
+ *     directly by the classic-script side via `window.getSelection()`
+ *     plus walk-up to `.pdf-page[data-page-number]`)
  *   - Cancellable: returns a handle whose .destroy() aborts in-flight
- *     page renders and removes the DOM (called when the Space view is
- *     closed or navigated away)
+ *     page renders and removes the DOM
+ *   - R3 jump-to-passage: handle.scrollToPage(n, rect?) +
+ *     handle.highlight(page, rect, durationMs) so the right-panel
+ *     insights cards can deep-link back into the PDF
  *
  * Deferred to follow-ups:
- *   - Contents panel (PDF outlines extracted via pdfDoc.getOutline())
+ *   - Contents panel (PDF outlines via pdfDoc.getOutline())
  *   - Stable passage-id derivation from (file_hash, page, char_range)
- *     so a selection can address a passage (Z.2 equivalent for PDFs —
- *     needed by the active-reading toolbar in Phase R3)
- *   - Page-thumbnail rail, "Convert to markdown" action, highlight
- *     overlay (R3), search-in-PDF
+ *     so a selection can address a passage textually (R3 uses
+ *     page+rect anchors instead — exact and zero schema cost)
+ *   - Page-thumbnail rail, "Convert to markdown" action, search-in-PDF
  */
 
 import { GlobalWorkerOptions, getDocument } from '/vendor/pdf.min.mjs';
@@ -46,16 +49,50 @@ function effectiveScale(baseScale) {
  *     the existing api() helper rather than teaching pdf.js about our
  *     X-Memu-* headers)
  *
+ * Options (third arg):
+ *   - fileName: string — drawn into the chrome header bar
+ *   - onPageChange: (pageNumber, total) => void — fires when the
+ *     currently-visible page changes (via IntersectionObserver).
+ *     The chrome's own page indicator uses this internally; callers
+ *     can subscribe too if they need the active page elsewhere.
+ *
  * The container is wiped on entry — the viewer takes ownership. Pages
  * render sequentially (not all in parallel) to keep memory bounded on
  * large documents; a typical 40-page paper renders progressively in
  * 2–4s on a modern desktop.
  */
-export async function renderPdfInto(source, container) {
+export async function renderPdfInto(source, container, opts = {}) {
   if (!container) throw new Error('renderPdfInto: container is required');
 
   container.innerHTML = '';
   container.classList.add('pdf-viewer');
+
+  const fileName = (opts && typeof opts.fileName === 'string') ? opts.fileName : '';
+  const onPageChange = (opts && typeof opts.onPageChange === 'function') ? opts.onPageChange : null;
+
+  // R3 chrome bar — filename + page nav + (stub) search. Mounted
+  // before the page stack so it sits at the top of the viewer
+  // column. Page nav buttons wire up after pdfDoc loads (we need
+  // numPages first).
+  const chrome = document.createElement('div');
+  chrome.className = 'pdf-chrome';
+  chrome.innerHTML = `
+    <div class="pdf-chrome-file mono">
+      <span class="pdf-chrome-icon" aria-hidden="true">&#x1F5CE;</span>
+      <span class="pdf-chrome-filename">${fileName ? escapeHtml(fileName) : 'Document'}</span>
+    </div>
+    <div class="pdf-chrome-pages mono">
+      <span class="pdf-chrome-page-label">Page <span class="pdf-chrome-current">1</span> / <span class="pdf-chrome-total">…</span></span>
+      <button type="button" class="pdf-chrome-btn pdf-chrome-prev" title="Previous page" aria-label="Previous page">&#x25C0;</button>
+      <button type="button" class="pdf-chrome-btn pdf-chrome-next" title="Next page" aria-label="Next page">&#x25B6;</button>
+    </div>
+    <div class="pdf-chrome-tools">
+      <button type="button" class="pdf-chrome-btn pdf-chrome-search" title="Find in document (coming soon)" aria-label="Find">
+        <span aria-hidden="true">&#x1F50D;</span>
+      </button>
+    </div>
+  `;
+  container.appendChild(chrome);
 
   // Loading affordance while pdf.js fetches + parses the document.
   const loading = document.createElement('div');
@@ -65,6 +102,50 @@ export async function renderPdfInto(source, container) {
 
   let cancelled = false;
   const renderTasks = new Set();
+  // Track active highlight timeouts so destroy() can clear them.
+  const highlightTimers = new Set();
+  // R3 — active page state. Updated by IntersectionObserver on the
+  // page elements as the user scrolls. Initialised to 1 (the first
+  // page); chrome reads it for the "Page N / total" label.
+  let activePage = 1;
+  let totalPages = 0;
+  let observer = null;
+
+  function findPageEl(pageNumber) {
+    if (!container) return null;
+    return container.querySelector(`.pdf-page[data-page-number="${pageNumber}"]`);
+  }
+
+  function setActivePage(n) {
+    if (n === activePage) return;
+    activePage = n;
+    const cur = chrome.querySelector('.pdf-chrome-current');
+    if (cur) cur.textContent = String(n);
+    if (onPageChange) {
+      try { onPageChange(n, totalPages); } catch { /* fine */ }
+    }
+  }
+
+  // Chrome nav wiring (uses scrollToPage on the handle once mounted).
+  chrome.querySelector('.pdf-chrome-prev').addEventListener('click', () => {
+    if (activePage > 1) handle.scrollToPage(activePage - 1);
+  });
+  chrome.querySelector('.pdf-chrome-next').addEventListener('click', () => {
+    if (activePage < totalPages) handle.scrollToPage(activePage + 1);
+  });
+  // Search stub — call out the deferral honestly rather than fake it.
+  chrome.querySelector('.pdf-chrome-search').addEventListener('click', () => {
+    console.info('[pdf] find-in-document not yet implemented — use the browser-native Ctrl/Cmd+F as a fallback.');
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch =>
+      ch === '&' ? '&amp;' :
+      ch === '<' ? '&lt;' :
+      ch === '>' ? '&gt;' :
+      ch === '"' ? '&quot;' : '&#39;');
+  }
+
   const handle = {
     destroy() {
       cancelled = true;
@@ -72,7 +153,83 @@ export async function renderPdfInto(source, container) {
         try { t.cancel(); } catch { /* swallow — already-completed renders throw on cancel */ }
       }
       renderTasks.clear();
+      for (const tid of highlightTimers) {
+        try { clearTimeout(tid); } catch { /* fine */ }
+      }
+      highlightTimers.clear();
+      if (observer) {
+        try { observer.disconnect(); } catch { /* fine */ }
+        observer = null;
+      }
       try { container.innerHTML = ''; container.classList.remove('pdf-viewer'); } catch { /* fine */ }
+    },
+    /**
+     * Current 1-indexed page number (matches the chrome label).
+     */
+    getActivePage() { return activePage; },
+    /**
+     * Total pages in the loaded document. 0 until the first
+     * pdfDoc.numPages read finishes.
+     */
+    getTotalPages() { return totalPages; },
+    /**
+     * Scroll the container so the given page is in view. If `rect`
+     * (page-local CSS-pixel coords) is supplied, scroll so the rect
+     * sits roughly 1/3 from the top of the viewport — the "next thing
+     * to read" position, not pinned to the very top. Smooth scroll
+     * with a fallback to instant for older browsers.
+     */
+    scrollToPage(pageNumber, rect) {
+      const pageEl = findPageEl(pageNumber);
+      if (!pageEl) return false;
+      // Find the nearest scrolling ancestor (usually .app-main or
+      // window). Use scrollIntoView with block:'start', then nudge by
+      // the rect's y so the highlight lands a comfortable distance
+      // from the top.
+      try {
+        pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {
+        pageEl.scrollIntoView();
+      }
+      if (rect && typeof rect.y === 'number' && rect.y > 0) {
+        // After scrollIntoView puts the page top at viewport top,
+        // nudge down by rect.y - 1/3 viewport. Defer so the
+        // smooth-scroll has started before we layer another nudge.
+        const nudge = rect.y - Math.max(80, window.innerHeight / 3);
+        if (nudge > 0) {
+          setTimeout(() => {
+            try {
+              window.scrollBy({ top: nudge, behavior: 'smooth' });
+            } catch {
+              window.scrollBy(0, nudge);
+            }
+          }, 50);
+        }
+      }
+      return true;
+    },
+    /**
+     * Draw a transient highlight rectangle over the given page-local
+     * rect. Removed after `durationMs` (default 2200ms). Returns true
+     * if the page is mounted, false otherwise.
+     */
+    highlight(pageNumber, rect, durationMs) {
+      const pageEl = findPageEl(pageNumber);
+      if (!pageEl || !rect) return false;
+      const overlay = document.createElement('div');
+      overlay.className = 'pdf-passage-highlight';
+      overlay.style.left = `${rect.x}px`;
+      overlay.style.top = `${rect.y}px`;
+      overlay.style.width = `${Math.max(rect.w, 4)}px`;
+      overlay.style.height = `${Math.max(rect.h, 4)}px`;
+      pageEl.appendChild(overlay);
+      const ms = typeof durationMs === 'number' && durationMs > 0 ? durationMs : 2200;
+      const tid = setTimeout(() => {
+        try { overlay.remove(); } catch { /* fine */ }
+        highlightTimers.delete(tid);
+      }, ms);
+      highlightTimers.add(tid);
+      return true;
     },
   };
 
@@ -96,6 +253,32 @@ export async function renderPdfInto(source, container) {
 
   if (cancelled) return handle;
   loading.remove();
+
+  totalPages = pdfDoc.numPages;
+  const totEl = chrome.querySelector('.pdf-chrome-total');
+  if (totEl) totEl.textContent = String(totalPages);
+
+  // IntersectionObserver tracks which page is most-visible in the
+  // viewport. Threshold list gives smooth transitions; pick the page
+  // with the largest intersection ratio as "active". Fires on scroll;
+  // viewer's own scrollToPage also triggers it indirectly via the
+  // resulting scroll.
+  if ('IntersectionObserver' in window) {
+    const ratios = new Map();
+    observer = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const n = parseInt(e.target.dataset.pageNumber, 10);
+        if (Number.isFinite(n)) ratios.set(n, e.intersectionRatio);
+      }
+      // Pick the page with the highest intersection ratio.
+      let bestPage = activePage;
+      let bestRatio = 0;
+      for (const [n, r] of ratios) {
+        if (r > bestRatio) { bestRatio = r; bestPage = n; }
+      }
+      if (bestRatio > 0) setActivePage(bestPage);
+    }, { threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] });
+  }
 
   // Width target — the container's content area minus a small margin
   // so the canvas doesn't crash into the scrollbar. Computed once at
@@ -151,6 +334,9 @@ export async function renderPdfInto(source, container) {
     pageEl.appendChild(label);
     pageEl.appendChild(canvas);
     pageEl.appendChild(textLayerDiv);
+    if (observer) {
+      try { observer.observe(pageEl); } catch { /* fine */ }
+    }
 
     const ctx = canvas.getContext('2d');
     const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
