@@ -15,7 +15,9 @@ import {
   type ListItemType,
 } from '../../lib/api';
 import { parseQuickInput } from '../../lib/listInputParser';
-import { colors, spacing, radius, typography, shadows, motion } from '../../lib/tokens';
+import { spacing, radius, motion } from '../../lib/tokens';
+import { useTokens } from '../../lib/theme';
+import type { Tokens } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
@@ -23,13 +25,13 @@ import GradientButton from '../../components/GradientButton';
 
 type Tab = 'tasks' | 'shopping';
 
-const sourceColor = (src?: string | null) => {
+const sourceColor = (src: string | null | undefined, t: Tokens): string => {
   switch (src) {
-    case 'chat': return colors.sourceChat;
-    case 'calendar': return colors.sourceCalendar;
-    case 'email': return colors.sourceEmail;
-    case 'document': return colors.sourceDocument;
-    default: return colors.sourceManual;
+    case 'chat': return t.brand;
+    case 'calendar': return t.brand;
+    case 'email': return t.amber;
+    case 'document': return t.text2;
+    default: return t.brandMuted;
   }
 };
 
@@ -78,17 +80,17 @@ function formatDueChip(iso: string | null): { label: string; tone: 'overdue' | '
   };
 }
 
-function dueChipStyle(tone: 'overdue' | 'today' | 'soon' | 'future') {
+function dueChipStyle(tone: 'overdue' | 'today' | 'soon' | 'future', t: Tokens) {
   switch (tone) {
     case 'overdue':
-      return { bg: colors.errorContainer, fg: colors.error };
+      return { bg: t.redBg, fg: t.red };
     case 'today':
-      return { bg: colors.primaryContainer, fg: colors.onPrimaryContainer };
+      return { bg: t.brand, fg: '#FFFFFF' };
     case 'soon':
-      return { bg: colors.tertiaryContainer, fg: colors.tertiary };
+      return { bg: t.brandSoft, fg: t.brand };
     case 'future':
     default:
-      return { bg: colors.surfaceContainer, fg: colors.onSurfaceVariant };
+      return { bg: t.surfaceAlt, fg: t.text2 };
   }
 }
 
@@ -99,6 +101,8 @@ interface ListRowProps {
 }
 
 function ListRow({ item, onCheck, onLongPress }: ListRowProps) {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const checkScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const [checked, setChecked] = useState(false);
@@ -120,7 +124,7 @@ function ListRow({ item, onCheck, onLongPress }: ListRowProps) {
   };
 
   const due = formatDueChip(item.due_at);
-  const dueStyle = due ? dueChipStyle(due.tone) : null;
+  const dueStyle = due ? dueChipStyle(due.tone, t) : null;
 
   return (
     <Animated.View style={{ opacity: rowOpacity }}>
@@ -132,7 +136,7 @@ function ListRow({ item, onCheck, onLongPress }: ListRowProps) {
       >
         <Animated.View style={[styles.checkbox, checked && styles.checkboxChecked, { transform: [{ scale: checkScale }] }]}>
           {checked ? (
-            <Ionicons name="checkmark" size={16} color={colors.onPrimary} />
+            <Ionicons name="checkmark" size={16} color="#FFFFFF" />
           ) : null}
         </Animated.View>
         <View style={styles.itemContent}>
@@ -148,7 +152,7 @@ function ListRow({ item, onCheck, onLongPress }: ListRowProps) {
               ) : null}
               {item.source ? (
                 <View style={styles.sourcePill}>
-                  <View style={[styles.sourceDot, { backgroundColor: sourceColor(item.source) }]} />
+                  <View style={[styles.sourceDot, { backgroundColor: sourceColor(item.source, t) }]} />
                   <Text style={styles.sourceLabel}>{item.source}</Text>
                 </View>
               ) : null}
@@ -173,6 +177,8 @@ interface EditModalProps {
 }
 
 function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [itemText, setItemText] = useState('');
   const [note, setNote] = useState('');
   const [listName, setListName] = useState('');
@@ -260,7 +266,7 @@ function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
               value={itemText}
               onChangeText={setItemText}
               placeholder="What is it?"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               autoCorrect
             />
 
@@ -270,7 +276,7 @@ function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
               value={note}
               onChangeText={setNote}
               placeholder="Optional details"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               multiline
               numberOfLines={3}
             />
@@ -281,7 +287,7 @@ function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
               value={listName}
               onChangeText={setListName}
               placeholder="e.g. garden, work, kids"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -292,7 +298,7 @@ function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
               value={dueText}
               onChangeText={setDueText}
               placeholder="YYYY-MM-DD or leave blank"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="numbers-and-punctuation"
@@ -300,7 +306,7 @@ function EditModal({ state, onClose, onSaved, onDeleted }: EditModalProps) {
 
             {error ? (
               <View style={styles.modalError}>
-                <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
+                <Ionicons name="alert-circle-outline" size={16} color={t.red} />
                 <Text style={styles.modalErrorText}>{error}</Text>
               </View>
             ) : null}
@@ -344,6 +350,8 @@ function groupItems(items: ListItemDto[]): { name: string | null; items: ListIte
 }
 
 export default function ListsScreen() {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [tasks, setTasks] = useState<ListItemDto[]>([]);
   const [shoppingItems, setShoppingItems] = useState<ListItemDto[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -446,7 +454,7 @@ export default function ListsScreen() {
 
         {error ? (
           <View style={styles.errorBanner}>
-            <Ionicons name="alert-circle" size={16} color={colors.onErrorContainer} />
+            <Ionicons name="alert-circle" size={16} color={t.red} />
             <Text style={styles.errorText}>Sync Error: {error}</Text>
           </View>
         ) : null}
@@ -493,12 +501,12 @@ export default function ListsScreen() {
             <Ionicons
               name={activeTab === 'tasks' ? 'add-circle-outline' : 'basket-outline'}
               size={18}
-              color={colors.outline}
+              color={t.text3}
             />
             <TextInput
               style={styles.input}
               placeholder={activeTab === 'tasks' ? 'Add a task… try "call HMRC by Friday #work"' : 'Add groceries… "milk, eggs #weekly"'}
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               value={newItem}
               onChangeText={setNewItem}
               onSubmitEditing={handleSubmit}
@@ -515,9 +523,9 @@ export default function ListsScreen() {
               disabled={!newItem.trim() || isProcessing}
             >
               {isProcessing ? (
-                <ActivityIndicator size="small" color={colors.onPrimary} />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Ionicons name="arrow-up" size={16} color={colors.onPrimary} />
+                <Ionicons name="arrow-up" size={16} color="#FFFFFF" />
               )}
             </Pressable>
           </View>
@@ -541,7 +549,7 @@ export default function ListsScreen() {
                 <Ionicons
                   name={activeTab === 'tasks' ? 'checkmark-done-outline' : 'basket-outline'}
                   size={28}
-                  color={colors.tertiary}
+                  color={t.brand}
                 />
               </View>
               <Text style={styles.emptyTitle}>
@@ -564,7 +572,7 @@ export default function ListsScreen() {
                       <Ionicons
                         name={isCollapsed ? 'chevron-forward' : 'chevron-down'}
                         size={14}
-                        color={colors.onSurfaceVariant}
+                        color={t.text2}
                       />
                       <Text style={styles.groupHeaderLabel}>
                         {group.name ?? 'Uncategorised'}
@@ -601,8 +609,9 @@ export default function ListsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+function makeStyles(t: Tokens) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.bg },
 
   segmentWrap: {
     paddingHorizontal: spacing.md,
@@ -611,7 +620,9 @@ const styles = StyleSheet.create({
   },
   segment: {
     flexDirection: 'row',
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.border,
     borderRadius: radius.pill,
     padding: 4,
   },
@@ -625,21 +636,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   segmentBtnActive: {
-    backgroundColor: colors.surfaceContainerLowest,
-    ...shadows.low,
+    backgroundColor: t.brand,
   },
   segmentLabel: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurfaceVariant,
-    letterSpacing: typography.tracking.wide,
+    fontSize: 13,
+    fontFamily: t.ui,
+    color: t.text2,
+    letterSpacing: 0.5,
   },
   segmentLabelActive: {
-    color: colors.onSurface,
-    fontFamily: typography.families.bodyBold,
+    color: '#FFFFFF',
+    fontFamily: t.uiBold,
   },
   countBadge: {
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: t.surface,
     borderRadius: radius.pill,
     minWidth: 20,
     height: 20,
@@ -648,15 +658,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   countBadgeActive: {
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   countText: {
     fontSize: 10,
-    fontFamily: typography.families.bodyBold,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.mono,
+    color: t.text2,
   },
   countTextActive: {
-    color: colors.onPrimaryContainer,
+    color: '#FFFFFF',
   },
 
   inputWrap: {
@@ -669,19 +679,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.border,
     borderRadius: radius.pill,
-    ...shadows.low,
   },
   input: {
     flex: 1,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
+    color: t.text,
     paddingVertical: 10,
   },
   submitBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -692,9 +703,9 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   inputHint: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.serifItalic,
+    color: t.text3,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
   },
@@ -717,14 +728,14 @@ const styles = StyleSheet.create({
   },
   groupHeaderLabel: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.primary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
     flex: 1,
   },
   groupHeaderCount: {
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: t.brandSoft,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: radius.pill,
@@ -733,15 +744,15 @@ const styles = StyleSheet.create({
   },
   groupHeaderCountText: {
     fontSize: 10,
-    fontFamily: typography.families.bodyBold,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.mono,
+    color: t.brand,
   },
 
   skeletonWrap: { gap: spacing.sm },
   skeletonRow: {
     height: 72,
     borderRadius: radius.lg,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     opacity: 0.6,
   },
 
@@ -763,19 +774,19 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     opacity: 0.5,
   },
   emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
   },
   emptyHint: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -784,44 +795,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.border,
     borderRadius: radius.lg,
-    padding: spacing.md,
+    padding: 14,
     marginBottom: spacing.sm,
-    ...shadows.low,
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.outlineVariant,
+    borderColor: t.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
   },
   checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: t.brand,
+    borderColor: t.brand,
   },
   itemContent: {
     flex: 1,
     gap: spacing.xs,
   },
   itemTitle: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serif,
+    color: t.text,
     lineHeight: 20,
   },
   itemTitleChecked: {
-    color: colors.onSurfaceVariant,
+    color: t.text3,
     textDecorationLine: 'line-through',
   },
   itemBody: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     lineHeight: 18,
   },
   itemMetaRow: {
@@ -841,9 +853,9 @@ const styles = StyleSheet.create({
   },
   dueChipLabel: {
     fontSize: 10,
-    fontFamily: typography.families.bodyBold,
+    fontFamily: t.mono,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   sourcePill: {
     flexDirection: 'row',
@@ -851,7 +863,7 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.brandSoft,
     borderRadius: radius.pill,
   },
   sourceDot: {
@@ -861,34 +873,34 @@ const styles = StyleSheet.create({
   },
   sourceLabel: {
     fontSize: 9,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: '#FFEEF0',
+    backgroundColor: t.redBg,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
     padding: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#FFD1D6',
+    borderColor: t.red,
   },
   errorText: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.bodyMedium,
-    color: '#D32F2F',
+    fontSize: 13,
+    fontFamily: t.ui,
+    color: t.red,
     flex: 1,
   },
 
   // Edit modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(12,14,16,0.5)',
+    backgroundColor: t.scrim,
     justifyContent: 'flex-end',
   },
   modalScroll: {
@@ -896,45 +908,48 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing.xl,
     paddingBottom: spacing['2xl'],
-    ...shadows.high,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   modalHandle: {
     width: 44,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.outlineVariant,
+    backgroundColor: t.text3,
     alignSelf: 'center',
     marginBottom: spacing.md,
     opacity: 0.5,
   },
   modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     marginBottom: spacing.lg,
   },
   modalLabel: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.mono,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
     marginBottom: spacing.xs,
     marginTop: spacing.sm,
   },
   modalInput: {
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
+    color: t.text,
   },
   modalInputMultiline: {
     minHeight: 72,
@@ -944,16 +959,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.errorContainer,
+    backgroundColor: t.redBg,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.sm,
     marginTop: spacing.md,
   },
   modalErrorText: {
-    color: colors.error,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
+    color: t.red,
+    fontSize: 13,
+    fontFamily: t.uiRegular,
     flex: 1,
   },
   modalActions: {
@@ -962,4 +977,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.lg,
   },
-});
+  });
+}
