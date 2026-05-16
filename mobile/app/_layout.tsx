@@ -7,19 +7,31 @@ import { SourceSans3_300Light, SourceSans3_400Regular, SourceSans3_500Medium, So
 import { Lora_400Regular, Lora_500Medium, Lora_600SemiBold, Lora_700Bold } from '@expo-google-fonts/lora';
 import * as Notifications from 'expo-notifications';
 import { colors } from '../lib/tokens';
+import { ThemeProvider } from '../lib/theme';
+import { useMemuFonts } from '../lib/fonts';
 import { loadAuthState } from '../lib/auth';
 import { registerForPushNotifications } from '../lib/push';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { ToastProvider } from '../components/Toast';
 
 export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootLayoutInner />
+    </ThemeProvider>
+  );
+}
+
+function RootLayoutInner() {
   const [isReady, setIsReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
   const segments = useSegments();
 
-  // Load custom premium fonts
-  const [fontsLoaded] = useFonts({
+  // Load both the legacy Source Sans 3 / Lora set (still referenced by
+  // pre-v3 components via `typography.families.*`) AND the v3 set
+  // (Inter / Newsreader / JetBrains Mono) used by the new design system.
+  const [legacyFontsLoaded] = useFonts({
     SourceSans3_300Light,
     SourceSans3_400Regular,
     SourceSans3_500Medium,
@@ -31,6 +43,8 @@ export default function RootLayout() {
     Lora_600SemiBold,
     Lora_700Bold,
   });
+  const [v3FontsLoaded] = useMemuFonts();
+  const fontsLoaded = legacyFontsLoaded && v3FontsLoaded;
 
   useEffect(() => {
     (async () => {
