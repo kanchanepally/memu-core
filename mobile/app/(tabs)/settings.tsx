@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Linking, Alert,
   Modal, TextInput, KeyboardAvoidingView, Platform, Share,
@@ -6,7 +6,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { spacing, radius } from '../../lib/tokens';
+import { useTokens } from '../../lib/theme';
+import type { Tokens } from '../../lib/tokens';
 import { loadAuthState, clearAuthState, saveDisplayName } from '../../lib/auth';
 import { loadPrefs, setAIMode, setBriefingEnabled, setBriefingTime, type AIMode, type Prefs } from '../../lib/prefs';
 import {
@@ -37,6 +39,8 @@ interface RowProps {
 }
 
 function Row({ icon, title, subtitle, onPress, right, destructive, disabled }: RowProps) {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -48,7 +52,7 @@ function Row({ icon, title, subtitle, onPress, right, destructive, disabled }: R
       disabled={disabled || !onPress}
     >
       <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
-        <Ionicons name={icon} size={18} color={destructive ? colors.error : colors.primary} />
+        <Ionicons name={icon} size={18} color={destructive ? t.red : t.brand} />
       </View>
       <View style={styles.rowContent}>
         <Text style={[styles.rowTitle, destructive && styles.rowTitleDestructive]}>{title}</Text>
@@ -57,7 +61,7 @@ function Row({ icon, title, subtitle, onPress, right, destructive, disabled }: R
       {right !== undefined
         ? right
         : onPress
-          ? <Ionicons name="chevron-forward" size={16} color={colors.outline} />
+          ? <Ionicons name="chevron-forward" size={16} color={t.text3} />
           : null}
     </Pressable>
   );
@@ -74,6 +78,8 @@ function capitalize(s: string): string {
 }
 
 export default function SettingsScreen() {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const router = useRouter();
   const [auth, setAuth] = useState<{ serverUrl: string | null; displayName: string | null }>({
     serverUrl: null, displayName: null,
@@ -450,7 +456,7 @@ export default function SettingsScreen() {
             <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 6 }}>
               {(['people', 'rhythm', 'focus', 'preview', 'channels'] as OnboardingStep[]).map(s => {
                 const status = onboardingState[s];
-                const tone = status === 'answered' ? colors.success : status === 'skipped' ? colors.textMuted : colors.outline;
+                const tone = status === 'answered' ? t.green : status === 'skipped' ? t.text3 : t.text3;
                 const label = status === 'answered' ? 'Saved' : status === 'skipped' ? 'Skipped' : 'Not yet';
                 return (
                   <Pressable
@@ -461,7 +467,7 @@ export default function SettingsScreen() {
                     <Text style={styles.setupSubRowLabel}>{capitalize(s)}</Text>
                     <View style={styles.setupSubRowRight}>
                       <Text style={[styles.setupSubRowStatus, { color: tone }]}>{label}</Text>
-                      <Ionicons name="chevron-forward" size={12} color={colors.outline} />
+                      <Ionicons name="chevron-forward" size={12} color={t.text3} />
                     </View>
                   </Pressable>
                 );
@@ -485,7 +491,7 @@ export default function SettingsScreen() {
             onPress={isCalendarConnected ? handleDisconnectCalendar : handleConnectCalendar}
             destructive={isCalendarConnected}
             disabled={disconnecting}
-            right={disconnecting ? <ActivityIndicator size="small" color={colors.error} /> : undefined}
+            right={disconnecting ? <ActivityIndicator size="small" color={t.red} /> : undefined}
           />
         </View>
 
@@ -601,7 +607,7 @@ export default function SettingsScreen() {
             subtitle={exporting ? 'Preparing…' : 'Everything you own, as JSON'}
             onPress={handleExportData}
             disabled={exporting}
-            right={exporting ? <ActivityIndicator size="small" color={colors.primary} /> : undefined}
+            right={exporting ? <ActivityIndicator size="small" color={t.brand} /> : undefined}
           />
           <Row
             icon="trash-outline"
@@ -671,7 +677,7 @@ export default function SettingsScreen() {
               value={editedName}
               onChangeText={setEditedName}
               placeholder="Your name"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               autoFocus
               maxLength={80}
             />
@@ -760,7 +766,7 @@ export default function SettingsScreen() {
               value={byokInput}
               onChangeText={setByokInput}
               placeholder="sk-ant-\u2026"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
@@ -796,20 +802,20 @@ export default function SettingsScreen() {
             <Text style={styles.modalLabel}>Status</Text>
             {pushTokens.length === 0 ? (
               <View style={styles.byokCurrent}>
-                <Ionicons name="alert-circle-outline" size={18} color={colors.error} />
+                <Ionicons name="alert-circle-outline" size={18} color={t.red} />
                 <Text style={[styles.byokHint, { letterSpacing: 0 }]}>Not registered on this server</Text>
               </View>
             ) : (
               <View style={{ gap: spacing.sm }}>
-                {pushTokens.map((t) => (
-                  <View key={t.suffix} style={styles.byokCurrent}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
+                {pushTokens.map((pt) => (
+                  <View key={pt.suffix} style={styles.byokCurrent}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color={t.brand} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.byokHint, { letterSpacing: 0 }]}>
-                        {t.platform || 'device'} · …{t.suffix}
+                        {pt.platform || 'device'} · …{pt.suffix}
                       </Text>
                       <Text style={styles.testHint}>
-                        Last seen {new Date(t.lastSeenAt).toLocaleString()}
+                        Last seen {new Date(pt.lastSeenAt).toLocaleString()}
                       </Text>
                     </View>
                   </View>
@@ -818,7 +824,7 @@ export default function SettingsScreen() {
             )}
 
             {pushLastResult && !pushLastResult.ok ? (
-              <Text style={[styles.testHint, { marginTop: spacing.md, color: colors.error }]}>
+              <Text style={[styles.testHint, { marginTop: spacing.md, color: t.red }]}>
                 Last attempt: {pushLastResult.reason}{pushLastResult.detail ? ` — ${pushLastResult.detail}` : ''}
               </Text>
             ) : null}
@@ -867,7 +873,7 @@ export default function SettingsScreen() {
               value={editedTime}
               onChangeText={setEditedTime}
               placeholder="07:00"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               keyboardType="numbers-and-punctuation"
               maxLength={5}
             />
@@ -905,25 +911,27 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+function makeStyles(t: Tokens) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.bg },
 
   sectionLabel: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.primary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xl,
     paddingBottom: spacing.sm,
   },
   section: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     marginHorizontal: spacing.md,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    ...shadows.low,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   row: {
     flexDirection: 'row',
@@ -931,32 +939,34 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: t.border,
   },
   rowIcon: {
     width: 32,
     height: 32,
     borderRadius: radius.sm,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowIconDestructive: {
-    backgroundColor: colors.errorContainer,
-    opacity: 0.5,
+    backgroundColor: t.redBg,
+    opacity: 0.7,
   },
   rowContent: { flex: 1 },
   rowTitle: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serif,
+    color: t.text,
   },
   rowTitleDestructive: {
-    color: colors.error,
+    color: t.red,
   },
   rowSubtitle: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     marginTop: 2,
     lineHeight: 16,
   },
@@ -969,9 +979,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   setupSubRowLabel: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: t.uiRegular,
+    color: t.text2,
   },
   setupSubRowRight: {
     flexDirection: 'row',
@@ -979,70 +989,73 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   setupSubRowStatus: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.bodyMedium,
+    fontSize: 11,
+    fontFamily: t.mono,
   },
 
   footer: {
     textAlign: 'center',
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: t.serifItalic,
+    color: t.text3,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.xl,
   },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(12,14,16,0.5)',
+    backgroundColor: t.scrim,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing.xl,
     paddingBottom: spacing['2xl'],
-    ...shadows.high,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   modalHandle: {
     width: 44,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.outlineVariant,
+    backgroundColor: t.text3,
     alignSelf: 'center',
     marginBottom: spacing.md,
     opacity: 0.5,
   },
   modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     marginBottom: spacing.xs,
   },
   modalHint: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     marginBottom: spacing.lg,
     lineHeight: 20,
   },
   modalLabel: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.mono,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
     marginBottom: spacing.xs,
   },
   modalInput: {
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
+    color: t.text,
   },
   modalActions: {
     flexDirection: 'row',
@@ -1055,20 +1068,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
     borderRadius: radius.md,
     marginTop: spacing.lg,
   },
   testLabel: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serif,
+    color: t.text,
   },
   testHint: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     marginTop: 2,
     lineHeight: 16,
   },
@@ -1080,43 +1095,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
     borderRadius: radius.md,
   },
   optionRowSelected: {
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: t.brandSoft,
+    borderColor: t.brand,
   },
   optionRadio: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: colors.outlineVariant,
+    borderColor: t.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   optionRadioSelected: {
-    borderColor: colors.primary,
+    borderColor: t.brand,
   },
   optionRadioDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
   },
   optionLabel: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serif,
+    color: t.text,
   },
   optionLabelSelected: {
-    color: colors.onPrimaryContainer,
+    color: t.brand,
   },
   optionSubtitle: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     marginTop: 2,
   },
 
@@ -1124,37 +1142,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
     borderRadius: radius.md,
   },
   byokHint: {
     flex: 1,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.mono,
+    color: t.text,
     letterSpacing: 1,
   },
   byokToggle: {
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: radius.sm,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
+    borderColor: t.border,
   },
   byokToggleOn: {
-    backgroundColor: colors.primaryContainer,
-    borderColor: colors.primary,
+    backgroundColor: t.brandSoft,
+    borderColor: t.brand,
   },
   byokToggleLabel: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.mono,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   byokToggleLabelOn: {
-    color: colors.onPrimaryContainer,
+    color: t.brand,
   },
-});
+  });
+}

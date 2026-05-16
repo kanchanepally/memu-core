@@ -6,7 +6,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getTodayBrief, getGoogleAuthUrl, type BriefEvent } from '../../lib/api';
-import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { spacing, radius } from '../../lib/tokens';
+import { useTokens } from '../../lib/theme';
+import type { Tokens } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
@@ -75,6 +77,8 @@ function detectConflicts(events: BriefEvent[]): Set<number> {
 }
 
 export default function CalendarScreen() {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [todayEvents, setTodayEvents] = useState<BriefEvent[]>([]);
   const [futureEvents, setFutureEvents] = useState<BriefEvent[]>([]);
   const [connected, setConnected] = useState(false);
@@ -185,7 +189,7 @@ export default function CalendarScreen() {
             <View style={styles.connectCard}>
               <View style={styles.connectGlow} />
               <View style={styles.connectIconChip}>
-                <Ionicons name="calendar-outline" size={22} color={colors.tertiary} />
+                <Ionicons name="calendar-outline" size={22} color={t.brand} />
               </View>
               <Text style={styles.connectTitle}>Connect Google Calendar</Text>
               <Text style={styles.connectSubtitle}>
@@ -261,7 +265,7 @@ export default function CalendarScreen() {
             <View style={styles.eventsSection}>
               {eventsForSelectedDay.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <Ionicons name="sunny-outline" size={22} color={colors.tertiary} />
+                  <Ionicons name="sunny-outline" size={22} color={t.brand} />
                   <Text style={styles.emptyText}>
                     {selectedRelative === 'Today'
                       ? 'A wide open day.'
@@ -291,12 +295,12 @@ export default function CalendarScreen() {
                         <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
                         {conflicted ? (
                           <View style={styles.conflictRow}>
-                            <Ionicons name="alert-circle" size={12} color={colors.error} />
+                            <Ionicons name="alert-circle" size={12} color={t.red} />
                             <Text style={styles.conflictLabel}>Overlap</Text>
                           </View>
                         ) : null}
                       </View>
-                      <Ionicons name="chevron-forward" size={16} color={colors.outline} />
+                      <Ionicons name="chevron-forward" size={16} color={t.text3} />
                     </Pressable>
                   );
                 })
@@ -316,10 +320,10 @@ export default function CalendarScreen() {
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
               <View style={styles.modalIconChip}>
-                <Ionicons name="calendar" size={20} color={colors.primary} />
+                <Ionicons name="calendar" size={20} color={t.brand} />
               </View>
               <Pressable onPress={() => setSelectedEvent(null)} hitSlop={12}>
-                <Ionicons name="close" size={22} color={colors.outline} />
+                <Ionicons name="close" size={22} color={t.text3} />
               </Pressable>
             </View>
             <Text style={styles.modalEventTitle}>{selectedEvent?.title}</Text>
@@ -345,13 +349,14 @@ export default function CalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface },
+function makeStyles(t: Tokens) {
+  return StyleSheet.create({
+  container: { flex: 1, backgroundColor: t.bg },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: t.bg },
   loadingText: {
-    color: colors.onSurfaceVariant,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
+    color: t.text2,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
   },
 
   // Connect CTA
@@ -360,14 +365,15 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
   },
   connectCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
     position: 'relative',
     overflow: 'hidden',
-    ...shadows.medium,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   connectGlow: {
     position: 'absolute',
@@ -376,36 +382,36 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     opacity: 0.35,
   },
   connectIconChip: {
     width: 48,
     height: 48,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   connectTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     textAlign: 'center',
   },
   connectSubtitle: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 15,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: spacing.sm,
   },
   privacyNote: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.uiRegular,
+    color: t.text3,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
@@ -423,32 +429,34 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
     alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.border,
     borderRadius: radius.md,
     gap: 4,
-    ...shadows.low,
   },
   dayChipActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
+    borderColor: t.brand,
   },
   dayWeek: {
     fontSize: 9,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
-    letterSpacing: typography.tracking.widest,
+    fontFamily: t.mono,
+    color: t.text3,
+    letterSpacing: 1.5,
   },
   dayWeekActive: {
-    color: colors.onPrimary,
+    color: '#FFFFFF',
     opacity: 0.8,
   },
   dayNum: {
     fontSize: 20,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
   },
   dayNumActive: {
-    color: colors.onPrimary,
+    color: '#FFFFFF',
   },
   dayDotRow: {
     height: 8,
@@ -459,13 +467,13 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: colors.tertiary,
+    backgroundColor: t.text3,
   },
   dayDotToday: {
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
   },
   dayDotActive: {
-    backgroundColor: colors.onPrimary,
+    backgroundColor: '#FFFFFF',
   },
   dayDotPlaceholder: {
     width: 5,
@@ -481,21 +489,21 @@ const styles = StyleSheet.create({
   },
   dayHeaderEyebrow: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.primary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
   },
   dayHeaderTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
   },
   dayHeaderMeta: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     marginTop: 2,
   },
 
@@ -505,35 +513,38 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   emptyCard: {
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.lg,
     padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   emptyText: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serifItalic,
+    color: t.text2,
   },
 
   eventCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.sm,
-    ...shadows.low,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   eventCardConflict: {
-    backgroundColor: colors.errorContainer,
-    opacity: 0.95,
+    borderColor: t.amber,
+    borderLeftWidth: 3,
   },
   eventTimeChip: {
-    backgroundColor: colors.secondaryContainer,
+    backgroundColor: t.brandSoft,
     borderRadius: radius.md,
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: 8,
@@ -542,32 +553,33 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   eventTimeChipConflict: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.amberBg,
   },
   eventTimeText: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.bodyBold,
-    color: colors.onSecondaryContainer,
+    fontSize: 13,
+    fontFamily: t.mono,
+    color: t.brand,
   },
   eventTimeTextConflict: {
-    color: colors.error,
+    color: t.amber,
   },
   eventTimeDuration: {
     fontSize: 9,
-    fontFamily: typography.families.label,
-    color: colors.onSecondaryContainer,
+    fontFamily: t.mono,
+    color: t.brand,
     opacity: 0.7,
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   eventBody: {
     flex: 1,
     gap: 4,
   },
   eventTitle: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serif,
+    color: t.text,
     lineHeight: 20,
+    letterSpacing: -0.2,
   },
   conflictRow: {
     flexDirection: 'row',
@@ -576,31 +588,32 @@ const styles = StyleSheet.create({
   },
   conflictLabel: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.error,
+    fontFamily: t.uiBold,
+    color: t.red,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(12,14,16,0.5)',
+    backgroundColor: t.scrim,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing.xl,
     paddingBottom: spacing['2xl'],
-    ...shadows.high,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   modalHandle: {
     width: 44,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.outlineVariant,
+    backgroundColor: t.text3,
     alignSelf: 'center',
     marginBottom: spacing.md,
     opacity: 0.5,
@@ -615,32 +628,33 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.md,
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalEventTitle: {
-    fontSize: typography.sizes['2xl'],
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 28,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     marginBottom: spacing.sm,
     lineHeight: 34,
   },
   modalEventTime: {
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
+    fontSize: 18,
+    fontFamily: t.mono,
+    color: t.brand,
     marginBottom: 4,
   },
   modalEventDate: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: spacing.lg,
   },
-});
+  });
+}

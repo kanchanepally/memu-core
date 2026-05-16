@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { View, StyleSheet, TextInput, Pressable, FlatList,
   KeyboardAvoidingView, Platform, ActivityIndicator, ActionSheetIOS, Alert,
  } from 'react-native';
@@ -25,8 +25,11 @@ import {
   type StreamHandle,
   type RetrievalState,
 } from '../../lib/api';
-import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { spacing, radius } from '../../lib/tokens';
+import { useTokens } from '../../lib/theme';
+import type { Tokens } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
+import { Logo as MemuLogo } from '../../components/Marks';
 import ThinkingPill, { type PillStage } from '../../components/ThinkingPill';
 import { useToast } from '../../components/Toast';
 import InlineActionNudge, { type NudgeResolutionState } from '../../components/InlineActionNudge';
@@ -186,6 +189,8 @@ function expandHistoryRows(rows: Array<{
 }
 
 export default function ChatScreen() {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const router = useRouter();
   const params = useLocalSearchParams() as { conversationId?: string; new?: string; seed?: string };
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
@@ -603,7 +608,7 @@ export default function ChatScreen() {
           <View style={styles.avatarWrap}>
             <View style={styles.avatarGlow} />
             <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+              <MemuLogo size={18} color={t.brand} color2={t.brandMuted} showRing={false} />
             </View>
           </View>
           <View style={[styles.bubbleWrap, { alignItems: 'flex-start' }]}>
@@ -652,7 +657,7 @@ export default function ChatScreen() {
             <View style={styles.briefingGlow} pointerEvents="none" />
             <View style={styles.briefingHeader}>
               <View style={styles.avatar}>
-                <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+                <MemuLogo size={18} color={t.brand} color2={t.brandMuted} showRing={false} />
               </View>
               <Text variant="ui" size="xs" color="tertiary" style={styles.briefingEyebrow}>Today's brief</Text>
             </View>
@@ -690,7 +695,7 @@ export default function ChatScreen() {
           <View style={styles.avatarWrap}>
             <View style={styles.avatarGlow} />
             <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+              <MemuLogo size={18} color={t.brand} color2={t.brandMuted} showRing={false} />
             </View>
           </View>
         ) : null}
@@ -704,7 +709,7 @@ export default function ChatScreen() {
           )}
           {isWhatsApp && item.fromMemu && (
             <View style={styles.contextBadge}>
-              <Ionicons name="pencil" size={12} color={colors.outline} />
+              <Ionicons name="pencil" size={12} color={t.text3} />
               <Text variant="ui" size="xs" color="outline" style={styles.contextBadgeText}>WhatsApp Draft</Text>
             </View>
           )}
@@ -735,9 +740,9 @@ export default function ChatScreen() {
                   style={({ pressed }) => [styles.artefactChip, pressed && { opacity: 0.6 }]}
                   onPress={() => router.push(`/(tabs)/spaces?focus=${sp.slug}` as any)}
                 >
-                  <Ionicons name="document-text-outline" size={14} color={colors.tertiary} />
+                  <Ionicons name="document-text-outline" size={14} color={t.brand} />
                   <Text variant="ui" size="sm" weight="medium" color="onTertiaryContainer" numberOfLines={1} style={styles.artefactText}>{sp.name}</Text>
-                  <Ionicons name="chevron-forward" size={12} color={colors.outline} />
+                  <Ionicons name="chevron-forward" size={12} color={t.text3} />
                 </Pressable>
               ))}
             </View>
@@ -750,7 +755,7 @@ export default function ChatScreen() {
               replies, and legacy (null) messages. */}
           {item.fromMemu && item.retrievalState === 'empty' ? (
             <View style={styles.unsourcedRow}>
-              <Ionicons name="information-circle-outline" size={12} color={colors.onSurfaceVariant} />
+              <Ionicons name="information-circle-outline" size={12} color={t.text2} />
               <Text variant="ui" size="xs" color="onSurfaceVariant" style={styles.unsourcedText}>
                 Memu had no notes for this — answered from general knowledge.
               </Text>
@@ -767,7 +772,7 @@ export default function ChatScreen() {
                 }}
                 style={styles.copyButton}
               >
-                <Ionicons name="copy-outline" size={12} color={colors.primary} />
+                <Ionicons name="copy-outline" size={12} color={t.brand} />
                 <Text variant="ui" size="xs" color="primary" style={styles.copyText}>Copy</Text>
               </Pressable>
             )}
@@ -794,7 +799,7 @@ export default function ChatScreen() {
             <Ionicons
               name="people-outline"
               size={13}
-              color={layer === 'family' ? colors.onPrimary : colors.onSurfaceVariant}
+              color={layer === 'family' ? '#FFFFFF' : t.text2}
             />
             <Text style={[styles.layerText, layer === 'family' && styles.layerTextActive]}>
               Family
@@ -808,7 +813,7 @@ export default function ChatScreen() {
             <Ionicons
               name="person-outline"
               size={13}
-              color={layer === 'personal' ? colors.onTertiaryContainer : colors.onSurfaceVariant}
+              color={layer === 'personal' ? t.brand : t.text2}
             />
             <Text style={[styles.layerText, layer === 'personal' && styles.layerTextActivePersonal]}>
               Personal
@@ -835,7 +840,7 @@ export default function ChatScreen() {
           contentContainerStyle={styles.list}
           ListHeaderComponent={loadingHistory ? (
             <View style={styles.typingRow}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <ActivityIndicator size="small" color={t.brand} />
               <Text style={styles.typingText}>Loading conversation…</Text>
             </View>
           ) : null}
@@ -856,7 +861,7 @@ export default function ChatScreen() {
         />
 
         <View style={styles.inputBarWrap}>
-          <BlurView intensity={40} tint="light" style={styles.inputBarBlur}>
+          <BlurView intensity={40} tint={t.name === 'dark' ? 'dark' : 'light'} style={styles.inputBarBlur}>
             <View style={styles.inputBar}>
               <Pressable
                 style={({ pressed }) => [
@@ -868,12 +873,12 @@ export default function ChatScreen() {
                 disabled={sending}
                 accessibilityLabel="Attach photo"
               >
-                <Ionicons name="camera-outline" size={20} color={colors.primary} />
+                <Ionicons name="camera-outline" size={20} color={t.brand} />
               </Pressable>
               <TextInput
                 style={styles.input}
                 placeholder="Ask Memu…"
-                placeholderTextColor={colors.outline}
+                placeholderTextColor={t.text3}
                 value={input}
                 onChangeText={setInput}
                 onKeyPress={handleKeyPress}
@@ -893,7 +898,7 @@ export default function ChatScreen() {
                 disabled={!input.trim() || sending}
                 accessibilityLabel="Send message"
               >
-                <Ionicons name="arrow-up" size={18} color={colors.onPrimary} />
+                <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
               </Pressable>
             </View>
           </BlurView>
@@ -903,10 +908,11 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Tokens) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: t.bg,
   },
   list: {
     padding: spacing.md,
@@ -934,14 +940,14 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     opacity: 0.5,
   },
   avatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.tertiaryFixed,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -955,9 +961,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
   },
   bubbleMemu: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.border,
     borderBottomLeftRadius: radius.sm,
-    ...shadows.low,
   },
   // Nudge bubbles need a touch more breathing room than a plain reply —
   // the eyebrow + action row stack vertically, and the type icon needs
@@ -968,7 +975,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   bubbleUser: {
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
     borderBottomRightRadius: radius.sm,
   },
   // BUG-16 — pipeline-failure bubble. Subtle amber border + tinted
@@ -976,21 +983,21 @@ const styles = StyleSheet.create({
   // it doesn't feel alarming. The italic placeholder text is what tells
   // the user what specifically failed.
   bubbleError: {
-    backgroundColor: '#FFF7E6',
+    backgroundColor: t.amberBg,
     borderWidth: 1,
-    borderColor: '#E6B847',
+    borderColor: t.amber,
   },
   bubbleText: {
     lineHeight: 22,
   },
   textMemu: {
-    color: colors.onSurface,
+    color: t.text,
   },
   textUser: {
-    color: colors.onPrimary,
+    color: '#FFFFFF',
   },
   textError: {
-    color: '#7A5A12',
+    color: t.amber,
     fontStyle: 'italic',
   },
 
@@ -1005,12 +1012,14 @@ const styles = StyleSheet.create({
   separatorRule: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.outlineVariant,
-    opacity: 0.35,
+    backgroundColor: t.border,
+    opacity: 0.55,
   },
   separatorLabel: {
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
+    fontFamily: t.mono,
+    color: t.text3,
   },
 
   // ---- Briefing-typed Memu message — elevated AI-Insight-Card render ----
@@ -1021,12 +1030,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   briefingCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: t.border,
+    borderLeftWidth: 3,
+    borderLeftColor: t.brand,
     padding: spacing.lg,
     overflow: 'hidden',
     position: 'relative',
-    ...shadows.high,
   },
   briefingGlow: {
     position: 'absolute',
@@ -1035,7 +1047,7 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     opacity: 0.45,
   },
   briefingHeader: {
@@ -1046,11 +1058,15 @@ const styles = StyleSheet.create({
   },
   briefingEyebrow: {
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
+    fontFamily: t.mono,
+    color: t.brand,
   },
   briefingBody: {
     lineHeight: 22,
     marginBottom: spacing.sm,
+    fontFamily: t.serifItalic,
+    color: t.text,
   },
   // Phase A.3 — separates the briefing prose from the inline action
   // buttons. Top border subtly partitions them; preserves the briefing's
@@ -1059,11 +1075,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: colors.outline + '30',
+    borderTopColor: t.border,
   },
 
   timestamp: {
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
+    fontFamily: t.mono,
+    color: t.text3,
   },
   metaRow: {
     flexDirection: 'row',
@@ -1089,7 +1107,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 2,
     paddingHorizontal: 6,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: t.brandSoft,
     borderRadius: radius.sm,
   },
   copyText: {
@@ -1104,15 +1122,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   typingText: {
-    fontSize: typography.sizes.sm,
-    color: colors.onSurfaceVariant,
-    fontFamily: typography.families.body,
+    fontSize: 13,
+    color: t.text2,
+    fontFamily: t.uiRegular,
   },
   thinkingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.tertiary,
+    backgroundColor: t.brand,
     opacity: 0.6,
   },
 
@@ -1123,10 +1141,11 @@ const styles = StyleSheet.create({
     bottom: Platform.OS === 'ios' ? 100 : 92,
     borderRadius: radius.xl,
     overflow: 'hidden',
-    ...shadows.medium,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   inputBarBlur: {
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: t.surface,
   },
   inputBar: {
     flexDirection: 'row',
@@ -1139,13 +1158,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
+    color: t.text,
     maxHeight: 120,
   },
   sendButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
     borderRadius: radius.pill,
     width: 36,
     height: 36,
@@ -1174,7 +1193,9 @@ const styles = StyleSheet.create({
   },
   layerSegment: {
     flexDirection: 'row',
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.border,
     borderRadius: radius.pill,
     padding: 3,
     alignSelf: 'flex-start',
@@ -1189,29 +1210,29 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   layerOptionActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
   },
   layerOptionActivePersonal: {
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
   },
   layerText: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.mono,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   layerTextActive: {
-    color: colors.onPrimary,
+    color: '#FFFFFF',
   },
   layerTextActivePersonal: {
-    color: colors.onTertiaryContainer,
+    color: t.brand,
   },
   layerHint: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.outline,
-    letterSpacing: typography.tracking.wide,
+    fontFamily: t.mono,
+    color: t.text3,
+    letterSpacing: 0.5,
     paddingLeft: 2,
   },
 
@@ -1227,12 +1248,13 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     borderRadius: radius.md,
     maxWidth: 280,
   },
   artefactText: {
     flex: 1,
+    color: t.brand,
   },
   // BUG-15 honesty caption — subtle, low-contrast, info icon. Sits below the
   // Memu bubble when retrievalState === 'empty'. Designed to inform without
@@ -1250,6 +1272,8 @@ const styles = StyleSheet.create({
   unsourcedText: {
     fontStyle: 'italic',
     flexShrink: 1,
+    color: t.text3,
   },
 
-});
+  });
+}

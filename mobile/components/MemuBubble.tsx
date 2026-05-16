@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../lib/tokens';
-import { LogoMark } from './Logo';
+import { Logo as MemuLogo } from './Marks';
 
 interface Props {
   /** Memu's spoken text. Renders as the primary line of the bubble. */
@@ -25,7 +25,7 @@ export default function MemuBubble({ text, helper, variant = 'speaking' }: Props
   return (
     <View style={styles.row}>
       <View style={styles.avatar}>
-        <LogoMark size={20} />
+        <MemuLogo size={20} color={colors.primary} color2={colors.primaryContainer} showRing={false} />
       </View>
       <View style={[styles.bubble, variant === 'ack' && styles.bubbleAck]}>
         {variant === 'ack' ? (

@@ -11,7 +11,9 @@ import QRCode from 'react-native-qrcode-svg';
 import { getSpaces, updateSpace, createSpace, type SynthesisPage } from '../../lib/api';
 import { loadAuthState } from '../../lib/auth';
 import { useToast } from '../../components/Toast';
-import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { spacing, radius } from '../../lib/tokens';
+import { useTokens } from '../../lib/theme';
+import type { Tokens } from '../../lib/tokens';
 import { stripMarkdown } from '../../lib/markdown';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
@@ -41,6 +43,10 @@ function categoryIcon(category: string): React.ComponentProps<typeof Ionicons>['
 }
 
 export default function SpacesScreen() {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const markdownStyles = useMemo(() => makeMarkdownStyles(t), [t]);
+  const pdfFallbackStyles = useMemo(() => makePdfFallbackStyles(t), [t]);
   const [spaces, setSpaces] = useState<SynthesisPage[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -202,7 +208,7 @@ export default function SpacesScreen() {
         {canvasUrl ? (
           <Pressable style={styles.canvasCta} onPress={() => setCanvasModal(true)}>
             <View style={styles.canvasCtaIcon}>
-              <Ionicons name="git-network-outline" size={20} color={colors.primary} />
+              <Ionicons name="git-network-outline" size={20} color={t.brand} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.canvasCtaTitle}>Spaces Canvas</Text>
@@ -210,7 +216,7 @@ export default function SpacesScreen() {
                 See how your Spaces connect — best on a tablet or laptop.
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.tertiary} />
+            <Ionicons name="chevron-forward" size={18} color={t.text3} />
           </Pressable>
         ) : null}
 
@@ -239,7 +245,7 @@ export default function SpacesScreen() {
           <View style={styles.empty}>
             <View style={styles.emptyIconWrap}>
               <View style={styles.emptyGlow} />
-              <Ionicons name="albums-outline" size={32} color={colors.tertiary} />
+              <Ionicons name="albums-outline" size={32} color={t.brand} />
             </View>
             <Text style={styles.emptyTitle}>Nothing curated yet.</Text>
             <Text style={styles.emptyHint}>
@@ -254,7 +260,7 @@ export default function SpacesScreen() {
                 <View style={styles.featureGlow} />
                 <View style={styles.featureHeader}>
                   <View style={styles.featureIconChip}>
-                    <Ionicons name={categoryIcon(featured.category)} size={20} color={colors.tertiary} />
+                    <Ionicons name={categoryIcon(featured.category)} size={20} color={t.brand} />
                   </View>
                   <Text style={styles.featureCategory}>{featured.category}</Text>
                 </View>
@@ -264,7 +270,7 @@ export default function SpacesScreen() {
                 </Text>
                 <View style={styles.featureFooter}>
                   <Text style={styles.featureFooterText}>Open space</Text>
-                  <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+                  <Ionicons name="arrow-forward" size={14} color={t.brand} />
                 </View>
               </Pressable>
             ) : null}
@@ -279,7 +285,7 @@ export default function SpacesScreen() {
                     onPress={() => setSelectedPage(page)}
                   >
                     <View style={styles.gridCardHeader}>
-                      <Ionicons name={categoryIcon(page.category)} size={16} color={colors.tertiary} />
+                      <Ionicons name={categoryIcon(page.category)} size={16} color={t.brand} />
                       <Text style={styles.gridCategory}>{page.category}</Text>
                     </View>
                     <Text style={styles.gridTitle} numberOfLines={2}>{page.title}</Text>
@@ -304,14 +310,14 @@ export default function SpacesScreen() {
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleRow}>
                 <View style={styles.modalIconChip}>
-                  <Ionicons name="git-network-outline" size={20} color={colors.tertiary} />
+                  <Ionicons name="git-network-outline" size={20} color={t.brand} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalCategory}>Canvas</Text>
                   <Text style={styles.modalTitle}>How it all connects</Text>
                 </View>
                 <Pressable onPress={() => setCanvasModal(false)} hitSlop={12}>
-                  <Ionicons name="close" size={22} color={colors.tertiary} />
+                  <Ionicons name="close" size={22} color={t.text2} />
                 </Pressable>
               </View>
             </View>
@@ -329,7 +335,7 @@ export default function SpacesScreen() {
               <Text style={styles.canvasUrlText} numberOfLines={1}>{canvasUrl}</Text>
               <View style={styles.canvasModalActions}>
                 <Pressable style={styles.canvasShareBtn} onPress={shareCanvasLink}>
-                  <Ionicons name="share-outline" size={16} color={colors.onPrimary} />
+                  <Ionicons name="share-outline" size={16} color="#FFFFFF" />
                   <Text style={styles.canvasShareBtnText}>Share link</Text>
                 </Pressable>
               </View>
@@ -340,7 +346,7 @@ export default function SpacesScreen() {
 
       {/* Create FAB */}
       <Pressable style={styles.fab} onPress={openCreate} accessibilityLabel="Create new space">
-        <Ionicons name="add" size={26} color={colors.onPrimary} />
+        <Ionicons name="add" size={26} color="#FFFFFF" />
       </Pressable>
 
       {/* Create modal */}
@@ -355,14 +361,14 @@ export default function SpacesScreen() {
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleRow}>
                 <View style={styles.modalIconChip}>
-                  <Ionicons name="sparkles" size={20} color={colors.tertiary} />
+                  <Ionicons name="sparkles" size={20} color={t.brand} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalCategory}>New space</Text>
                   <Text style={styles.modalTitle}>Compile by hand</Text>
                 </View>
                 <Pressable onPress={() => setCreating(false)} hitSlop={12}>
-                  <Ionicons name="close" size={22} color={colors.outline} />
+                  <Ionicons name="close" size={22} color={t.text3} />
                 </Pressable>
               </View>
             </View>
@@ -381,7 +387,7 @@ export default function SpacesScreen() {
                       <Ionicons
                         name={categoryIcon(cat)}
                         size={14}
-                        color={active ? colors.onTertiaryContainer : colors.onSurfaceVariant}
+                        color={active ? t.brand : t.text2}
                       />
                       <Text style={[styles.categoryChipLabel, active && styles.categoryChipLabelActive]}>
                         {cat}
@@ -397,7 +403,7 @@ export default function SpacesScreen() {
                 value={newTitle}
                 onChangeText={setNewTitle}
                 placeholder="e.g. Robin's school routine"
-                placeholderTextColor={colors.outline}
+                placeholderTextColor={t.text3}
               />
 
               <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>Content (markdown)</Text>
@@ -408,7 +414,7 @@ export default function SpacesScreen() {
                 multiline
                 textAlignVertical="top"
                 placeholder="Write freely — headings, lists, whatever holds the thread."
-                placeholderTextColor={colors.outline}
+                placeholderTextColor={t.text3}
               />
             </ScrollView>
 
@@ -434,7 +440,7 @@ export default function SpacesScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <Pressable onPress={closeModal} style={styles.detailBreadcrumb} hitSlop={8}>
-            <Ionicons name="chevron-back" size={20} color={colors.primary} />
+            <Ionicons name="chevron-back" size={20} color={t.brand} />
             <Text style={styles.detailBreadcrumbLabel}>All Spaces</Text>
           </Pressable>
 
@@ -443,7 +449,7 @@ export default function SpacesScreen() {
               <Ionicons
                 name={categoryIcon(selectedPage.category)}
                 size={20}
-                color={colors.tertiary}
+                color={t.brand}
               />
             </View>
             {isEditing ? (
@@ -452,7 +458,7 @@ export default function SpacesScreen() {
                 value={editTitle}
                 onChangeText={setEditTitle}
                 placeholder="Space title"
-                placeholderTextColor={colors.outline}
+                placeholderTextColor={t.text3}
               />
             ) : (
               <View style={{ flex: 1 }}>
@@ -470,16 +476,31 @@ export default function SpacesScreen() {
               multiline
               textAlignVertical="top"
               placeholder="Markdown content…"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
             />
           ) : (
             <ScrollView
               style={styles.detailScroll}
               contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
             >
-              <Markdown style={markdownStyles}>
-                {selectedPage.body_markdown || ''}
-              </Markdown>
+              {/* PDF / document fallback (option B per pickup brief).
+                  pdf.js / react-native-pdf is a deep native integration; for now,
+                  for document-category Spaces we render the OCR'd body text as
+                  plain serif text and skip markdown parsing. This avoids the
+                  crash class where embedded HTML / pdf.js worker references in
+                  body_markdown blew up react-native-markdown-display.
+                  Tier-2 native slice would: add `react-native-pdf` + plugin,
+                  resolve `sourceReferences` for `document:<path>`, fetch via
+                  Tailscale, render natively. */}
+              {selectedPage.category === 'document' ? (
+                <Text style={pdfFallbackStyles.body}>
+                  {selectedPage.body_markdown || ''}
+                </Text>
+              ) : (
+                <Markdown style={markdownStyles}>
+                  {selectedPage.body_markdown || ''}
+                </Markdown>
+              )}
             </ScrollView>
           )}
 
@@ -506,13 +527,14 @@ export default function SpacesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.surface },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface },
+function makeStyles(t: Tokens) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: t.bg },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: t.bg },
   loadingText: {
-    color: colors.onSurfaceVariant,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
+    color: t.text2,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
   },
 
   // Category chips
@@ -528,20 +550,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   chipActive: {
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
+    borderColor: t.brand,
   },
   chipLabel: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.mono,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   chipLabelActive: {
-    color: colors.onTertiaryContainer,
+    color: t.brand,
   },
 
   // Empty state
@@ -563,19 +588,19 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     opacity: 0.5,
   },
   emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
   },
   emptyHint: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -586,12 +611,13 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   featureCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: 36,
     position: 'relative',
     overflow: 'hidden',
-    ...shadows.medium,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   featureGlow: {
     position: 'absolute',
@@ -600,7 +626,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
     opacity: 0.35,
   },
   featureHeader: {
@@ -610,32 +636,32 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   featureIconChip: {
-    width: 36,
-    height: 36,
+    width: 60,
+    height: 60,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   featureCategory: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.tertiary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
   },
   featureTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 34,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     marginBottom: spacing.sm,
-    lineHeight: 28,
+    lineHeight: 38,
   },
   featurePreview: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 15,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     lineHeight: 22,
     marginBottom: spacing.md,
   },
@@ -643,12 +669,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: t.border,
   },
   featureFooterText: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
-    letterSpacing: typography.tracking.wide,
+    fontSize: 11,
+    fontFamily: t.mono,
+    color: t.brand,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
@@ -661,11 +690,12 @@ const styles = StyleSheet.create({
   gridCard: {
     flexBasis: '48%',
     flexGrow: 1,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
-    padding: spacing.md,
+    padding: 22,
     minHeight: 140,
-    ...shadows.low,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   gridCardSpacer: {
     flexBasis: '48%',
@@ -679,22 +709,23 @@ const styles = StyleSheet.create({
   },
   gridCategory: {
     fontSize: 9,
-    fontFamily: typography.families.label,
-    color: colors.tertiary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
   },
   gridTitle: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyBold,
-    color: colors.onSurface,
+    fontSize: 21,
+    fontFamily: t.serif,
+    color: t.text,
     marginBottom: spacing.xs + 2,
-    lineHeight: 20,
+    lineHeight: 24,
+    letterSpacing: -0.3,
   },
   gridPreview: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     lineHeight: 17,
   },
 
@@ -705,7 +736,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.surface,
+    backgroundColor: t.bg,
     paddingTop: Platform.OS === 'android' ? 24 : 56,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
@@ -718,9 +749,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   detailBreadcrumbLabel: {
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
+    fontSize: 15,
+    fontFamily: t.ui,
+    color: t.brand,
   },
   detailHeader: {
     flexDirection: 'row',
@@ -733,22 +764,22 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.md,
-    backgroundColor: colors.tertiaryFixed,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   detailCategory: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.tertiary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
   },
   detailTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 28,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     marginTop: 2,
   },
   detailScroll: {
@@ -761,30 +792,31 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: Platform.OS === 'ios' ? 24 : 8,
     borderTopWidth: 1,
-    borderTopColor: colors.surfaceVariant,
+    borderTopColor: t.border,
   },
 
   // Legacy modal styles (still referenced by the create-Space modal below).
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(12,14,16,0.5)',
+    backgroundColor: t.scrim,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     height: '88%',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
-    ...shadows.high,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   modalHandle: {
     width: 44,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.outlineVariant,
+    backgroundColor: t.text3,
     alignSelf: 'center',
     marginBottom: spacing.md,
     opacity: 0.5,
@@ -801,48 +833,52 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   modalCategory: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.tertiary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
     marginBottom: 2,
   },
   modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     lineHeight: 28,
   },
   editTitleInput: {
     flex: 1,
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
+    letterSpacing: -0.5,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   modalScroll: {
     flex: 1,
   },
   editBodyInput: {
     flex: 1,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
-    fontSize: typography.sizes.body,
-    color: colors.onSurface,
-    fontFamily: typography.families.body,
+    fontSize: 15,
+    color: t.text,
+    fontFamily: t.uiRegular,
     lineHeight: 22,
   },
   modalActions: {
@@ -859,18 +895,17 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.high,
   },
 
   fieldLabel: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.tertiary,
+    fontFamily: t.mono,
+    color: t.brand,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
     marginBottom: spacing.sm,
   },
   categoryRow: {
@@ -886,20 +921,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   categoryChipActive: {
-    backgroundColor: colors.tertiaryContainer,
+    backgroundColor: t.brandSoft,
+    borderColor: t.brand,
   },
   categoryChipLabel: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.mono,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   categoryChipLabelActive: {
-    color: colors.onTertiaryContainer,
+    color: t.brand,
   },
   canvasCta: {
     flexDirection: 'row',
@@ -908,29 +946,28 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: t.surface,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
+    borderColor: t.border,
   },
   canvasCtaIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   canvasCtaTitle: {
     fontSize: 15,
-    fontWeight: '600',
-    color: colors.onSurface,
-    fontFamily: typography.families.body,
+    fontFamily: t.serif,
+    color: t.text,
   },
   canvasCtaHint: {
     fontSize: 12.5,
-    color: colors.onSurfaceVariant,
+    color: t.text2,
     marginTop: 2,
-    fontFamily: typography.families.body,
+    fontFamily: t.uiRegular,
   },
   canvasModalBody: {
     paddingHorizontal: spacing.lg,
@@ -940,24 +977,24 @@ const styles = StyleSheet.create({
   },
   canvasModalHint: {
     fontSize: 13,
-    color: colors.onSurfaceVariant,
+    color: t.text2,
     textAlign: 'center',
     lineHeight: 18,
-    fontFamily: typography.families.body,
+    fontFamily: t.uiRegular,
   },
   canvasQrWrap: {
     padding: spacing.md,
     backgroundColor: '#FFFFFF',
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
+    borderColor: t.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   canvasUrlText: {
     fontSize: 12,
-    color: colors.tertiary,
-    fontFamily: typography.families.body,
+    color: t.text3,
+    fontFamily: t.mono,
     textAlign: 'center',
   },
   canvasModalActions: {
@@ -972,43 +1009,58 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
   },
   canvasShareBtnText: {
-    color: colors.onPrimary,
+    color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: '600',
-    fontFamily: typography.families.body,
+    fontFamily: t.ui,
   },
-});
+  });
+}
 
-const markdownStyles = StyleSheet.create({
+// Plain-text fallback for document-category Spaces. Uses the serif
+// reading family so OCR'd PDF text reads close to the original tone.
+// Theme-aware factory — invoked via useMemo at the call site.
+function makePdfFallbackStyles(t: Tokens) {
+  return StyleSheet.create({
+    body: {
+      fontSize: 15,
+      fontFamily: t.serifRegular,
+      color: t.text,
+      lineHeight: 24,
+    },
+  });
+}
+
+function makeMarkdownStyles(t: Tokens) {
+  return StyleSheet.create({
   body: {
-    fontSize: typography.sizes.body,
+    fontSize: 15,
     lineHeight: 24,
-    color: colors.onSurface,
-    fontFamily: typography.families.body,
+    color: t.text,
+    fontFamily: t.serifRegular,
   },
   heading1: {
-    fontSize: typography.sizes['2xl'],
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
+    fontSize: 28,
+    fontFamily: t.serif,
+    color: t.text,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
-    letterSpacing: typography.tracking.tight,
+    letterSpacing: -0.5,
   },
   heading2: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
-    letterSpacing: typography.tracking.tight,
+    letterSpacing: -0.5,
   },
   heading3: {
-    fontSize: typography.sizes.lg,
-    fontFamily: typography.families.bodyBold,
-    color: colors.onSurfaceVariant,
+    fontSize: 18,
+    fontFamily: t.serif,
+    color: t.text2,
     marginTop: spacing.sm,
   },
   paragraph: {
@@ -1018,19 +1070,22 @@ const markdownStyles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   link: {
-    color: colors.primary,
+    color: t.brand,
   },
   code_inline: {
-    backgroundColor: colors.surfaceContainerLow,
-    color: colors.tertiary,
+    backgroundColor: t.surfaceAlt,
+    color: t.brand,
     paddingHorizontal: 4,
     borderRadius: radius.sm,
-    fontFamily: typography.families.body,
+    fontFamily: t.mono,
   },
   blockquote: {
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
+    borderLeftWidth: 3,
+    borderLeftColor: t.brand,
     borderRadius: radius.sm,
     paddingLeft: spacing.md,
     paddingVertical: spacing.sm,
   },
-});
+  });
+}

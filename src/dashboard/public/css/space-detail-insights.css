@@ -1,0 +1,1193 @@
+/* ============================================================================
+   Build Spec 2 Phase R3 — PDF reading workbench
+   ============================================================================
+   When a Space has an attached PDF and the active workspace is research,
+   the Space-detail view enters "pdf-detail-mode": a two-column workbench
+   with the PDF on the left and the insights panel on the right, plus a
+   sticky synthesis composer at the bottom. Outside PDF mode the same
+   markup stacks single-column inline (no layout change vs. pre-R3).
+
+   Indigo Sanctuary palette. Light + dark both polished.
+   ============================================================================ */
+
+/* ------------------------------------------------------------------
+   Workbench layout — single column by default, two columns in PDF mode.
+   The grid only kicks in via body.pdf-detail-mode so non-PDF Spaces
+   (family / personal / non-research) keep their existing reading view
+   entirely unchanged.
+   ------------------------------------------------------------------ */
+
+.space-detail-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md, 16px);
+}
+
+body.pdf-detail-mode .space-detail-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 32px;
+  align-items: start;
+}
+
+body.pdf-detail-mode .space-detail-main {
+  min-width: 0;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+body.pdf-detail-mode #spaces-detail-view {
+  max-width: 1280px;
+  padding-bottom: 140px;
+}
+
+/* In PDF mode lift the max-width cap on the body content area so
+   pdf.js can render at a comfortable width without crashing into the
+   insights panel. The PDF column already has its own max-width inside. */
+body.pdf-detail-mode #space-detail-pdf {
+  max-width: none;
+}
+
+/* Mobile / narrow viewports — stack vertically. Sticky stays useful
+   when scrolling within a single column. */
+@media (max-width: 1024px) {
+  body.pdf-detail-mode .space-detail-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  body.pdf-detail-mode #space-detail-insights {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+}
+
+/* Focus mode + PDF mode: the insights panel stays out of the way
+   (focus is a reading-room state — chrome hidden, panel collapsed). */
+body.focus-mode.pdf-detail-mode .space-detail-workbench {
+  grid-template-columns: minmax(0, 1fr);
+}
+body.focus-mode #space-detail-insights,
+body.focus-mode #space-detail-composer,
+body.focus-mode #space-detail-body-toggle {
+  display: none;
+}
+
+/* ------------------------------------------------------------------
+   Extracted-text toggle — small chip that reveals the auto-extracted
+   OCR body. Reads as "metadata available but tucked away" rather than
+   a primary action.
+   ------------------------------------------------------------------ */
+
+.space-detail-body-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-md, 16px) 0 var(--space-sm, 8px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px dashed var(--border, rgba(80, 84, 181, 0.18));
+  background: transparent;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.65));
+  font-family: var(--font-ui, inherit);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.space-detail-body-toggle:hover {
+  color: var(--text-primary, var(--indigo-primary, #5054B5));
+  border-color: var(--indigo-primary, #5054B5);
+  border-style: solid;
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.04));
+}
+
+/* ------------------------------------------------------------------
+   Insights panel — the centerpiece. Right-rail card-stack.
+   ------------------------------------------------------------------ */
+
+.insights-panel {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 4px 4px 16px;
+  /* Subtle vertical separator to ground the rail. Light enough that
+     the cards feel like the foreground, not the frame. */
+  border-left: 1px solid var(--border-soft, rgba(80, 84, 181, 0.08));
+  padding-left: 20px;
+}
+.insights-panel.hidden { display: none; }
+
+.insights-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface, var(--surface, #fff));
+  /* Soft gradient fade under the head so cards don't visually crash
+     into it when scrolled. */
+  box-shadow: 0 8px 8px -8px var(--color-surface, var(--surface, #fff));
+}
+.insights-panel-head .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui, inherit);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.6));
+}
+.insights-diamond {
+  color: var(--indigo-primary, #5054B5);
+  font-size: 9px;
+  /* Hand-drawn-ish: tiny rotation so it feels marked, not stamped. */
+  display: inline-block;
+  transform: rotate(8deg);
+}
+.insights-count {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.08));
+  color: var(--indigo-primary, #5054B5);
+  min-width: 24px;
+  text-align: center;
+}
+
+.insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.insights-empty {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 14.5px;
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.55));
+  padding: 24px 8px;
+  border: 1px dashed var(--border-soft, rgba(80, 84, 181, 0.12));
+  border-radius: 14px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------
+   Insight card — one per Memo / Quote / Code / Question.
+   ------------------------------------------------------------------ */
+
+.insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(80, 84, 181, 0.12));
+  background: var(--color-surface, var(--surface, #fff));
+  border-radius: 12px;
+  cursor: default;
+  font-family: inherit;
+  color: inherit;
+  transition: border-color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
+}
+.insight-card--jumpable {
+  cursor: pointer;
+}
+.insight-card--jumpable:hover {
+  border-color: var(--indigo-primary, #5054B5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(80, 84, 181, 0.08);
+}
+.insight-card--jumpable:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.insight-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.insight-card-page {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.55));
+  letter-spacing: 0.02em;
+}
+
+/* status-pill variants per verb. We deliberately don't lean on the
+   existing app .status-pill colour palette because it's tied to
+   chip-state semantics (active/syncing/etc) — these are taxonomy
+   markers, with their own ramp. */
+.status-pill.insight-pill--memo {
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.10));
+  color: var(--indigo-primary, #5054B5);
+  border: 1px solid rgba(80, 84, 181, 0.18);
+}
+.status-pill.insight-pill--quote {
+  background: rgba(34, 130, 90, 0.10);
+  color: #1F6F4A;
+  border: 1px solid rgba(34, 130, 90, 0.22);
+}
+.status-pill.insight-pill--code {
+  background: rgba(184, 119, 35, 0.10);
+  color: #8C5814;
+  border: 1px solid rgba(184, 119, 35, 0.22);
+}
+.status-pill.insight-pill--question {
+  background: rgba(189, 60, 60, 0.08);
+  color: #A33333;
+  border: 1px solid rgba(189, 60, 60, 0.20);
+}
+/* Compact size override for the insight pills — narrower than the
+   main app status-pills. */
+.insights-panel .status-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.insight-card-excerpt {
+  /* Serif italic — the captured passage in its own voice. */
+  font-family: var(--font-serif, Georgia, serif);
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-primary, rgba(14, 12, 30, 0.86));
+  margin: 4px 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border-soft, rgba(80, 84, 181, 0.18));
+  /* 2-3 line clamp via webkit-line-clamp. Falls back to overflow
+     hidden on browsers that don't support the clamp (text still
+     reads, just longer). */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.insight-card-note {
+  font-family: var(--font-ui, inherit);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary, rgba(14, 12, 30, 0.78));
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.insight-card-foot {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.45));
+  margin-top: 2px;
+}
+
+/* Transient body-passage highlight when jumping back from a body-text
+   anchor. Brief flash so the eye picks up the passage. */
+.space-body .passage-highlight {
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.12));
+  outline: 2px solid var(--indigo-primary, #5054B5);
+  outline-offset: 2px;
+  border-radius: 4px;
+  transition: background 0.4s ease, outline-color 0.4s ease;
+  animation: passage-highlight-pulse 2.2s ease;
+}
+@keyframes passage-highlight-pulse {
+  0%   { background: rgba(80, 84, 181, 0.30); outline-color: #5054B5; }
+  60%  { background: rgba(80, 84, 181, 0.12); outline-color: rgba(80, 84, 181, 0.6); }
+  100% { background: transparent;             outline-color: transparent; }
+}
+
+/* PDF passage highlight overlay (drawn from inside the viewer module
+   by handle.highlight). Page-local coords; transient. */
+.pdf-page .pdf-passage-highlight {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(80, 84, 181, 0.18);
+  border: 2px solid var(--indigo-primary, #5054B5);
+  border-radius: 3px;
+  z-index: 3;
+  animation: pdf-passage-highlight-pulse 2.4s ease;
+}
+@keyframes pdf-passage-highlight-pulse {
+  0%   { background: rgba(80, 84, 181, 0.36); }
+  60%  { background: rgba(80, 84, 181, 0.18); }
+  100% { background: rgba(80, 84, 181, 0.04); }
+}
+
+/* ------------------------------------------------------------------
+   Synthesis composer — sticky bottom bar in PDF mode.
+   ------------------------------------------------------------------ */
+
+.insights-composer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px max(20px, calc((100vw - 1240px) / 2 + 20px)) 18px;
+  background: var(--color-surface, var(--surface, #fff));
+  border-top: 1px solid var(--border-soft, rgba(80, 84, 181, 0.10));
+  box-shadow: 0 -8px 24px rgba(14, 12, 30, 0.06);
+}
+.insights-composer.hidden { display: none; }
+
+/* When the sidebar is shown, indent so the composer doesn't sit
+   underneath. .app-shell flex layout leaves the main column
+   starting after the sidebar — match that offset. */
+body.sidebar-shown .insights-composer {
+  left: 280px;
+}
+@media (max-width: 768px) {
+  body.sidebar-shown .insights-composer {
+    left: 0;
+  }
+}
+
+.insights-composer-input {
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--border, rgba(80, 84, 181, 0.18));
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-primary, inherit);
+  background: var(--color-surface-elevated, var(--surface, #fff));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+  min-height: 44px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.insights-composer-input::placeholder {
+  font-style: italic;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.45));
+}
+.insights-composer-input:focus {
+  border-color: var(--indigo-primary, #5054B5);
+  box-shadow: 0 0 0 3px var(--indigo-soft, rgba(80, 84, 181, 0.10));
+}
+
+.insights-composer-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Pill base — overrides the generic .btn-pill so each verb carries
+   its own colour ramp matching the card pills. */
+.insights-pill {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+}
+.insights-pill:active { transform: translateY(1px); }
+
+.insights-pill--memo {
+  color: var(--indigo-primary, #5054B5);
+}
+.insights-pill--memo:hover {
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.10));
+}
+.insights-pill--quote {
+  color: #1F6F4A;
+}
+.insights-pill--quote:hover {
+  background: rgba(34, 130, 90, 0.10);
+}
+.insights-pill--code {
+  color: #8C5814;
+}
+.insights-pill--code:hover {
+  background: rgba(184, 119, 35, 0.10);
+}
+.insights-pill--question {
+  color: #A33333;
+}
+.insights-pill--question:hover {
+  background: rgba(189, 60, 60, 0.08);
+}
+
+/* ------------------------------------------------------------------
+   Dark theme — Indigo Sanctuary dark register.
+   ------------------------------------------------------------------ */
+
+[data-theme="dark"] .insight-card {
+  background: var(--color-surface-elevated, rgba(255, 255, 255, 0.03));
+  border-color: var(--border, rgba(161, 165, 255, 0.15));
+}
+[data-theme="dark"] .insight-card--jumpable:hover {
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+  box-shadow: 0 4px 16px rgba(161, 165, 255, 0.10);
+}
+[data-theme="dark"] .insight-card-excerpt {
+  border-left-color: rgba(161, 165, 255, 0.25);
+}
+[data-theme="dark"] .insights-panel {
+  border-left-color: rgba(161, 165, 255, 0.10);
+}
+[data-theme="dark"] .insights-empty {
+  border-color: rgba(161, 165, 255, 0.15);
+}
+[data-theme="dark"] .insights-composer {
+  background: var(--color-surface, #14132C);
+  border-top-color: rgba(161, 165, 255, 0.12);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.32);
+}
+[data-theme="dark"] .insights-composer-input {
+  background: var(--color-surface-elevated, rgba(255, 255, 255, 0.04));
+  border-color: rgba(161, 165, 255, 0.20);
+  color: var(--text-primary, #EAE9F5);
+}
+[data-theme="dark"] .insights-composer-input:focus {
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+  box-shadow: 0 0 0 3px rgba(161, 165, 255, 0.12);
+}
+[data-theme="dark"] .insights-count {
+  background: rgba(161, 165, 255, 0.12);
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .insights-diamond {
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+
+/* Verb-pill colours in dark — lift saturation so they read against
+   the deep indigo surface. */
+[data-theme="dark"] .status-pill.insight-pill--memo {
+  background: rgba(161, 165, 255, 0.14);
+  color: var(--indigo-primary-dark, #A1A5FF);
+  border-color: rgba(161, 165, 255, 0.30);
+}
+[data-theme="dark"] .status-pill.insight-pill--quote {
+  background: rgba(120, 200, 160, 0.14);
+  color: #88D9B0;
+  border-color: rgba(120, 200, 160, 0.30);
+}
+[data-theme="dark"] .status-pill.insight-pill--code {
+  background: rgba(230, 170, 100, 0.14);
+  color: #F0C58B;
+  border-color: rgba(230, 170, 100, 0.30);
+}
+[data-theme="dark"] .status-pill.insight-pill--question {
+  background: rgba(240, 140, 140, 0.12);
+  color: #F2A5A5;
+  border-color: rgba(240, 140, 140, 0.30);
+}
+
+[data-theme="dark"] .insights-pill--memo {
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .insights-pill--memo:hover {
+  background: rgba(161, 165, 255, 0.10);
+}
+[data-theme="dark"] .insights-pill--quote {
+  color: #88D9B0;
+}
+[data-theme="dark"] .insights-pill--quote:hover {
+  background: rgba(120, 200, 160, 0.10);
+}
+[data-theme="dark"] .insights-pill--code {
+  color: #F0C58B;
+}
+[data-theme="dark"] .insights-pill--code:hover {
+  background: rgba(230, 170, 100, 0.10);
+}
+[data-theme="dark"] .insights-pill--question {
+  color: #F2A5A5;
+}
+[data-theme="dark"] .insights-pill--question:hover {
+  background: rgba(240, 140, 140, 0.10);
+}
+
+[data-theme="dark"] .pdf-page .pdf-passage-highlight {
+  background: rgba(161, 165, 255, 0.22);
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] @keyframes pdf-passage-highlight-pulse {
+  0%   { background: rgba(161, 165, 255, 0.40); }
+  60%  { background: rgba(161, 165, 255, 0.22); }
+  100% { background: rgba(161, 165, 255, 0.06); }
+}
+
+[data-theme="dark"] .space-body .passage-highlight {
+  background: rgba(161, 165, 255, 0.15);
+  outline-color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .space-detail-body-toggle {
+  color: var(--text-secondary, rgba(234, 233, 245, 0.55));
+  border-color: rgba(161, 165, 255, 0.18);
+}
+[data-theme="dark"] .space-detail-body-toggle:hover {
+  color: var(--indigo-primary-dark, #A1A5FF);
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+  background: rgba(161, 165, 255, 0.06);
+}
+
+/* ============================================================================
+   R3 PHASE 2 (post-mock-adapt) — header bar, citation, verb pills,
+   PDF chrome, synthesis section, scope toggle, redesigned modal.
+   ============================================================================ */
+
+/* ------------------------------------------------------------------
+   Header bar — meta (left) + compact action row (right).
+   Always at top, no scrolling required to reach actions.
+   ------------------------------------------------------------------ */
+
+.space-detail-headerbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md, 16px);
+  margin-bottom: var(--space-md, 16px);
+}
+
+.space-detail-actions--top {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+/* Compact icon-button: same height regardless of icon vs text label,
+   subtle hover ramp. Replaces the loud btn-secondary in this row. */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.6));
+  font-family: var(--font-ui, inherit);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.btn-icon:hover {
+  border-color: var(--border, rgba(80, 84, 181, 0.25));
+  color: var(--text-primary, var(--indigo-primary, #5054B5));
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.04));
+}
+.btn-icon .icon { display: block; }
+.btn-icon--focus kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border, rgba(80, 84, 181, 0.18));
+  background: var(--color-surface, var(--surface, #fff));
+  color: var(--text-muted, var(--text-secondary, rgba(14, 12, 30, 0.5)));
+  margin-left: 4px;
+}
+.btn-icon--danger:hover {
+  color: var(--color-error, #b34646);
+  border-color: var(--color-error, rgba(189, 60, 60, 0.45));
+  background: rgba(189, 60, 60, 0.06);
+}
+
+[data-theme="dark"] .btn-icon {
+  color: var(--text-secondary, rgba(234, 233, 245, 0.6));
+}
+[data-theme="dark"] .btn-icon:hover {
+  color: var(--indigo-primary-dark, #A1A5FF);
+  border-color: rgba(161, 165, 255, 0.30);
+  background: rgba(161, 165, 255, 0.06);
+}
+[data-theme="dark"] .btn-icon--focus kbd {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(161, 165, 255, 0.20);
+  color: rgba(234, 233, 245, 0.5);
+}
+
+/* The original bottom action row is no longer used — we removed it
+   from the markup. Keep a defensive rule that hides any stray .space-
+   detail-actions:not(.space-detail-actions--top) if a future merge
+   re-introduces it. */
+.space-detail-actions:not(.space-detail-actions--top) {
+  display: none;
+}
+
+/* ------------------------------------------------------------------
+   Citation line under title — author, journal, year. Hidden until
+   filled. Subtle mono register for the metadata register.
+   ------------------------------------------------------------------ */
+
+.space-detail-citation {
+  margin: -8px 0 var(--space-md, 16px);
+  font-family: var(--font-ui, inherit);
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.6));
+  font-style: italic;
+}
+
+/* ------------------------------------------------------------------
+   Anchored verb pills under the title. Disarmed = subtle outlined
+   pills; armed (.armed) = brand-primary fill so the user sees
+   "selection registered, pick a verb".
+   ------------------------------------------------------------------ */
+
+.space-detail-verbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--space-lg, 24px);
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--color-surface-elevated, var(--surface, #fff));
+  border: 1px solid var(--border-soft, rgba(80, 84, 181, 0.12));
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0, 0, 0, 0.04));
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+  opacity: 0.7;
+}
+.space-detail-verbs.armed {
+  opacity: 1;
+  border-color: var(--indigo-primary, #5054B5);
+  box-shadow: 0 4px 18px rgba(80, 84, 181, 0.18);
+}
+
+.verb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.55));
+  font-family: var(--font-ui, inherit);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.verb-pill:hover {
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.08));
+  color: var(--indigo-primary, #5054B5);
+}
+.space-detail-verbs.armed .verb-pill {
+  color: var(--text-primary, rgba(14, 12, 30, 0.85));
+}
+.space-detail-verbs.armed .verb-pill--memo:hover { color: var(--indigo-primary, #5054B5); background: var(--indigo-soft, rgba(80, 84, 181, 0.10)); }
+.space-detail-verbs.armed .verb-pill--quote:hover { color: #1F6F4A; background: rgba(34, 130, 90, 0.10); }
+.space-detail-verbs.armed .verb-pill--code:hover { color: #8C5814; background: rgba(184, 119, 35, 0.10); }
+.space-detail-verbs.armed .verb-pill--question:hover { color: #A33333; background: rgba(189, 60, 60, 0.10); }
+
+.verb-pill-mark {
+  font-size: 13px;
+  line-height: 1;
+  display: inline-block;
+}
+
+[data-theme="dark"] .space-detail-verbs {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(161, 165, 255, 0.15);
+}
+[data-theme="dark"] .space-detail-verbs.armed {
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+  box-shadow: 0 4px 18px rgba(161, 165, 255, 0.20);
+}
+[data-theme="dark"] .verb-pill {
+  color: rgba(234, 233, 245, 0.55);
+}
+[data-theme="dark"] .verb-pill:hover {
+  color: var(--indigo-primary-dark, #A1A5FF);
+  background: rgba(161, 165, 255, 0.08);
+}
+
+/* ------------------------------------------------------------------
+   PDF chrome (file name + page nav + search). Owned by the viewer
+   module but styled here so it matches the rest of the workbench.
+   ------------------------------------------------------------------ */
+
+.pdf-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md, 16px);
+  padding: 8px 14px;
+  margin-bottom: 18px;
+  border-radius: 10px;
+  background: rgba(14, 12, 30, 0.92);
+  color: #EAE9F5;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.pdf-chrome-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pdf-chrome-icon {
+  font-size: 13px;
+  color: rgba(234, 233, 245, 0.6);
+}
+.pdf-chrome-filename {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.pdf-chrome-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.pdf-chrome-page-label {
+  margin-right: 4px;
+  color: rgba(234, 233, 245, 0.65);
+}
+.pdf-chrome-current,
+.pdf-chrome-total {
+  color: #EAE9F5;
+}
+.pdf-chrome-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: transparent;
+  color: #EAE9F5;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pdf-chrome-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.20);
+}
+.pdf-chrome-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Dark theme — chrome already dark, but lift the surface slightly so
+   it sits above the dark page background. */
+[data-theme="dark"] .pdf-chrome {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(161, 165, 255, 0.10);
+}
+
+/* ------------------------------------------------------------------
+   Synthesis section header + empty state. Lives below the PDF in
+   pdf-detail-mode. Outside PDF mode the eyebrow stays hidden and
+   the body renders as the normal Space content.
+   ------------------------------------------------------------------ */
+
+.space-detail-synthesis {
+  margin-top: 32px;
+}
+.synthesis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft, rgba(80, 84, 181, 0.10));
+}
+.synthesis-head .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui, inherit);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--indigo-primary, #5054B5);
+}
+.synthesis-diamond {
+  color: var(--indigo-primary, #5054B5);
+  font-size: 9px;
+  transform: rotate(8deg);
+  display: inline-block;
+}
+.synthesis-empty {
+  padding: 28px 24px;
+  border: 1px dashed var(--border-soft, rgba(80, 84, 181, 0.14));
+  border-radius: 14px;
+  font-family: var(--font-serif, Georgia, serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.55));
+  margin-bottom: 16px;
+}
+
+[data-theme="dark"] .synthesis-head {
+  border-bottom-color: rgba(161, 165, 255, 0.12);
+}
+[data-theme="dark"] .synthesis-head .eyebrow,
+[data-theme="dark"] .synthesis-diamond {
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .synthesis-empty {
+  border-color: rgba(161, 165, 255, 0.18);
+}
+
+/* ------------------------------------------------------------------
+   Insights panel scope toggle (Passage / All).
+   ------------------------------------------------------------------ */
+
+.insights-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.06));
+  border: 1px solid var(--border-soft, rgba(80, 84, 181, 0.10));
+}
+.insights-scope-btn {
+  padding: 4px 12px;
+  font-family: var(--font-ui, inherit);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.55));
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.insights-scope-btn:hover {
+  color: var(--indigo-primary, #5054B5);
+}
+.insights-scope-btn.active {
+  background: var(--color-surface, var(--surface, #fff));
+  color: var(--indigo-primary, #5054B5);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .insights-scope {
+  background: rgba(161, 165, 255, 0.08);
+  border-color: rgba(161, 165, 255, 0.16);
+}
+[data-theme="dark"] .insights-scope-btn {
+  color: rgba(234, 233, 245, 0.55);
+}
+[data-theme="dark"] .insights-scope-btn:hover {
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .insights-scope-btn.active {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+
+/* Group headers in All-scope view. */
+.insights-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.insights-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.insights-group-count {
+  margin-left: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.06));
+  color: var(--indigo-primary, #5054B5);
+}
+[data-theme="dark"] .insights-group-count {
+  background: rgba(161, 165, 255, 0.08);
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+
+/* Insight card title — only rendered for codes (tag-shaped artefact). */
+.insight-card-title {
+  font-family: var(--font-ui, inherit);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, inherit);
+  letter-spacing: 0.005em;
+}
+
+/* ------------------------------------------------------------------
+   Composer modal redesign — passage card with indigo border-left,
+   eyebrow labels, "Stays in this Space" toggle, pill actions.
+   ------------------------------------------------------------------ */
+
+.reading-composer-card {
+  max-width: 560px;
+  width: calc(100vw - 32px);
+}
+.reading-composer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.reading-composer-head h3 {
+  margin: 0;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.reading-composer-icon {
+  color: var(--indigo-primary, #5054B5);
+  font-size: 15px;
+}
+.reading-composer-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 14px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--indigo-primary, #5054B5);
+}
+.reading-composer-source-prefix {
+  color: var(--text-secondary, rgba(14, 12, 30, 0.45));
+}
+.reading-composer-passage {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--indigo-primary, #5054B5);
+  background: var(--indigo-soft, rgba(80, 84, 181, 0.04));
+  border-radius: 0 8px 8px 0;
+  font-family: var(--font-serif, Georgia, serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-primary, rgba(14, 12, 30, 0.86));
+}
+.reading-composer-card .input-label.eyebrow {
+  display: block;
+  font-family: var(--font-ui, inherit);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.55));
+  margin-bottom: 8px;
+}
+.reading-composer-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(80, 84, 181, 0.18));
+  background: var(--color-surface-elevated, var(--surface, #fff));
+  color: var(--text-primary, inherit);
+  font-family: var(--font-ui, inherit);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  outline: none;
+}
+.reading-composer-input:focus {
+  border-color: var(--indigo-primary, #5054B5);
+  box-shadow: 0 0 0 3px var(--indigo-soft, rgba(80, 84, 181, 0.10));
+}
+.reading-composer-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--color-error, #b34646);
+}
+.reading-composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft, rgba(80, 84, 181, 0.08));
+}
+.reading-composer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui, inherit);
+  font-size: 12.5px;
+  color: var(--text-secondary, rgba(14, 12, 30, 0.65));
+  cursor: pointer;
+  user-select: none;
+}
+.reading-composer-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--indigo-primary, #5054B5);
+  cursor: pointer;
+}
+.reading-composer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.reading-composer-cancel {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px solid var(--border, rgba(80, 84, 181, 0.20));
+  color: var(--text-secondary, rgba(14, 12, 30, 0.65));
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.reading-composer-cancel:hover {
+  border-color: var(--text-primary, rgba(14, 12, 30, 0.45));
+  color: var(--text-primary, inherit);
+}
+.reading-composer-save-btn {
+  padding: 6px 18px;
+  background: var(--indigo-primary, #5054B5);
+  color: #fff;
+  border: 1px solid var(--indigo-primary, #5054B5);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.reading-composer-save-btn:hover {
+  background: #4448a0;
+}
+.reading-composer-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .reading-composer-passage {
+  background: rgba(161, 165, 255, 0.06);
+  border-left-color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .reading-composer-source {
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .reading-composer-source-prefix {
+  color: rgba(234, 233, 245, 0.45);
+}
+[data-theme="dark"] .reading-composer-icon {
+  color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .reading-composer-input {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(161, 165, 255, 0.20);
+  color: rgba(234, 233, 245, 0.92);
+}
+[data-theme="dark"] .reading-composer-input:focus {
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+  box-shadow: 0 0 0 3px rgba(161, 165, 255, 0.12);
+}
+[data-theme="dark"] .reading-composer-foot {
+  border-top-color: rgba(161, 165, 255, 0.12);
+}
+[data-theme="dark"] .reading-composer-toggle {
+  color: rgba(234, 233, 245, 0.65);
+}
+[data-theme="dark"] .reading-composer-cancel {
+  border-color: rgba(161, 165, 255, 0.20);
+  color: rgba(234, 233, 245, 0.65);
+}
+[data-theme="dark"] .reading-composer-cancel:hover {
+  border-color: rgba(234, 233, 245, 0.45);
+  color: rgba(234, 233, 245, 0.92);
+}
+[data-theme="dark"] .reading-composer-save-btn {
+  background: var(--indigo-primary-dark, #A1A5FF);
+  color: #0E0C1E;
+  border-color: var(--indigo-primary-dark, #A1A5FF);
+}
+[data-theme="dark"] .reading-composer-save-btn:hover {
+  background: #B8BCFF;
+  border-color: #B8BCFF;
+}
+
+/* ------------------------------------------------------------------
+   PDF chrome top-spacing — when the chrome is sticky, give the first
+   page a small offset so it doesn't bump into it.
+   ------------------------------------------------------------------ */
+
+#space-detail-pdf .pdf-page:first-of-type {
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------
+   Three-column layout polish — when in PDF mode, the workbench grid
+   gives 1fr to the PDF column and a fixed 360px to insights, so a
+   wide desktop reads as sidebar | PDF | insights. On a 1440px screen
+   the PDF column ends up around 900px wide — large enough to read a
+   B5 paper at native zoom.
+   ------------------------------------------------------------------ */
+
+@media (min-width: 1400px) {
+  body.pdf-detail-mode .space-detail-main {
+    max-width: none;
+    padding-right: 16px;
+  }
+}
+
