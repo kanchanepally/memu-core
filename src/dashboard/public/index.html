@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memu</title>
     <link rel="stylesheet" href="/css/style.css">
+    <!-- PWA installability — same manifest + theme-color + icon hints
+         as dashboard.html so the install prompt is available from the
+         landing page too. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#5054B5">
+    <link rel="icon" type="image/svg+xml" href="/icons/memu-mark.svg">
+    <link rel="apple-touch-icon" href="/icons/memu-mark.svg">
 </head>
 <body>
 <div class="container">
@@ -246,6 +253,16 @@ function hideError(id) {
 document.getElementById('server-url').addEventListener('keydown', e => { if (e.key === 'Enter') verifyServer(); });
 document.getElementById('profile-name').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('profile-email').focus(); });
 document.getElementById('profile-email').addEventListener('keydown', e => { if (e.key === 'Enter') registerProfile(); });
+
+// PWA installability — register the pass-through service worker so
+// Chrome's install heuristic fires on the landing page as well as
+// the dashboard. Non-fatal on failure.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+            .catch(err => console.warn('[SW] registration failed:', err));
+    });
+}
 </script>
 </body>
 </html>

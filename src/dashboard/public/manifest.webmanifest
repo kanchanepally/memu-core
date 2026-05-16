@@ -1,0 +1,26 @@
+{
+  "name": "Memu",
+  "short_name": "Memu",
+  "description": "Your family's private intelligence — chat, Spaces, calendar, lists. Self-hosted, no surveillance.",
+  "start_url": "/dashboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#5054B5",
+  "background_color": "#FFFFFF",
+  "icons": [
+    {
+      "src": "/icons/memu-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/memu-mark-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["productivity", "lifestyle", "utilities"],
+  "lang": "en-GB"
+}
