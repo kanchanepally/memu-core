@@ -25,6 +25,12 @@
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
     <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-1">
+    <!-- R3 PDF reading workbench — insights panel, synthesis composer,
+         extracted-text toggle, passage highlights. Scoped exclusively to
+         .insight-*, .insights-*, .space-detail-workbench, .pdf-passage-*,
+         and the .pdf-detail-mode body modifier so non-PDF Spaces and
+         every other tab stay unaffected. -->
+    <link rel="stylesheet" href="/css/space-detail-insights.css?v=2026-05-16-r3-pdf-v2">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -690,54 +696,162 @@ async function api(path, opts = {}) {
     </div>
 
     <!-- Detail view: full-canvas Space page. Replaces the old modal.
-         Toggled by openSpaceDetail() / closeSpaceDetail(). -->
+         Toggled by openSpaceDetail() / closeSpaceDetail().
+         R3 PDF mode: when a PDF mounts, body.pdf-detail-mode is set,
+         which swaps this view to a two-column flex layout (PDF column
+         + sticky insights panel). See dashboard.css insights-panel
+         rules. -->
     <div id="spaces-detail-view" class="hidden">
         <button class="space-back-btn" onclick="closeSpaceDetail()" aria-label="Back to Spaces">
             <svg class="icon" width="18" height="18"><use href="#icon-24"></use></svg>
             <span>All Spaces</span>
         </button>
         <div id="space-detail-view">
-            <div class="space-detail-meta">
-                <span id="space-detail-category" class="space-detail-category"></span>
-                <span class="space-detail-dot">·</span>
-                <span id="space-detail-updated" class="space-detail-updated"></span>
-                <!-- Phase Z hotfix — Focus duplicated at the top of the
-                     Space detail so it's reachable without scrolling
-                     past a long PDF or transcript body. The original
-                     button stays in the actions row at the bottom for
-                     short-Space ergonomics. -->
-                <button class="space-detail-focus-top" onclick="enterFocusMode()" title="Focus mode (.) — hide chrome and centre the reading column">
-                    Focus <kbd>.</kbd>
+            <!-- R3 — header bar with meta (left) and compact actions
+                 (top-right). Actions stay reachable without scrolling
+                 past a long PDF. The verb pills slot sits just below
+                 the title; pills light up when a passage is selected
+                 in the PDF (or body). -->
+            <div class="space-detail-headerbar">
+                <div class="space-detail-meta">
+                    <span id="space-detail-category" class="space-detail-category"></span>
+                    <span class="space-detail-dot">·</span>
+                    <span id="space-detail-updated" class="space-detail-updated"></span>
+                </div>
+                <div class="space-detail-actions space-detail-actions--top">
+                    <button class="btn-icon" onclick="openShareSpace()" title="Share">
+                        <svg class="icon" width="16" height="16"><use href="#icon-25"></use></svg>
+                    </button>
+                    <button class="btn-icon" onclick="openConnectSpace()" title="Connect">
+                        <svg class="icon" width="16" height="16"><use href="#icon-26"></use></svg>
+                    </button>
+                    <button class="btn-icon hidden" id="space-detail-unnest-btn" onclick="unnestCurrentSpace()" title="Un-nest">
+                        <svg class="icon" width="16" height="16"><use href="#icon-27"></use></svg>
+                    </button>
+                    <button class="btn-icon" onclick="enterSpaceEdit()" title="Edit synthesis">
+                        Edit
+                    </button>
+                    <button class="btn-icon btn-icon--focus" onclick="enterFocusMode()" title="Focus mode (.)">
+                        Focus <kbd>.</kbd>
+                    </button>
+                    <button class="btn-icon btn-icon--danger" onclick="deleteCurrentSpace()" title="Delete">
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+            <h1 id="space-detail-title" class="space-detail-title"></h1>
+
+            <!-- R3 — citation line for PDF Spaces (author / source).
+                 Hidden when no PDF is attached. Filled from the
+                 document_ingestion skill's title field via
+                 mountPdfIfAvailable. -->
+            <div id="space-detail-citation" class="space-detail-citation hidden"></div>
+
+            <!-- R3 — selection-driven verb pills, anchored under the
+                 title so they're always in the same spot rather than
+                 chasing the user's cursor. Light up (--armed) when
+                 there's a usable selection. Click → opens the
+                 composer modal pre-filled with the passage. -->
+            <div id="space-detail-verbs" class="space-detail-verbs hidden" role="toolbar" aria-label="Capture from selection">
+                <button type="button" class="verb-pill verb-pill--memo" onclick="openReadingComposer('memo')" title="Capture as a memo — your noticing">
+                    <span class="verb-pill-mark">&#x270E;</span>
+                    <span>Memo</span>
+                </button>
+                <button type="button" class="verb-pill verb-pill--quote" onclick="openReadingComposer('quote')" title="Capture as a verbatim quote">
+                    <span class="verb-pill-mark">&#x275D;</span>
+                    <span>Quote</span>
+                </button>
+                <button type="button" class="verb-pill verb-pill--code" onclick="openReadingComposer('code')" title="Tag passage with a code (theme)">
+                    <span class="verb-pill-mark">&#x1F3F7;</span>
+                    <span>Code</span>
+                </button>
+                <button type="button" class="verb-pill verb-pill--question" onclick="openReadingComposer('question')" title="Open a question on this passage">
+                    <span class="verb-pill-mark">?</span>
+                    <span>Question</span>
                 </button>
             </div>
-            <h1 id="space-detail-title" class="space-detail-title"></h1>
-            <!-- Phase Z Story Z.3 — PDF inline rendering. Only mounted
-                 when the active workspace is research AND the Space has
-                 a document:* source reference pointing at a PDF. The
-                 viewer module (loaded on demand from
-                 /vendor/memu-pdf-viewer.mjs) owns the rendering and
-                 cleanup; the openSpaceDetail() handler below calls
-                 mountPdfIfAvailable() / unmountPdf() to drive it. -->
-            <div id="space-detail-pdf" class="hidden"></div>
-            <div id="space-detail-body" class="space-body"></div>
-            <div class="space-detail-actions">
-                <button class="btn btn-secondary btn-sm" onclick="openShareSpace()">
-                    <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-25"></use></svg>
-                    Share
-                </button>
-                <button class="btn btn-secondary btn-sm" onclick="openConnectSpace()">
-                    <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-26"></use></svg>
-                    Connect
-                </button>
-                <button class="btn btn-secondary btn-sm hidden" id="space-detail-unnest-btn" onclick="unnestCurrentSpace()" title="Move this Space back to the top level">
-                    <svg class="icon" width="14" height="14" style="margin-right:6px;vertical-align:-2px;"><use href="#icon-27"></use></svg>
-                    Un-nest
-                </button>
-                <button class="btn btn-secondary btn-sm" onclick="enterFocusMode()" title="Focus mode (.) — hide chrome and centre the reading column">
-                    Focus <kbd style="margin-left:6px;font-family:var(--font-mono,monospace);font-size:11px;padding:1px 5px;border-radius:3px;border:1px solid var(--border);background:var(--color-surface);">.</kbd>
-                </button>
-                <button class="btn btn-secondary btn-sm" onclick="enterSpaceEdit()">Edit</button>
-                <button class="btn btn-secondary btn-sm" onclick="deleteCurrentSpace()" style="color:var(--color-error);border-color:var(--color-error);">Delete</button>
+
+            <!-- R3 two-column workbench (sidebar = third column on the
+                 outside, PDF + synthesis center, insights right). The
+                 grid only kicks in via body.pdf-detail-mode (set by
+                 mountPdfIfAvailable); outside PDF mode the children
+                 stack inline and the insights panel + composer stay
+                 hidden. -->
+            <div id="space-detail-workbench" class="space-detail-workbench">
+                <div class="space-detail-main">
+                    <!-- Phase Z Story Z.3 — PDF inline rendering. Only mounted
+                         when the active workspace is research AND the Space has
+                         a document:* source reference pointing at a PDF. The
+                         viewer module (loaded on demand from
+                         /vendor/memu-pdf-viewer.mjs) owns the rendering and
+                         cleanup; the openSpaceDetail() handler below calls
+                         mountPdfIfAvailable() / unmountPdf() to drive it.
+                         R3 update: viewer now mounts a chrome bar
+                         (filename + page nav + search) above the page
+                         stack — see attachPdfChrome() below. -->
+                    <div id="space-detail-pdf" class="hidden"></div>
+
+                    <!-- R3 — synthesis section below the PDF (or as
+                         the primary body in non-PDF Spaces). For PDF
+                         Spaces this carries the user's analytical
+                         prose with indigo-italic backlinks to
+                         captured artefacts. For non-PDF Spaces it's
+                         just the regular Space body — render
+                         identically, hide the eyebrow + toggle. -->
+                    <section id="space-detail-synthesis" class="space-detail-synthesis">
+                        <header class="synthesis-head hidden" id="space-detail-synthesis-head">
+                            <span class="eyebrow">
+                                <span class="synthesis-diamond" aria-hidden="true">&#9662;</span>
+                                <span>Your synthesis</span>
+                            </span>
+                            <button id="space-detail-body-toggle" class="space-detail-body-toggle hidden" type="button" onclick="toggleExtractedBody()">
+                                <span id="space-detail-body-toggle-label">Show extracted text</span>
+                            </button>
+                        </header>
+                        <div id="space-detail-synthesis-empty" class="synthesis-empty italic-quiet hidden">
+                            Start writing your synthesis here. Highlight passages above to seed memos, quotes, codes, and questions — then weave them into prose.
+                        </div>
+                        <div id="space-detail-body" class="space-body"></div>
+                    </section>
+                </div>
+
+                <!-- R3 G3 — right-hand insights panel. Sticky on desktop,
+                     stacks below on narrow viewports. Hidden whenever
+                     body.pdf-detail-mode is absent. -->
+                <aside id="space-detail-insights" class="insights-panel" aria-label="Insights captured from this PDF">
+                    <header class="insights-panel-head">
+                        <span class="eyebrow">
+                            <span class="insights-diamond" aria-hidden="true">&#9670;</span>
+                            <span>Insights</span>
+                        </span>
+                        <div class="insights-scope" role="tablist" aria-label="Insights scope">
+                            <button type="button" id="insights-scope-passage" class="insights-scope-btn active" onclick="setInsightsScope('passage')" role="tab" aria-selected="true">Passage</button>
+                            <button type="button" id="insights-scope-all" class="insights-scope-btn" onclick="setInsightsScope('all')" role="tab" aria-selected="false">All</button>
+                        </div>
+                        <span id="insights-count" class="mono-chip insights-count">0</span>
+                    </header>
+                    <div id="insights-list" class="insights-list"></div>
+                    <div id="insights-empty" class="insights-empty italic-quiet">
+                        Select text in the PDF to capture a memo, quote, code, or question — or use the composer below for a free-form thought.
+                    </div>
+                </aside>
+            </div>
+
+            <!-- R3 G3 bottom — synthesis composer. Sticky to the
+                 bottom of the workbench when in PDF mode; hidden
+                 otherwise. The input expands to a textarea on focus;
+                 the four verb pills attach the text as the matching
+                 artefact category (no passage anchor — these are
+                 free-form captures). -->
+            <div id="space-detail-composer" class="insights-composer hidden">
+                <textarea id="insights-composer-input" class="insights-composer-input" placeholder="Capture a thought…" rows="1"></textarea>
+                <div class="insights-composer-pills" role="toolbar" aria-label="Capture as">
+                    <button type="button" class="btn-pill insights-pill insights-pill--memo" data-verb="memo" onclick="captureSynthesis('memo')">Memo</button>
+                    <button type="button" class="btn-pill insights-pill insights-pill--quote" data-verb="quote" onclick="captureSynthesis('quote')">Quote</button>
+                    <button type="button" class="btn-pill insights-pill insights-pill--code" data-verb="code" onclick="captureSynthesis('code')">Code</button>
+                    <button type="button" class="btn-pill insights-pill insights-pill--question" data-verb="question" onclick="captureSynthesis('question')">Question</button>
+                </div>
             </div>
         </div>
         <div id="space-detail-edit" class="hidden">
@@ -983,11 +1097,11 @@ async function api(path, opts = {}) {
 
 <!-- Phase R3 — active-reading toolbar. Appears when text is selected
      inside a passage-tagged block (data-pid present) within a Space's
-     reading body. The selection-handler in JS picks up the
-     containing data-pid block and offers the four verbs (Memo / Code
-     / Question / Quote). Memo + Quote ship in this slice; Code +
-     Question are stubbed onclick handlers that show a "coming soon"
-     toast (the picker UI is R3.3 / R3.4). -->
+     reading body OR inside a pdf.js text layer (R3 PDF mode). The
+     selection-handler in JS picks up the containing data-pid block
+     or the .pdf-page[data-page-number] ancestor and offers the four
+     verbs. All four (Memo / Quote / Code / Question) are wired to
+     real persistence — the composer modal differentiates by verb. -->
 <div id="reading-toolbar" class="reading-toolbar hidden" role="toolbar" aria-label="Active reading actions">
     <button class="reading-toolbar-btn" type="button" onclick="openReadingComposer('memo')" title="Memo this passage — your noticing">
         <span class="reading-toolbar-icon">&#x1F4DD;</span>
@@ -997,31 +1111,61 @@ async function api(path, opts = {}) {
         <span class="reading-toolbar-icon">&#x275D;</span>
         <span>Quote</span>
     </button>
-    <button class="reading-toolbar-btn reading-toolbar-btn--deferred" type="button" onclick="showToast('Code — theme picker lands with the R3.3 batch-coding flow.', false)" title="Code this passage under a theme (R3.3)">
+    <button class="reading-toolbar-btn" type="button" onclick="openReadingComposer('code')" title="Code this passage under a theme">
         <span class="reading-toolbar-icon">&#x1F3F7;</span>
         <span>Code</span>
     </button>
-    <button class="reading-toolbar-btn reading-toolbar-btn--deferred" type="button" onclick="showToast('Question — answer-linking surface lands with R3.4.', false)" title="Open a question on this passage (R3.4)">
+    <button class="reading-toolbar-btn" type="button" onclick="openReadingComposer('question')" title="Open a question on this passage">
         <span class="reading-toolbar-icon">&#x2753;</span>
         <span>Question</span>
     </button>
 </div>
 
-<!-- Composer modal for memo + quote. Re-used between the two verbs;
-     openReadingComposer() configures title / placeholder / pre-fill
-     and saveReadingComposer() submits with the right category. -->
+<!-- Composer modal — re-used across all four verbs (Memo / Quote /
+     Code / Question). openReadingComposer() configures the title /
+     source line / passage / label / placeholder / "stays-in-this-
+     Space" toggle visibility per verb. For Code the body field is
+     a tag input with autocomplete; for the others it's a textarea. -->
 <div class="modal-overlay" id="reading-composer-modal">
-    <div class="modal-card" style="max-width:560px;">
-        <h3 class="mb-sm" id="reading-composer-title">New memo</h3>
-        <div class="text-muted mb-sm" style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;">From <span id="reading-composer-source">…</span></div>
-        <blockquote class="reading-composer-passage" id="reading-composer-passage">…</blockquote>
-        <label class="input-label" id="reading-composer-label">Your noticing</label>
-        <textarea id="reading-composer-body" class="input" rows="6" style="font-family:var(--font-mono,monospace);font-size:13px;"></textarea>
-        <div id="reading-composer-error" class="hidden text-error" style="font-size:13px;margin-top:var(--space-sm);"></div>
-        <div class="flex gap-sm" style="justify-content:flex-end;margin-top:var(--space-md);">
-            <button class="btn btn-secondary btn-sm" onclick="closeReadingComposer()">Cancel</button>
-            <button class="btn btn-primary btn-sm" id="reading-composer-save" onclick="saveReadingComposer()">Save</button>
+    <div class="modal-card reading-composer-card">
+        <header class="reading-composer-head">
+            <h3 id="reading-composer-title"><span class="reading-composer-icon" aria-hidden="true">&#x270E;</span> New memo</h3>
+        </header>
+        <div class="reading-composer-source mono">
+            <span class="reading-composer-source-prefix">From</span>
+            <span id="reading-composer-source">…</span>
         </div>
+        <blockquote class="reading-composer-passage serif-accent" id="reading-composer-passage">…</blockquote>
+
+        <!-- Variant: textarea (memo / quote / question). -->
+        <div id="reading-composer-textarea-wrap">
+            <label class="input-label eyebrow" id="reading-composer-label">Your noticing</label>
+            <textarea id="reading-composer-body" class="input reading-composer-input" rows="5"></textarea>
+        </div>
+
+        <!-- Variant: code/tag input. Shown when verb=code; hidden
+             otherwise. Autocomplete suggestions are pulled from the
+             existing codes (theme Spaces) for this source Space. -->
+        <div id="reading-composer-codeinput-wrap" class="hidden">
+            <label class="input-label eyebrow" for="reading-composer-code">Enter or create a code</label>
+            <input type="text" id="reading-composer-code" class="input reading-composer-input" placeholder="e.g. Methodology gap" list="reading-composer-code-options" autocomplete="off">
+            <datalist id="reading-composer-code-options"></datalist>
+            <label class="input-label eyebrow" for="reading-composer-code-note" style="margin-top:var(--space-sm);">Optional note</label>
+            <textarea id="reading-composer-code-note" class="input reading-composer-input" rows="3" placeholder="Optional — why this passage belongs under this code."></textarea>
+        </div>
+
+        <div id="reading-composer-error" class="hidden text-error reading-composer-error">…</div>
+
+        <footer class="reading-composer-foot">
+            <label class="reading-composer-toggle">
+                <input type="checkbox" id="reading-composer-stays" checked>
+                <span>Stays in this Space</span>
+            </label>
+            <div class="reading-composer-actions">
+                <button class="btn-pill reading-composer-cancel" onclick="closeReadingComposer()">Cancel</button>
+                <button class="btn-pill btn-pill-primary reading-composer-save-btn" id="reading-composer-save" onclick="saveReadingComposer()">Save memo</button>
+            </div>
+        </footer>
     </div>
 </div>
 
@@ -4502,6 +4646,12 @@ function openSpaceDetail(id) {
     // mount before deciding whether to mount this one — so closing one
     // PDF Space and opening another doesn't leak DOM or workers.
     unmountPdf();
+    // Reset citation + verb pills (mountPdfIfAvailable will re-show
+    // them if it succeeds).
+    const citation = document.getElementById('space-detail-citation');
+    if (citation) citation.classList.add('hidden');
+    const verbs = document.getElementById('space-detail-verbs');
+    if (verbs) { verbs.classList.add('hidden'); verbs.classList.remove('armed'); }
     mountPdfIfAvailable(s);
     // Phase Z Story Z.6b — record this Space as read by the active
     // profile. Fire-and-forget; failure shouldn't block the reading
@@ -4719,6 +4869,21 @@ function findPdfSourceRef(space) {
     return -1;
 }
 
+// Pull just the leaf filename out of a `document:/path/to/<uuid>-Name.pdf`
+// ref so the PDF chrome can show a friendly label. Returns "Document"
+// if the ref doesn't carry a usable filename.
+function extractPdfFileName(space, idx) {
+    const refs = space.source_references || space.sourceReferences || [];
+    if (!Array.isArray(refs) || idx < 0 || idx >= refs.length) return 'Document';
+    const ref = refs[idx];
+    if (typeof ref !== 'string') return 'Document';
+    const path = ref.slice('document:'.length);
+    // Strip directory components, then strip the leading <uuid>- prefix
+    // documentIngestion.ts prepends (UUID + dash + safeFileName).
+    const leaf = path.split(/[\\/]/).pop() || path;
+    return leaf.replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i, '');
+}
+
 async function mountPdfIfAvailable(space) {
     // Gate 1 — only research workspaces get the PDF surface. Family /
     // personal Spaces with attached documents continue to show the
@@ -4734,9 +4899,55 @@ async function mountPdfIfAvailable(space) {
     container.classList.remove('hidden');
     container.innerHTML = '<div class="pdf-loading">Loading PDF…</div>';
 
+    // R3 G2 + G3 — set the PDF detail mode flag so the two-column
+    // workbench layout kicks in, hide the extracted OCR body behind
+    // the toggle, surface the toggle + composer + synthesis eyebrow,
+    // and show the insights panel. All driven by CSS off
+    // body.pdf-detail-mode + local hidden classes so unmount can
+    // revert cleanly.
+    document.body.classList.add('pdf-detail-mode');
+    const ocrBody = document.getElementById('space-detail-body');
+    const ocrToggle = document.getElementById('space-detail-body-toggle');
+    const ocrToggleLabel = document.getElementById('space-detail-body-toggle-label');
+    const insightsPanel = document.getElementById('space-detail-insights');
+    const composer = document.getElementById('space-detail-composer');
+    const synthHead = document.getElementById('space-detail-synthesis-head');
+    const synthEmpty = document.getElementById('space-detail-synthesis-empty');
+    const verbs = document.getElementById('space-detail-verbs');
+    if (ocrBody) ocrBody.classList.add('hidden');
+    if (ocrToggle) ocrToggle.classList.remove('hidden');
+    if (ocrToggleLabel) ocrToggleLabel.textContent = 'Show extracted text';
+    if (insightsPanel) insightsPanel.classList.remove('hidden');
+    if (composer) composer.classList.remove('hidden');
+    if (synthHead) synthHead.classList.remove('hidden');
+    if (verbs) verbs.classList.remove('hidden'); // visible but disarmed
+    // If the Space body looks like pure OCR extraction (no real
+    // synthesis written by the user), show the empty-state prompt.
+    // Heuristic: body is empty OR every paragraph is the raw
+    // document_ingestion summary boilerplate. Cheap: empty body →
+    // show; non-empty body → hide. Hareesh can write the synthesis
+    // in Edit mode; the empty state is the nudge.
+    if (synthEmpty) {
+        const bodyText = (space.body_markdown || '').trim();
+        synthEmpty.classList.toggle('hidden', bodyText.length > 0);
+    }
+
+    // Kick off insights load in parallel with PDF render. Failures
+    // are non-fatal — the panel renders an empty state.
+    loadInsightsForCurrentSpace().catch(err => {
+        console.warn('[R3] insights load failed (non-fatal):', err);
+    });
+
     const mod = await loadPdfModule();
     if (!mod || typeof mod.renderPdfInto !== 'function') {
         container.innerHTML = '<div class="pdf-error">PDF viewer module unavailable. Markdown view below.</div>';
+        // Without a viewer there's no two-column layout to maintain —
+        // show the OCR body inline as the fallback reading surface.
+        document.body.classList.remove('pdf-detail-mode');
+        if (ocrBody) ocrBody.classList.remove('hidden');
+        if (ocrToggle) ocrToggle.classList.add('hidden');
+        if (insightsPanel) insightsPanel.classList.add('hidden');
+        if (composer) composer.classList.add('hidden');
         return;
     }
     // Bail if the user already navigated away while we were loading.
@@ -4763,7 +4974,28 @@ async function mountPdfIfAvailable(space) {
             container.classList.add('hidden');
             return;
         }
-        __activePdfHandle = await mod.renderPdfInto(new Uint8Array(buffer), container);
+        const fileName = extractPdfFileName(space, idx);
+        // Set the citation line under the title — drawn separately from
+        // the viewer chrome so it tracks the Space's authoring metadata
+        // rather than the bare filename when those differ (today they're
+        // the same — but the chrome shows filename, the citation
+        // surfaces author/source if we wire it in a follow-up).
+        const citation = document.getElementById('space-detail-citation');
+        if (citation) {
+            citation.textContent = space.description || '';
+            citation.classList.toggle('hidden', !space.description);
+        }
+        __activePdfHandle = await mod.renderPdfInto(new Uint8Array(buffer), container, {
+            fileName,
+            // R3 — when the user scrolls and the active page changes,
+            // re-render the insights panel if we're in Passage scope so
+            // the cards swap to the new page's artefacts. No-op for All
+            // scope (which shows everything regardless).
+            onPageChange: (n) => {
+                __activePdfPage = n;
+                if (insightsScope === 'passage') renderInsightsList(space.uri);
+            },
+        });
     } catch (err) {
         console.error('[Phase Z] PDF render failed:', err);
         container.innerHTML = `<div class="pdf-error">Couldn't render PDF: ${esc(String(err && err.message || err))}</div>`;
@@ -4775,11 +5007,49 @@ function unmountPdf() {
         try { __activePdfHandle.destroy(); } catch (err) { console.warn('[Phase Z] PDF unmount error:', err); }
     }
     __activePdfHandle = null;
+    __activePdfPage = 0;
+    insightsScope = 'passage';
+    const citation = document.getElementById('space-detail-citation');
+    if (citation) citation.classList.add('hidden');
+    const synthHead = document.getElementById('space-detail-synthesis-head');
+    if (synthHead) synthHead.classList.add('hidden');
+    const synthEmpty = document.getElementById('space-detail-synthesis-empty');
+    if (synthEmpty) synthEmpty.classList.add('hidden');
+    const verbs = document.getElementById('space-detail-verbs');
+    if (verbs) {
+        verbs.classList.add('hidden');
+        verbs.classList.remove('armed');
+    }
+    // Re-sync the scope toggle to its default visual state.
+    const passBtn = document.getElementById('insights-scope-passage');
+    const allBtn = document.getElementById('insights-scope-all');
+    if (passBtn) { passBtn.classList.add('active'); passBtn.setAttribute('aria-selected', 'true'); }
+    if (allBtn)  { allBtn.classList.remove('active'); allBtn.setAttribute('aria-selected', 'false'); }
     const container = document.getElementById('space-detail-pdf');
     if (container) {
         container.innerHTML = '';
         container.classList.add('hidden');
     }
+    // R3 — clear the PDF detail mode flag and revert the OCR
+    // body/insights panel/composer to default hidden states. Body
+    // becomes visible again so non-PDF Spaces (or future PDF Spaces
+    // re-opened in a state where mount fails) keep the markdown view.
+    document.body.classList.remove('pdf-detail-mode');
+    const ocrBody = document.getElementById('space-detail-body');
+    const ocrToggle = document.getElementById('space-detail-body-toggle');
+    const insightsPanel = document.getElementById('space-detail-insights');
+    const composer = document.getElementById('space-detail-composer');
+    if (ocrBody) ocrBody.classList.remove('hidden');
+    if (ocrToggle) ocrToggle.classList.add('hidden');
+    if (insightsPanel) insightsPanel.classList.add('hidden');
+    if (composer) composer.classList.add('hidden');
+    currentInsights = [];
+    const list = document.getElementById('insights-list');
+    if (list) list.innerHTML = '';
+    const count = document.getElementById('insights-count');
+    if (count) count.textContent = '0';
+    const ta = document.getElementById('insights-composer-input');
+    if (ta) { ta.value = ''; ta.style.height = 'auto'; }
 }
 
 // ========== PHASE R3 — active-reading toolbar ==========
@@ -4796,9 +5066,37 @@ function unmountPdf() {
 // carry pids on their rendered blocks. No explicit workspace-type
 // check needed.
 
+// activeSelection shape (R3 — supports body-text AND PDF anchors):
+//   { kind: 'body', spaceId, spaceUri, spaceTitle, pid, text }
+//   { kind: 'pdf',  spaceId, spaceUri, spaceTitle, pageNumber, rect, text }
 let activeSelection = null;
-// Shape: { spaceId, spaceUri, spaceTitle, spaceCategory, pid, text }
-let composerVerb = null; // 'memo' | 'quote'
+let composerVerb = null; // 'memo' | 'quote' | 'code' | 'question'
+
+// Map verb to the wire category. "Code" is the researcher-facing label
+// for thematic coding; the storage category is `theme` (research-set
+// category for thematic tags). The label is friendlier than "Theme"
+// for a button on a floating toolbar — qualitative researchers
+// universally say "code this passage", not "theme this passage".
+const VERB_TO_CATEGORY = {
+    memo: 'memo',
+    quote: 'quote',
+    code: 'theme',
+    question: 'question',
+};
+const VERB_TO_DISPLAY = {
+    memo:     { title: 'Memo',     label: 'Your noticing',
+                placeholder: 'What did you notice? Memos are your voice — never auto-written.',
+                requiresBody: true },
+    quote:    { title: 'Quote',    label: 'Gloss (optional — why this quote matters)',
+                placeholder: 'Optional — context for the quote. Leave blank to keep it verbatim.',
+                requiresBody: false },
+    code:     { title: 'Code',     label: 'Theme name + optional rationale',
+                placeholder: 'Name the theme this passage belongs to. e.g. "Identity work — names" or "Tooling friction".',
+                requiresBody: true },
+    question: { title: 'Question', label: 'The question this passage raises',
+                placeholder: 'What does this make you want to know? Phrase as a question — it becomes a working question on the workbench.',
+                requiresBody: true },
+};
 
 function findPidAncestor(node, scope) {
     while (node && node !== scope) {
@@ -4810,26 +5108,50 @@ function findPidAncestor(node, scope) {
     return null;
 }
 
+// R3 G1 — walk up from `node` to a `.pdf-page[data-page-number]`
+// element. Returns the page element or null. `scope` is the
+// #space-detail-pdf container — we stop walking at it so we don't
+// accidentally match an outer element with data-page-number.
+function findPdfPageAncestor(node, scope) {
+    while (node && node !== scope) {
+        if (node.nodeType === 1 && node.classList && node.classList.contains('pdf-page') &&
+            node.hasAttribute && node.hasAttribute('data-page-number')) {
+            return node;
+        }
+        node = node.parentNode;
+    }
+    return null;
+}
+
 function hideReadingToolbar() {
+    // R3 — disarm both the legacy floating toolbar AND the new
+    // anchored verb-pills row. activeSelection cleared so the
+    // composer can't open against a stale selection.
     const t = document.getElementById('reading-toolbar');
     if (t) t.classList.add('hidden');
+    const v = document.getElementById('space-detail-verbs');
+    if (v) {
+        v.classList.add('hidden');
+        v.classList.remove('armed');
+    }
     activeSelection = null;
 }
 
 function showReadingToolbar(rect) {
+    // R3 — primary affordance is the anchored verb-pills row under
+    // the title (always in the same spot, no chasing the cursor).
+    // Showing the floating toolbar AS WELL would compete with it;
+    // we just arm the top pills and let the user pick.
+    const v = document.getElementById('space-detail-verbs');
+    if (v) {
+        v.classList.remove('hidden');
+        v.classList.add('armed');
+    }
+    // Legacy floating toolbar stays in the DOM as a fallback path
+    // but isn't shown by default. (Future: a per-user pref could
+    // toggle which surface is primary; today the anchored pills win.)
     const t = document.getElementById('reading-toolbar');
-    if (!t) return;
-    t.classList.remove('hidden');
-    // Position above the selection's top edge, clamped to viewport.
-    // Width is auto from the contents — we measure after un-hiding.
-    const w = t.offsetWidth || 240;
-    const top = window.scrollY + rect.top - t.offsetHeight - 8;
-    let left = window.scrollX + rect.left + (rect.width / 2) - (w / 2);
-    // Clamp into viewport with an 8px margin.
-    const vpW = document.documentElement.clientWidth;
-    left = Math.max(8, Math.min(left, window.scrollX + vpW - w - 8));
-    t.style.top = `${Math.max(window.scrollY + 8, top)}px`;
-    t.style.left = `${left}px`;
+    if (t) t.classList.add('hidden');
 }
 
 document.addEventListener('mouseup', () => {
@@ -4852,41 +5174,143 @@ function handleSelectionChange() {
     const text = sel.toString().trim();
     if (!text) return hideReadingToolbar();
     const range = sel.getRangeAt(0);
-    const body = document.getElementById('space-detail-body');
-    if (!body || !body.contains(range.commonAncestorContainer)) return hideReadingToolbar();
-    const pidEl = findPidAncestor(range.commonAncestorContainer, body);
-    if (!pidEl) return hideReadingToolbar();
+
     const space = spacesState.spaces.find(s => s.id === spacesState.currentId);
     if (!space) return hideReadingToolbar();
+
+    // R3 G1 — selection inside the pdf.js text layer. Walk up to find
+    // the .pdf-page[data-page-number] ancestor, then capture the
+    // selection rect in page-local CSS pixels so the highlight can be
+    // re-drawn later from the saved insight card.
+    const pdfContainer = document.getElementById('space-detail-pdf');
+    if (pdfContainer && !pdfContainer.classList.contains('hidden') &&
+        pdfContainer.contains(range.commonAncestorContainer)) {
+        const pageEl = findPdfPageAncestor(range.commonAncestorContainer, pdfContainer);
+        if (!pageEl) return hideReadingToolbar();
+        const pageNumber = parseInt(pageEl.getAttribute('data-page-number'), 10);
+        if (!Number.isFinite(pageNumber)) return hideReadingToolbar();
+        // Selection rect in viewport coords → translate to page-local
+        // by subtracting the page element's top-left. Page-local is
+        // stable across scroll + resize for the same passage.
+        const selRect = range.getBoundingClientRect();
+        const pageRect = pageEl.getBoundingClientRect();
+        const localRect = {
+            x: selRect.left - pageRect.left,
+            y: selRect.top - pageRect.top,
+            w: selRect.width,
+            h: selRect.height,
+        };
+        activeSelection = {
+            kind: 'pdf',
+            spaceId: space.id,
+            spaceUri: space.uri,
+            spaceTitle: space.title || 'Untitled',
+            pageNumber,
+            rect: localRect,
+            text,
+        };
+        showReadingToolbar(selRect);
+        return;
+    }
+
+    // Body-text passage (existing path).
+    const body = document.getElementById('space-detail-body');
+    if (!body || body.classList.contains('hidden') ||
+        !body.contains(range.commonAncestorContainer)) return hideReadingToolbar();
+    const pidEl = findPidAncestor(range.commonAncestorContainer, body);
+    if (!pidEl) return hideReadingToolbar();
     activeSelection = {
+        kind: 'body',
         spaceId: space.id,
         spaceUri: space.uri,
         spaceTitle: space.title || 'Untitled',
-        spaceCategory: space.category,
         pid: pidEl.getAttribute('data-pid'),
         text,
     };
     showReadingToolbar(range.getBoundingClientRect());
 }
 
+// Verb icons used in the composer modal header. Pencil for memo
+// (writing), quote-mark for quote, tag for code, question-mark for
+// question. Lined up with the verb-pill icons in the anchored row.
+const VERB_TO_ICON = {
+    memo: '&#x270E;',
+    quote: '&#x275D;',
+    code: '&#x1F3F7;',
+    question: '?',
+};
+
 function openReadingComposer(verb) {
-    if (!activeSelection) return;
+    if (!activeSelection) {
+        // No selection yet — surface a friendly nudge instead of opening
+        // an empty composer that would just create a 'free-form' artefact
+        // (the synthesis composer at the bottom is for that case).
+        showToast('Select some text in the PDF first, then choose a verb.', false);
+        return;
+    }
     composerVerb = verb;
-    document.getElementById('reading-composer-title').textContent =
-        verb === 'memo' ? 'New memo' : 'New quote';
-    document.getElementById('reading-composer-source').textContent =
-        `${activeSelection.spaceTitle} (passage ${activeSelection.pid})`;
+    const display = VERB_TO_DISPLAY[verb];
+    if (!display) return;
+
+    // Header — icon + verb name. Source line mirrors the mock's
+    // "FROM HARTLEY_2023_CADDISFLY.PDF · PAGE 4" shape: filename in
+    // mono small-caps, anchor segment after a middle dot.
+    const titleEl = document.getElementById('reading-composer-title');
+    titleEl.innerHTML = `<span class="reading-composer-icon" aria-hidden="true">${VERB_TO_ICON[verb] || ''}</span> New ${display.title.toLowerCase()}`;
+
+    let sourceLabel;
+    if (activeSelection.kind === 'pdf') {
+        const space = spacesState.spaces.find(s => s.id === activeSelection.spaceId);
+        const idx = space ? findPdfSourceRef(space) : -1;
+        const fileName = (space && idx >= 0) ? extractPdfFileName(space, idx) : activeSelection.spaceTitle;
+        sourceLabel = `${(fileName || '').toUpperCase()} · PAGE ${activeSelection.pageNumber}`;
+    } else {
+        sourceLabel = `${(activeSelection.spaceTitle || '').toUpperCase()} · PASSAGE ${activeSelection.pid}`;
+    }
+    document.getElementById('reading-composer-source').textContent = sourceLabel;
     document.getElementById('reading-composer-passage').textContent = activeSelection.text;
-    document.getElementById('reading-composer-label').textContent =
-        verb === 'memo' ? 'Your noticing' : 'Gloss (optional — why this quote matters)';
-    const ta = document.getElementById('reading-composer-body');
-    ta.value = '';
-    ta.placeholder = verb === 'memo'
-        ? 'What did you notice? Memos are your voice — never auto-written.'
-        : 'Optional — context for the quote. Leave blank to keep it verbatim.';
+
+    // Variant switch — code gets the tag-input + autocomplete; the
+    // other three get the textarea. "Stays in this Space" toggle is
+    // shown for all four (per the mocks).
+    const textareaWrap = document.getElementById('reading-composer-textarea-wrap');
+    const codeWrap = document.getElementById('reading-composer-codeinput-wrap');
+    if (verb === 'code') {
+        textareaWrap.classList.add('hidden');
+        codeWrap.classList.remove('hidden');
+        document.getElementById('reading-composer-code').value = '';
+        document.getElementById('reading-composer-code-note').value = '';
+        populateCodeAutocomplete();
+        setTimeout(() => document.getElementById('reading-composer-code').focus(), 50);
+    } else {
+        codeWrap.classList.add('hidden');
+        textareaWrap.classList.remove('hidden');
+        const label = document.getElementById('reading-composer-label');
+        label.textContent = display.label;
+        const ta = document.getElementById('reading-composer-body');
+        ta.value = '';
+        ta.placeholder = display.placeholder;
+        setTimeout(() => ta.focus(), 50);
+    }
+
+    // Save-button label per verb.
+    const saveBtn = document.getElementById('reading-composer-save');
+    saveBtn.textContent = `Save ${display.title.toLowerCase()}`;
+
     document.getElementById('reading-composer-error').classList.add('hidden');
     document.getElementById('reading-composer-modal').classList.add('open');
-    setTimeout(() => ta.focus(), 50);
+}
+
+// Populate the code-input <datalist> with theme Spaces already
+// captured against the currently-open source Space. Lets the user
+// reuse a code instead of typing it from scratch.
+function populateCodeAutocomplete() {
+    const dl = document.getElementById('reading-composer-code-options');
+    if (!dl) return;
+    const existing = (currentInsights || []).filter(i => i.category === 'theme');
+    dl.innerHTML = existing
+        .map(i => `<option value="${esc(i.title || '')}"></option>`)
+        .join('');
 }
 
 function closeReadingComposer() {
@@ -4894,29 +5318,76 @@ function closeReadingComposer() {
     composerVerb = null;
 }
 
+// Build the source-reference string for the current activeSelection.
+// Mirrors src/spaces/insightSourceRef.ts formatInsightSourceRef.
+function buildSourceRefForActiveSelection() {
+    if (!activeSelection) return null;
+    const head = `source:${activeSelection.spaceUri}`;
+    if (activeSelection.kind === 'body') {
+        return `${head}#pid:${activeSelection.pid}`;
+    }
+    if (activeSelection.kind === 'pdf') {
+        const r = activeSelection.rect || { x: 0, y: 0, w: 0, h: 0 };
+        const fmt = (n) => Math.round(n * 100) / 100;
+        return `${head}#page=${activeSelection.pageNumber}&rect=${fmt(r.x)},${fmt(r.y)},${fmt(r.w)},${fmt(r.h)}`;
+    }
+    return head;
+}
+
 async function saveReadingComposer() {
     if (!composerVerb || !activeSelection) return;
+    const display = VERB_TO_DISPLAY[composerVerb];
+    if (!display) return;
     const errBox = document.getElementById('reading-composer-error');
     errBox.classList.add('hidden');
-    const body = document.getElementById('reading-composer-body').value.trim();
 
-    // Memos require a body — they're the researcher's voice. Quotes
-    // can ship with no gloss; the captured passage is the artefact.
-    if (composerVerb === 'memo' && !body) {
-        errBox.textContent = 'A memo needs your words — it is your noticing, not just the passage.';
-        errBox.classList.remove('hidden');
-        return;
+    // Read input per variant. Code = (tag + optional note); the
+    // others = textarea.
+    let bodyText, codeName, codeNote;
+    if (composerVerb === 'code') {
+        codeName = (document.getElementById('reading-composer-code').value || '').trim();
+        codeNote = (document.getElementById('reading-composer-code-note').value || '').trim();
+        if (!codeName) {
+            errBox.textContent = 'Enter or pick a code — the tag is required.';
+            errBox.classList.remove('hidden');
+            return;
+        }
+    } else {
+        bodyText = document.getElementById('reading-composer-body').value.trim();
+        if (display.requiresBody && !bodyText) {
+            errBox.textContent = `A ${display.title.toLowerCase()} needs your words — it is your noticing, not just the passage.`;
+            errBox.classList.remove('hidden');
+            return;
+        }
     }
 
-    const sourceRef = `source:${activeSelection.spaceUri}#pid:${activeSelection.pid}`;
+    const sourceRef = buildSourceRefForActiveSelection();
+    const anchorLabel = activeSelection.kind === 'pdf'
+        ? `p. ${activeSelection.pageNumber}`
+        : `passage \`${activeSelection.pid}\``;
     let title, fullBody;
     if (composerVerb === 'memo') {
         title = `Memo · ${activeSelection.spaceTitle}`;
-        fullBody = `> ${activeSelection.text}\n\n${body}\n\n_— from [[${activeSelection.spaceTitle}]] (passage \`${activeSelection.pid}\`)_`;
-    } else {
+        fullBody = `> ${activeSelection.text}\n\n${bodyText}\n\n_— from [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+    } else if (composerVerb === 'quote') {
         title = `Quote · ${activeSelection.spaceTitle}`;
-        const gloss = body ? `\n\n${body}` : '';
-        fullBody = `> ${activeSelection.text}${gloss}\n\n_— [[${activeSelection.spaceTitle}]] (passage \`${activeSelection.pid}\`)_`;
+        const gloss = bodyText ? `\n\n${bodyText}` : '';
+        fullBody = `> ${activeSelection.text}${gloss}\n\n_— [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+    } else if (composerVerb === 'code') {
+        // Code = a tag the user attaches to a passage. The Space's
+        // TITLE is the code name. Multiple passages tagged with the
+        // same code share one Space and accumulate passages as
+        // dated bullets in its body — but for the first capture we
+        // just write the passage + (optional) note. Reusing-an-
+        // existing-code happens at the autocomplete UI level; the
+        // POST endpoint creates a new Space (back-end de-dup is a
+        // follow-up — for now duplicate codes get separate Spaces
+        // and Hareesh can merge in Edit).
+        title = codeName;
+        fullBody = `**Coded passage:**\n\n> ${activeSelection.text}\n\n${codeNote ? codeNote + '\n\n' : ''}_— [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
+    } else { // question
+        title = `Q · ${bodyText.slice(0, 80) || activeSelection.spaceTitle}`;
+        fullBody = `**Question:** ${bodyText}\n\n**Raised by passage:**\n\n> ${activeSelection.text}\n\n_— [[${activeSelection.spaceTitle}]] (${anchorLabel})_`;
     }
 
     const btn = document.getElementById('reading-composer-save');
@@ -4927,10 +5398,10 @@ async function saveReadingComposer() {
             method: 'POST',
             body: JSON.stringify({
                 title,
-                category: composerVerb,
+                category: VERB_TO_CATEGORY[composerVerb],
                 body_markdown: fullBody,
                 source_references: [sourceRef],
-                tags: ['active-reading'],
+                tags: ['active-reading', composerVerb],
             }),
         });
         if (!res.ok) {
@@ -4939,22 +5410,469 @@ async function saveReadingComposer() {
             errBox.classList.remove('hidden');
             return;
         }
+        const savedSpaceUri = activeSelection.spaceUri;
         closeReadingComposer();
         hideReadingToolbar();
         // Clear the browser selection so the toolbar doesn't immediately
         // re-show after the modal closes.
         try { window.getSelection().removeAllRanges(); } catch { /* fine */ }
-        showToast(composerVerb === 'memo' ? 'Memo saved' : 'Quote captured', false);
-        // Refresh the catalogue so the new Space appears in the chip strip.
+        showToast(`${display.title} saved`, false);
+        // Refresh the catalogue so the new Space appears in the chip
+        // strip + insights panel.
         await loadSpaces();
+        // R3 G3 — refresh the insights panel for THIS source Space if
+        // it's still open. loadSpaces above repopulates spacesState
+        // but doesn't touch the panel.
+        if (spacesState.currentId && savedSpaceUri) {
+            const stillOpen = spacesState.spaces.find(s => s.id === spacesState.currentId);
+            if (stillOpen && stillOpen.uri === savedSpaceUri) {
+                loadInsightsForCurrentSpace().catch(() => {});
+            }
+        }
     } catch (err) {
         errBox.textContent = `Network error — ${String(err.message || err)}`;
         errBox.classList.remove('hidden');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Save';
+        btn.textContent = `Save ${display.title.toLowerCase()}`;
     }
 }
+
+// ========== PHASE R3 — insights panel + synthesis composer ==========
+//
+// The right-hand insights panel only appears when a PDF is mounted
+// (body.pdf-detail-mode set by mountPdfIfAvailable). It lists every
+// Memo / Quote / Code (theme) / Question Space whose
+// source_references point at the currently-open Space. Clicking a
+// card jumps the PDF to the captured passage and draws a transient
+// highlight overlay.
+//
+// The synthesis composer at the bottom captures FREE-FORM artefacts
+// (no passage anchor). It's a quick-capture for thoughts that
+// aren't tied to a specific passage — runs alongside the
+// selection-driven floating toolbar, not instead of it.
+
+// In-memory cache of insights for the currently-open Space. Cleared
+// on Space-detail close.
+let currentInsights = []; // [{ id, uri, category, title, body_markdown, source_references, last_updated_at, tags }]
+// Insights panel scope: 'passage' (current PDF page only) or 'all'
+// (every artefact attached to this Space). Default 'passage' because
+// it's the working-context view — the user is reading a specific
+// passage and wants to see what they've already captured against it.
+let insightsScope = 'passage';
+// Active PDF page — updated by the viewer's onPageChange callback.
+// 0 when no PDF is mounted.
+let __activePdfPage = 0;
+
+// VERB-display config for cards / pills. Indigo for memo (primary
+// brand), green for quote (verbatim — alive), amber for code (theme
+// tagging — warm taxonomy), red for question (urgency / inquiry).
+const INSIGHT_VERB_DISPLAY = {
+    memo:     { label: 'MEMO',     pillClass: 'insight-pill--memo' },
+    quote:    { label: 'QUOTE',    pillClass: 'insight-pill--quote' },
+    code:     { label: 'CODE',     pillClass: 'insight-pill--code' },
+    question: { label: 'QUESTION', pillClass: 'insight-pill--question' },
+};
+
+// theme → 'code' for display purposes (see VERB_TO_CATEGORY).
+function categoryToVerb(category) {
+    if (category === 'theme') return 'code';
+    if (category === 'memo' || category === 'quote' || category === 'question') return category;
+    return null;
+}
+
+// Parse `source:<uri>#page=N&rect=x,y,w,h` or `#pid:<pid>` —
+// mirrors src/spaces/insightSourceRef.ts parseInsightSourceRef.
+// Returns null if the ref doesn't carry a usable anchor for the
+// given source URI.
+function parseInsightSourceRefClient(ref, sourceSpaceUri) {
+    if (typeof ref !== 'string') return null;
+    if (!ref.startsWith('source:')) return null;
+    const rest = ref.slice('source:'.length);
+    const hashIdx = rest.indexOf('#');
+    let uri, fragment;
+    if (hashIdx < 0) { uri = rest; fragment = ''; }
+    else { uri = rest.slice(0, hashIdx); fragment = rest.slice(hashIdx + 1); }
+    if (uri !== sourceSpaceUri) return null;
+    if (!fragment) return { kind: 'none' };
+    if (fragment.startsWith('pid:')) {
+        const pid = fragment.slice('pid:'.length);
+        if (!pid) return null;
+        return { kind: 'body', pid };
+    }
+    if (fragment.startsWith('page=')) {
+        const params = {};
+        for (const part of fragment.split('&')) {
+            const eq = part.indexOf('=');
+            if (eq < 0) continue;
+            params[part.slice(0, eq)] = part.slice(eq + 1);
+        }
+        const page = parseInt(params.page, 10);
+        if (!Number.isFinite(page) || page < 1) return null;
+        if (!params.rect) return { kind: 'pdf', pageNumber: page, rect: { x: 0, y: 0, w: 0, h: 0 } };
+        const parts = params.rect.split(',').map(Number);
+        if (parts.length !== 4 || parts.some(n => !Number.isFinite(n))) return null;
+        return { kind: 'pdf', pageNumber: page, rect: { x: parts[0], y: parts[1], w: parts[2], h: parts[3] } };
+    }
+    return { kind: 'none' };
+}
+
+// Pick the first usable anchor from an insight's source_references
+// pointing at the current source Space. Returns null if none.
+function findAnchorForCurrentSource(insight, sourceSpaceUri) {
+    const refs = insight.source_references || [];
+    if (!Array.isArray(refs)) return null;
+    for (const ref of refs) {
+        const parsed = parseInsightSourceRefClient(ref, sourceSpaceUri);
+        if (parsed) return parsed;
+    }
+    return null;
+}
+
+// Extract a 1-2 line passage excerpt from an insight body. Memos /
+// quotes / codes / questions all start with the captured passage as
+// a blockquote in body_markdown (see saveReadingComposer above), so
+// we pull the first blockquote line. Falls back to the body's first
+// non-empty line if no blockquote is found.
+function extractInsightExcerpt(insight) {
+    const body = (insight.body_markdown || '').trim();
+    if (!body) return '';
+    const lines = body.split(/\r?\n/);
+    for (const ln of lines) {
+        const trimmed = ln.trim();
+        if (trimmed.startsWith('>')) {
+            return trimmed.replace(/^>\s*/, '').trim();
+        }
+    }
+    // No blockquote — fall back to first non-empty content line
+    // (skipping markdown markers like **bold**: headers).
+    for (const ln of lines) {
+        const trimmed = ln.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('#')) continue;
+        return trimmed.replace(/^\*+/, '').replace(/\*+$/, '').slice(0, 200);
+    }
+    return '';
+}
+
+// Extract the user's note (everything after the captured-passage
+// blockquote and before the trailing attribution line). Returns
+// empty string for quotes without a gloss.
+function extractInsightNote(insight) {
+    const body = (insight.body_markdown || '').trim();
+    if (!body) return '';
+    // Strip the leading blockquote block.
+    const lines = body.split(/\r?\n/);
+    let i = 0;
+    // Skip leading bold/header lines (Coded passage / Question / etc.)
+    while (i < lines.length && (!lines[i].trim() || lines[i].startsWith('**'))) i++;
+    // Skip the blockquote.
+    while (i < lines.length && (lines[i].trim().startsWith('>') || !lines[i].trim())) i++;
+    // Collect note lines until the attribution.
+    const noteLines = [];
+    while (i < lines.length) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('_—') || trimmed.startsWith('*—')) break;
+        if (trimmed.startsWith('**Question:**')) { i++; continue; } // already shown in body
+        noteLines.push(lines[i]);
+        i++;
+    }
+    return noteLines.join('\n').trim();
+}
+
+async function loadInsightsForCurrentSpace() {
+    const list = document.getElementById('insights-list');
+    const empty = document.getElementById('insights-empty');
+    const count = document.getElementById('insights-count');
+    if (!list || !spacesState.currentId) return;
+    try {
+        const res = await api(`/api/spaces/${encodeURIComponent(spacesState.currentId)}/insights`);
+        if (!res.ok) {
+            list.innerHTML = '';
+            currentInsights = [];
+            if (count) count.textContent = '0';
+            if (empty) empty.classList.remove('hidden');
+            return;
+        }
+        const data = await res.json();
+        currentInsights = Array.isArray(data.insights) ? data.insights : [];
+        renderInsightsList(data.sourceUri);
+    } catch (err) {
+        console.warn('[R3] loadInsightsForCurrentSpace failed:', err);
+        list.innerHTML = '';
+        if (count) count.textContent = '0';
+        if (empty) empty.classList.remove('hidden');
+    }
+}
+
+function renderInsightCard(ins, idx, sourceUri) {
+    const verb = categoryToVerb(ins.category) || 'memo';
+    const disp = INSIGHT_VERB_DISPLAY[verb] || INSIGHT_VERB_DISPLAY.memo;
+    const anchor = findAnchorForCurrentSource(ins, sourceUri);
+    const pageLabel = anchor && anchor.kind === 'pdf' ? `p. ${anchor.pageNumber}` :
+                      anchor && anchor.kind === 'body' ? `pid ${anchor.pid}` : 'free-form';
+    const excerpt = esc(extractInsightExcerpt(ins));
+    const note = esc(extractInsightNote(ins));
+    const title = esc(ins.title || 'Untitled');
+    const jumpable = anchor && anchor.kind === 'pdf' && (anchor.rect.w > 0 || anchor.pageNumber > 0);
+    // Code cards render the title (= code name) prominently above the
+    // passage rather than tucked away — codes are tag-shaped, not
+    // long-form artefacts.
+    const showTitle = verb === 'code';
+    return `<button type="button" class="insight-card${jumpable ? ' insight-card--jumpable' : ''}"
+                    data-idx="${idx}" onclick="jumpToInsight(${idx})"
+                    aria-label="Jump to ${pageLabel} — ${title}">
+        <div class="insight-card-head">
+            <span class="status-pill ${disp.pillClass}">${disp.label}</span>
+            <span class="mono insight-card-page">${esc(pageLabel)}</span>
+        </div>
+        ${showTitle ? `<div class="insight-card-title">${title}</div>` : ''}
+        ${excerpt ? `<blockquote class="insight-card-excerpt serif-accent">${excerpt}</blockquote>` : ''}
+        ${note ? `<div class="insight-card-note">${note}</div>` : ''}
+        <div class="insight-card-foot mono italic-quiet">${formatSpaceUpdated(ins.last_updated_at) || ''}</div>
+    </button>`;
+}
+
+// Pick which insights to show given the current scope. In 'passage'
+// mode we filter to artefacts anchored on the currently-visible PDF
+// page (plus body-text artefacts and free-form artefacts when no PDF
+// is mounted). In 'all' mode every artefact attached to this Space
+// is shown, grouped by verb.
+function filterInsightsForScope(sourceUri) {
+    if (insightsScope === 'all') return currentInsights;
+    if (!__activePdfPage) return currentInsights;
+    return currentInsights.filter(ins => {
+        const anchor = findAnchorForCurrentSource(ins, sourceUri);
+        if (!anchor) return false;
+        if (anchor.kind === 'pdf') return anchor.pageNumber === __activePdfPage;
+        // Body-text and free-form: only show in passage scope when
+        // there's no PDF active (read as "the current passage").
+        return !__activePdfPage;
+    });
+}
+
+function renderInsightsList(sourceUri) {
+    const list = document.getElementById('insights-list');
+    const empty = document.getElementById('insights-empty');
+    const count = document.getElementById('insights-count');
+    if (!list) return;
+    const filtered = filterInsightsForScope(sourceUri);
+    // Count in the pill is ALWAYS the total — the panel scope is a
+    // viewing filter, not a deletion.
+    if (count) count.textContent = String(currentInsights.length);
+
+    if (filtered.length === 0) {
+        list.innerHTML = '';
+        if (empty) {
+            empty.classList.remove('hidden');
+            empty.textContent = insightsScope === 'passage' && __activePdfPage
+                ? `No insights on page ${__activePdfPage} yet. Select text in the PDF to capture one, or switch to All to see what you've captured elsewhere.`
+                : 'Select text in the PDF to capture a memo, quote, code, or question — or use the composer below for a free-form thought.';
+        }
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+
+    if (insightsScope === 'all') {
+        // Group by verb for the All view, in the canonical order:
+        // memo → quote → code (theme) → question.
+        const order = ['memo', 'quote', 'code', 'question'];
+        const buckets = { memo: [], quote: [], code: [], question: [] };
+        for (let i = 0; i < currentInsights.length; i++) {
+            const v = categoryToVerb(currentInsights[i].category);
+            if (v && buckets[v]) buckets[v].push(i);
+        }
+        list.innerHTML = order.map(v => {
+            if (!buckets[v].length) return '';
+            const disp = INSIGHT_VERB_DISPLAY[v];
+            return `<section class="insights-group">
+                <header class="insights-group-head">
+                    <span class="status-pill ${disp.pillClass}">${disp.label}</span>
+                    <span class="mono-chip insights-group-count">${buckets[v].length}</span>
+                </header>
+                ${buckets[v].map(i => renderInsightCard(currentInsights[i], i, sourceUri)).join('')}
+            </section>`;
+        }).join('');
+        return;
+    }
+    // Passage scope — flat list of the filtered set, preserving the
+    // order from currentInsights (most recent first per the server).
+    list.innerHTML = filtered.map((ins, i) => {
+        const realIdx = currentInsights.indexOf(ins);
+        return renderInsightCard(ins, realIdx, sourceUri);
+    }).join('');
+}
+
+function setInsightsScope(scope) {
+    if (scope !== 'passage' && scope !== 'all') return;
+    insightsScope = scope;
+    const passBtn = document.getElementById('insights-scope-passage');
+    const allBtn = document.getElementById('insights-scope-all');
+    if (passBtn) {
+        passBtn.classList.toggle('active', scope === 'passage');
+        passBtn.setAttribute('aria-selected', String(scope === 'passage'));
+    }
+    if (allBtn) {
+        allBtn.classList.toggle('active', scope === 'all');
+        allBtn.setAttribute('aria-selected', String(scope === 'all'));
+    }
+    const space = spacesState.spaces.find(s => s.id === spacesState.currentId);
+    if (space) renderInsightsList(space.uri);
+}
+
+// Click handler for insight cards. If the card has a PDF anchor with
+// a non-zero rect, scroll the PDF to that page and draw a transient
+// highlight. If the anchor is body-text (pid), scroll the body to
+// the matching element. If anchor.kind === 'none' (free-form), open
+// the insight Space itself.
+function jumpToInsight(idx) {
+    const insight = currentInsights[idx];
+    if (!insight) return;
+    const space = spacesState.spaces.find(s => s.id === spacesState.currentId);
+    if (!space) return;
+    const anchor = findAnchorForCurrentSource(insight, space.uri);
+    if (!anchor) { openSpaceDetail(insight.id); return; }
+    if (anchor.kind === 'pdf') {
+        const handle = __activePdfHandle;
+        if (handle && typeof handle.scrollToPage === 'function') {
+            handle.scrollToPage(anchor.pageNumber, anchor.rect);
+            if (anchor.rect.w > 0 && anchor.rect.h > 0 && typeof handle.highlight === 'function') {
+                // Delay the highlight slightly so the scroll has
+                // started landing on the page (so the overlay isn't
+                // drawn before the user sees the page).
+                setTimeout(() => handle.highlight(anchor.pageNumber, anchor.rect, 2400), 300);
+            }
+        }
+        return;
+    }
+    if (anchor.kind === 'body') {
+        const body = document.getElementById('space-detail-body');
+        if (!body) return;
+        // Show the body if it's currently hidden behind the toggle.
+        if (body.classList.contains('hidden')) toggleExtractedBody();
+        const target = body.querySelector(`[data-pid="${CSS.escape(anchor.pid)}"]`);
+        if (target) {
+            try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            catch { target.scrollIntoView(); }
+            target.classList.add('passage-highlight');
+            setTimeout(() => target.classList.remove('passage-highlight'), 2400);
+        }
+        return;
+    }
+    // Free-form — open the artefact Space itself.
+    openSpaceDetail(insight.id);
+}
+
+// ========== R3 G2 — extracted-text toggle ==========
+//
+// When the PDF is mounted, the auto-extracted OCR body is hidden by
+// default. The Show/Hide button toggles its visibility. Outside PDF
+// mode the body renders inline (toggle stays hidden).
+
+function toggleExtractedBody() {
+    const body = document.getElementById('space-detail-body');
+    const label = document.getElementById('space-detail-body-toggle-label');
+    if (!body || !label) return;
+    const hidden = body.classList.toggle('hidden');
+    label.textContent = hidden ? 'Show extracted text' : 'Hide extracted text';
+}
+
+// ========== R3 G3 bottom — synthesis composer ==========
+//
+// Free-form capture (no passage anchor). The composer is sticky to
+// the bottom of the workbench in PDF mode; the four pills attach
+// the captured text as the matching artefact category.
+
+function captureSynthesis(verb) {
+    const ta = document.getElementById('insights-composer-input');
+    if (!ta) return;
+    const text = ta.value.trim();
+    if (!text) {
+        ta.focus();
+        showToast('Type a thought first, then pick a verb.', false);
+        return;
+    }
+    const space = spacesState.spaces.find(s => s.id === spacesState.currentId);
+    if (!space) return;
+    // Build a no-anchor activeSelection so saveSynthesisCapture can
+    // share the source-ref formatter.
+    const display = VERB_TO_DISPLAY[verb];
+    if (!display) return;
+    saveSynthesisCapture(verb, text, space).catch(err => {
+        console.error('[R3] saveSynthesisCapture failed:', err);
+        showToast(`Couldn't save: ${err.message || err}`, true);
+    });
+}
+
+async function saveSynthesisCapture(verb, text, space) {
+    const display = VERB_TO_DISPLAY[verb];
+    const category = VERB_TO_CATEGORY[verb];
+    if (!display || !category) return;
+    let title, fullBody;
+    if (verb === 'memo') {
+        title = `Memo · ${space.title || 'Untitled'}`;
+        fullBody = `${text}\n\n_— from [[${space.title || 'Untitled'}]]_`;
+    } else if (verb === 'quote') {
+        // Free-form "quote" — the typed text IS the quote. Wrap in
+        // blockquote so the card excerpt picker finds it.
+        title = `Quote · ${space.title || 'Untitled'}`;
+        fullBody = `> ${text}\n\n_— [[${space.title || 'Untitled'}]]_`;
+    } else if (verb === 'code') {
+        const firstLine = text.split(/\r?\n/)[0].trim();
+        const themeName = firstLine || 'Untitled theme';
+        const rest = text.slice(firstLine.length).trim();
+        title = themeName;
+        fullBody = `${rest ? rest + '\n\n' : ''}_— from [[${space.title || 'Untitled'}]]_`;
+    } else { // question
+        title = `Q · ${text.slice(0, 80)}`;
+        fullBody = `**Question:** ${text}\n\n_— from [[${space.title || 'Untitled'}]]_`;
+    }
+    // Free-form source ref — no fragment, just the Space URI.
+    const sourceRef = `source:${space.uri}`;
+    const res = await api('/api/spaces', {
+        method: 'POST',
+        body: JSON.stringify({
+            title,
+            category,
+            body_markdown: fullBody,
+            source_references: [sourceRef],
+            tags: ['active-reading', verb, 'free-form'],
+        }),
+    });
+    if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${res.status}`);
+    }
+    // Clear composer + refresh insights panel.
+    const ta = document.getElementById('insights-composer-input');
+    if (ta) { ta.value = ''; resizeComposerInput(ta); }
+    showToast(`${display.title} saved`, false);
+    await loadSpaces();
+    await loadInsightsForCurrentSpace();
+}
+
+function resizeComposerInput(ta) {
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const max = 160; // px cap so the composer doesn't take over the screen
+    ta.style.height = Math.min(ta.scrollHeight, max) + 'px';
+}
+
+// Wire up the composer textarea to auto-resize on input and to
+// send-on-Enter (Memo default) / newline-on-Shift+Enter.
+document.addEventListener('DOMContentLoaded', () => {
+    const ta = document.getElementById('insights-composer-input');
+    if (ta) {
+        ta.addEventListener('input', () => resizeComposerInput(ta));
+        ta.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
+                // Ctrl/Cmd + Enter — default-capture as memo.
+                e.preventDefault();
+                captureSynthesis('memo');
+            }
+        });
+    }
+});
 
 function enterSpaceEdit() {
     const s = spacesState.spaces.find(x => x.id === spacesState.currentId);
