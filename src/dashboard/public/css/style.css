@@ -3701,27 +3701,28 @@ textarea.input {
   gap: var(--space-xs);
   padding: var(--space-sm) 13px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--color-outline-variant);
-  background: rgba(80, 84, 181, 0.06);
-  color: #5054B5;
+  border: 1px solid var(--border);
+  background: var(--brand-softer, rgba(80, 84, 181, 0.06));
+  color: var(--indigo-primary);
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
-.spaces-canvas-link: hover { background: #5054B5;
-  border-color: #5054B5;
-  color: #FFFFFF;
+.spaces-canvas-link:hover {
+  background: var(--indigo-primary);
+  border-color: var(--indigo-primary);
+  color: var(--text-inverse);
 }
 
 /* Connect-Spaces modal — picker list of candidate targets. */
 .connect-target-list {
   max-height: 260px;
   overflow-y: auto;
-  border: 1px solid var(--color-outline-variant);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-elevated, #FFFFFF);
+  background: var(--color-bg);
 }
 .connect-target-row {
   display: flex;
@@ -4196,7 +4197,7 @@ body.focus-mode .focus-exit {
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--border);
-  background: var(--color-surface-elevated, white);
+  background: var(--color-bg);
   color: var(--text-muted, var(--text-secondary));
 }
 
@@ -4366,7 +4367,7 @@ body.focus-mode .focus-exit {
   border-radius: 50%;
   background: var(--indigo-primary-container);
 }
-.active .day-dot { background: #fff; }
+.active .day-dot { background: var(--text-inverse); }
 
 .day-header {
   margin: var(--space-xl) 0 var(--space-lg);
@@ -4536,10 +4537,10 @@ body.focus-mode .focus-exit {
   transition: all .15s ease;
 }
 .lists-segment-btn.active {
-  background: #fff;
+  background: var(--color-surface);
   color: var(--indigo-primary);
   font-weight: 700;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 .lists-count-badge {
   display: inline-flex;
@@ -4571,10 +4572,10 @@ body.focus-mode .focus-exit {
   gap: var(--space-md);
   padding: var(--space-md) var(--space-md);
   margin-bottom: var(--space-sm);
-  background: #fff;
-  border: 1px solid var(--color-outline-variant);
+  background: var(--color-surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  transition: opacity .2s ease, transform .2s ease;
+  transition: opacity .2s ease, transform .2s ease, border-color .15s ease;
 }
 .lists-item: hover { border-color: var(--indigo-primary);
 }
@@ -4583,8 +4584,8 @@ body.focus-mode .focus-exit {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  border: var(--space-xs) solid var(--border-color, #cfd2de);
-  background: #fff;
+  border: var(--space-xs) solid var(--border);
+  background: var(--color-surface);
   color: transparent;
   cursor: pointer;
   display: inline-flex;
