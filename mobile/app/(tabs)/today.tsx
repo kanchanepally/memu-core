@@ -24,6 +24,7 @@ import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import { getCardTypeDisplay } from '../../lib/cardTypeDisplay';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
+import { Logo as MemuLogo } from '../../components/Marks';
 // AIInsightCard retired from Dashboard — briefings live in chat now.
 // The component is still used by other surfaces (briefing bubble in chat
 // uses its styling); the import here goes with the hero render that was
@@ -433,9 +434,18 @@ export default function TodayScreen() {
             the moment Today opens. */}
         <PushStatusBanner tokens={pushTokens} onTokensChange={setPushTokens} />
 
-        {/* ─── Zone 0 — Context header ──────────────────────────── */}
+        {/* ─── Zone 0 — Context header (v3) ─────────────────────── */}
         <View style={styles.headerZone}>
           <View style={styles.headerMeta}>
+            <View style={styles.brandRow}>
+              <MemuLogo
+                size={22}
+                color={colors.primary}
+                color2={colors.primaryContainer}
+                showRing={false}
+              />
+              <Text style={styles.brandWordmark}>memu</Text>
+            </View>
             <Text style={styles.headerDate}>{todayHeader.dateLabel}</Text>
             <Text style={styles.headerGreeting}>{todayHeader.greeting}</Text>
           </View>
@@ -808,6 +818,18 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   headerMeta: { flex: 1, gap: 2 },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  brandWordmark: {
+    fontFamily: 'Newsreader_400Regular_Italic',
+    fontSize: 18,
+    color: colors.onSurface,
+    letterSpacing: -0.3,
+  },
   headerDate: {
     fontSize: 11,
     fontFamily: typography.families.label,

@@ -14,18 +14,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { useDrawer } from '../lib/drawer';
-import { colors, spacing, radius, typography } from '../lib/tokens';
-import { LogoMark } from './Logo';
+import { spacing, radius, typography } from '../lib/tokens';
+import { useTokens } from '../lib/theme';
+import { Logo as MemuLogo } from './Marks';
 import { listConversations, type ConversationSummary } from '../lib/api';
 import { loadAuthState } from '../lib/auth';
-// TODO(v3): re-skin SideDrawer to consume useTokens() so it follows the
-// dark-mode swap. The static `colors.*` aliases here all resolve to the
-// v3 light palette via tokens.ts back-compat shims, so the drawer
-// already renders consistent with the v3 visuals in light mode.
-// Dark-mode parity requires lifting every styles.* color into a
-// per-render closure that reads from useTokens() — leaving as one
-// dedicated session because the conversation list + animations make
-// the refactor non-trivial.
+// v3 dark-mode parity — colors come from useTokens() so the drawer
+// follows the light/dark swap. Static StyleSheet rules below carry
+// structure (sizes/spacing); per-token color attributes are applied
+// inline at render time.
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(300, SCREEN_WIDTH * 0.82);
@@ -112,6 +109,7 @@ export default function SideDrawer() {
   const { open, hide } = useDrawer();
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTokens();
 
   const translate = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlay = useRef(new Animated.Value(0)).current;
@@ -187,16 +185,22 @@ export default function SideDrawer() {
         onPress={() => navigate(dest.path)}
         style={({ pressed }) => [
           styles.row,
-          active && styles.rowActive,
+          active && { borderLeftColor: t.brand },
           pressed && styles.rowPressed,
         ]}
       >
         <Ionicons
           name={dest.iconName}
           size={18}
-          color={active ? colors.primary : colors.onSurfaceVariant}
+          color={active ? t.brand : t.text2}
         />
-        <Text style={[styles.rowLabel, active && styles.rowLabelActive]}>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: active ? t.brand : t.text2 },
+            active && { fontFamily: typography.families.bodyBold },
+          ]}
+        >
           {dest.label}
         </Text>
       </Pressable>
@@ -208,27 +212,46 @@ export default function SideDrawer() {
       onPress={() => openConversation(item.id)}
       style={({ pressed }) => [styles.conversationRow, pressed && styles.rowPressed]}
     >
-      <Text style={styles.conversationTitle} numberOfLines={1}>
+      <Text style={[styles.conversationTitle, { color: t.text }]} numberOfLines={1}>
         {item.title || 'New conversation'}
       </Text>
-      <Text style={styles.conversationDate}>
+      <Text style={[styles.conversationDate, { color: t.text3 }]}>
         {formatConvDate(item.lastMessageAt || item.startedAt)}
       </Text>
     </Pressable>
-  ), [openConversation]);
+  ), [openConversation, t]);
 
   return (
     <Modal visible={open} transparent animationType="none" onRequestClose={hide}>
       <View style={styles.root}>
-        <Animated.View style={[styles.overlay, { opacity: overlay }]}>
+        <Animated.View
+          style={[
+            styles.overlay,
+            { opacity: overlay, backgroundColor: t.scrim },
+          ]}
+        >
           <Pressable style={StyleSheet.absoluteFill} onPress={hide} />
         </Animated.View>
 
-        <Animated.View style={[styles.drawer, { transform: [{ translateX: translate }] }]}>
-          {/* Brand header — always at the top. */}
+        <Animated.View
+          style={[
+            styles.drawer,
+            { backgroundColor: t.sidebar, transform: [{ translateX: translate }] },
+          ]}
+        >
+          {/* Brand header — v3 Venn logo (Marks.Logo) + serif italic wordmark. */}
           <View style={styles.header}>
-            <LogoMark size={36} />
-            <Text style={styles.wordmark}>Memu</Text>
+            <MemuLogo size={36} color={t.brand} color2={t.brandMuted} showRing={false} />
+            <Text
+              style={{
+                fontFamily: t.serifItalic,
+                fontSize: 22,
+                color: t.brand,
+                letterSpacing: -0.4,
+              }}
+            >
+              Memu
+            </Text>
           </View>
 
           {/* Phase A.8 — primary nav only (Settings retired from this
@@ -241,30 +264,36 @@ export default function SideDrawer() {
             <View style={styles.section}>
               {PRIMARY.map(renderNavRow)}
             </View>
-            <View style={styles.secondaryDivider} />
+            <View style={[styles.secondaryDivider, { backgroundColor: t.border }]} />
             <View style={styles.section}>
               {SECONDARY.map(renderNavRow)}
             </View>
           </View>
 
-          {/* Conversations promoted directly under primary nav. Section
-              label + pinned New chat button + FlatList that takes the
-              remaining height and scrolls on its own. */}
-          <View style={styles.conversationsRegion}>
+          <View
+            style={[
+              styles.conversationsRegion,
+              { borderTopColor: t.border },
+            ]}
+          >
             <View style={styles.conversationsHeader}>
-              <Text style={styles.conversationsLabel}>Conversations</Text>
+              <Text style={[styles.conversationsLabel, { color: t.text3 }]}>
+                Conversations
+              </Text>
               <Pressable
                 onPress={startNewConversation}
                 style={({ pressed }) => [styles.newChatBtn, pressed && styles.rowPressed]}
                 accessibilityLabel="Start new chat"
               >
-                <Ionicons name="add" size={14} color={colors.primary} />
-                <Text style={styles.newChatLabel}>New</Text>
+                <Ionicons name="add" size={14} color={t.brand} />
+                <Text style={[styles.newChatLabel, { color: t.brand }]}>New</Text>
               </Pressable>
             </View>
 
             {conversations.length === 0 ? (
-              <Text style={styles.emptyConversations}>No conversations yet.</Text>
+              <Text style={[styles.emptyConversations, { color: t.text3 }]}>
+                No conversations yet.
+              </Text>
             ) : (
               <FlatList
                 data={conversations}
@@ -277,32 +306,39 @@ export default function SideDrawer() {
             )}
           </View>
 
-          {/* Account pill — pinned at bottom. Avatar (initial) + display
-              name + small gear hint. Whole pill is the tap target →
-              Settings. Subtle top divider separates it from the
-              scrolling conversation list above. */}
           <Pressable
             onPress={openSettings}
             style={({ pressed }) => [
               styles.accountPill,
-              isSettingsActive && styles.accountPillActive,
+              { borderTopColor: t.border },
+              isSettingsActive && { borderLeftColor: t.brand, backgroundColor: t.surfaceAlt },
               pressed && styles.rowPressed,
             ]}
             accessibilityLabel="Open settings"
           >
-            <View style={styles.accountAvatar}>
-              <Text style={styles.accountAvatarText}>{avatarInitial}</Text>
+            <View style={[styles.accountAvatar, { backgroundColor: t.brand }]}>
+              <Text
+                style={{
+                  fontFamily: t.serifItalic,
+                  fontSize: 14,
+                  fontWeight: '700',
+                  color: t.textInverse,
+                  lineHeight: 16,
+                }}
+              >
+                {avatarInitial}
+              </Text>
             </View>
             <View style={styles.accountMeta}>
-              <Text style={styles.accountName} numberOfLines={1}>
+              <Text style={[styles.accountName, { color: t.text }]} numberOfLines={1}>
                 {displayName || 'Account'}
               </Text>
-              <Text style={styles.accountHint}>Settings</Text>
+              <Text style={[styles.accountHint, { color: t.text3 }]}>Settings</Text>
             </View>
             <Ionicons
               name="settings-outline"
               size={14}
-              color={colors.onSurfaceVariant}
+              color={t.text2}
             />
           </Pressable>
         </Animated.View>
@@ -315,7 +351,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20,17,40,0.45)',
   },
   drawer: {
     position: 'absolute',
@@ -323,7 +358,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     width: DRAWER_WIDTH,
-    backgroundColor: colors.surface,
     paddingTop: TOP_PAD + spacing.md,
     paddingBottom: spacing.lg,
     paddingHorizontal: spacing.md,
@@ -332,8 +366,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 12,
     elevation: 12,
-    // Layout: header + navRegion fixed at top, conversationsRegion fills
-    // the remaining vertical space.
     display: 'flex',
     flexDirection: 'column',
   },
@@ -344,19 +376,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.lg,
   },
-  wordmark: {
-    fontSize: typography.sizes.xl,
-    color: colors.primary,
-    fontFamily: typography.families.headline,
-    letterSpacing: typography.tracking.tight,
-  },
   navRegion: {
     // Fixed natural height — no flex so it doesn't grow.
   },
   section: { gap: 1 },
   secondaryDivider: {
     height: 1,
-    backgroundColor: colors.surfaceVariant,
     marginVertical: spacing.xs,
     marginHorizontal: spacing.sm,
     opacity: 0.6,
@@ -378,22 +403,13 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: 'transparent',
   },
-  rowActive: {
-    backgroundColor: 'transparent',
-    borderLeftColor: colors.primary,
-  },
   rowPressed: {
     opacity: 0.6,
   },
   rowLabel: {
     fontSize: 13,
     fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
     letterSpacing: 0.1,
-  },
-  rowLabelActive: {
-    color: colors.primary,
-    fontFamily: typography.families.bodyBold,
   },
 
   // ---- Bottom region — independently-scrolling conversation history ----
@@ -401,7 +417,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.surfaceVariant,
     paddingTop: spacing.sm,
     minHeight: 0, // critical: lets FlatList shrink/scroll inside flex parent
   },
@@ -415,7 +430,6 @@ const styles = StyleSheet.create({
   conversationsLabel: {
     fontSize: 11,
     fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.widest,
   },
@@ -430,7 +444,6 @@ const styles = StyleSheet.create({
   newChatLabel: {
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
   },
   conversationsList: {
     flex: 1,
@@ -446,12 +459,10 @@ const styles = StyleSheet.create({
   conversationTitle: {
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.body,
-    color: colors.onSurface,
   },
   conversationDate: {
     fontSize: 10,
     fontFamily: typography.families.label,
-    color: colors.outline,
     marginTop: 2,
   },
   emptyConversations: {
@@ -459,13 +470,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     fontSize: typography.sizes.sm,
     fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
     fontStyle: 'italic',
   },
 
-  // ---- Phase A.8 — account pill at the bottom of the drawer ----
-  // Avatar + display name + small gear hint. Whole pill is the tap
-  // target → Settings. Mirrors the PWA .sidebar-account-pill rules.
+  // ---- Account pill at the bottom of the drawer ----
   accountPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -475,27 +483,15 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     paddingHorizontal: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.surfaceVariant,
     borderLeftWidth: 3,
     borderLeftColor: 'transparent',
-  },
-  accountPillActive: {
-    borderLeftColor: colors.primary,
-    backgroundColor: colors.surfaceContainerLow,
   },
   accountAvatar: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: colors.tertiaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  accountAvatarText: {
-    fontSize: 13,
-    fontFamily: typography.families.bodyBold,
-    color: colors.tertiary,
-    lineHeight: 16,
   },
   accountMeta: {
     flex: 1,
@@ -504,13 +500,11 @@ const styles = StyleSheet.create({
   accountName: {
     fontSize: 13,
     fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
     lineHeight: 16,
   },
   accountHint: {
     fontSize: 10,
     fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
     letterSpacing: typography.tracking.wide,
     textTransform: 'uppercase',
     marginTop: 1,

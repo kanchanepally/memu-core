@@ -1,37 +1,44 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, typography } from '../lib/tokens';
+import { spacing, typography } from '../lib/tokens';
+import { useTokens } from '../lib/theme';
 
 interface Props {
   eyebrow?: string;           // uppercase label above the headline
-  headline: string;           // the big Manrope headline
+  headline: string;           // the big serif headline
   accent?: string;            // optional inline accent word (rendered italic + primary)
   subheading?: string;
   align?: 'left' | 'center';
 }
 
 /**
- * Editorial Masthead — uppercase eyebrow + large Manrope headline.
- * Optionally highlights a single word with italic + primary colour.
+ * Editorial Masthead — uppercase eyebrow + large serif headline.
+ * Optionally highlights a single word with italic + brand colour.
+ * v3 dark-mode parity — uses useTokens() so it follows the theme swap.
  */
 export default function Masthead({ eyebrow, headline, accent, subheading, align = 'left' }: Props) {
+  const t = useTokens();
   const parts = accent ? headline.split(accent) : [headline];
 
   return (
     <View style={[styles.container, align === 'center' && styles.centered]}>
-      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-      <Text style={styles.headline}>
+      {eyebrow ? (
+        <Text style={[styles.eyebrow, { color: t.brand }]}>{eyebrow}</Text>
+      ) : null}
+      <Text style={[styles.headline, { color: t.text, fontFamily: t.serif }]}>
         {parts.length === 2 ? (
           <>
             {parts[0]}
-            <Text style={styles.accent}>{accent}</Text>
+            <Text style={{ color: t.brand, fontFamily: t.serifItalic, fontStyle: 'italic' }}>{accent}</Text>
             {parts[1]}
           </>
         ) : (
           headline
         )}
       </Text>
-      {subheading ? <Text style={styles.sub}>{subheading}</Text> : null}
+      {subheading ? (
+        <Text style={[styles.sub, { color: t.text2 }]}>{subheading}</Text>
+      ) : null}
     </View>
   );
 }
@@ -46,7 +53,6 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontSize: 11,
     fontFamily: typography.families.label,
-    color: colors.primary,
     textTransform: 'uppercase',
     letterSpacing: typography.tracking.widest,
     marginBottom: spacing.sm,
@@ -54,19 +60,12 @@ const styles = StyleSheet.create({
   headline: {
     fontSize: 38,
     lineHeight: 44,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
     letterSpacing: typography.tracking.tight,
-  },
-  accent: {
-    color: colors.primary,
-    fontStyle: 'italic',
   },
   sub: {
     marginTop: spacing.md,
     fontSize: typography.sizes.body,
     fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
     lineHeight: 22,
   },
 });

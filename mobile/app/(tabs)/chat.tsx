@@ -27,6 +27,7 @@ import {
 } from '../../lib/api';
 import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
 import ScreenHeader from '../../components/ScreenHeader';
+import { Logo as MemuLogo } from '../../components/Marks';
 import ThinkingPill, { type PillStage } from '../../components/ThinkingPill';
 import { useToast } from '../../components/Toast';
 import InlineActionNudge, { type NudgeResolutionState } from '../../components/InlineActionNudge';
@@ -603,7 +604,7 @@ export default function ChatScreen() {
           <View style={styles.avatarWrap}>
             <View style={styles.avatarGlow} />
             <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+              <MemuLogo size={18} color={colors.primary} color2={colors.primaryContainer} showRing={false} />
             </View>
           </View>
           <View style={[styles.bubbleWrap, { alignItems: 'flex-start' }]}>
@@ -652,7 +653,7 @@ export default function ChatScreen() {
             <View style={styles.briefingGlow} pointerEvents="none" />
             <View style={styles.briefingHeader}>
               <View style={styles.avatar}>
-                <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+                <MemuLogo size={18} color={colors.primary} color2={colors.primaryContainer} showRing={false} />
               </View>
               <Text variant="ui" size="xs" color="tertiary" style={styles.briefingEyebrow}>Today's brief</Text>
             </View>
@@ -690,7 +691,7 @@ export default function ChatScreen() {
           <View style={styles.avatarWrap}>
             <View style={styles.avatarGlow} />
             <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={14} color={colors.tertiary} />
+              <MemuLogo size={18} color={colors.primary} color2={colors.primaryContainer} showRing={false} />
             </View>
           </View>
         ) : null}
