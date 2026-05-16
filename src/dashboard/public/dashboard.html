@@ -950,19 +950,35 @@ async function api(path, opts = {}) {
      create a new one or switch. Switching writes localStorage
      and reloads — every subsequent api() call carries the new
      X-Memu-Workspace-Id and the server resolves scope to it. -->
-<div id="view-workspaces" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
-    <header class="spaces-masthead">
-        <div class="briefing-eyebrow">Workspaces</div>
-        <div class="briefing-title">Switch between contexts</div>
-        <div class="briefing-subtitle">Each workspace has its own Spaces, chat, lists. Switching changes what's visible — not where you are.</div>
-    </header>
-    <div class="workspace-list-actions" style="display:flex;justify-content:flex-end;margin-bottom:var(--space-md);">
-        <button class="btn btn-primary btn-sm" id="workspace-create-btn" onclick="openCreateWorkspace()">
-            <span style="margin-right:6px;">+</span>New workspace
-        </button>
-    </div>
-    <div id="workspace-list" class="workspace-list">
-        <div class="text-muted" style="padding:var(--space-md);text-align:center;">Loading…</div>
+<!-- v3 reskin (Z2): use the same spaces-masthead pattern as Spaces/Lists/Settings —
+     eyebrow + serif-display title with brand-accent emphasis + italic-quiet
+     subtitle. Action row uses btn-pill primary. Workspace list cards retain
+     their JS ids; the workspace-list class itself is styled in CSS to use
+     v3 tokens already. -->
+<div id="view-workspaces" class="container memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 1080px; margin: 0 auto;">
+        <header class="spaces-masthead">
+            <div class="spaces-masthead-row" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 8px;">
+                <div>
+                    <div class="briefing-eyebrow eyebrow">Workspaces</div>
+                    <h1 class="briefing-title serif-display" style="font-size: 44px; line-height: 1.05;">
+                        Switch between <em class="serif-accent">contexts</em>
+                    </h1>
+                </div>
+                <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                    <button class="btn-pill btn-pill-primary" id="workspace-create-btn" onclick="openCreateWorkspace()">
+                        <svg class="icon" width="13" height="13"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                        <span>New workspace</span>
+                    </button>
+                </div>
+            </div>
+            <p class="briefing-subtitle italic-quiet" style="font-size: 17px; max-width: 620px; line-height: 1.5; margin-bottom: 24px;">
+                Each workspace has its own Spaces, chat, lists. Switching changes what's visible — not where you are.
+            </p>
+        </header>
+        <div id="workspace-list" class="workspace-list">
+            <div class="italic-quiet" style="padding:24px;text-align:center;color:var(--text-2,var(--text-secondary));">Loading…</div>
+        </div>
     </div>
 </div>
 
@@ -1158,65 +1174,80 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== IMPORT TAB ==================== -->
-<div id="view-import" class="container hidden" style="padding-top:var(--space-lg);padding-bottom:80px;">
-    <!-- Mode selection -->
-    <div id="import-modes">
-        <h2>Import context</h2>
-        <p class="text-muted mb-lg">Give Memu a head start by importing your existing conversations, notes, or documents. You can re-import anytime — duplicates are skipped.</p>
+<!-- v3 reskin (Z2): masthead + v3 chrome for the import mode cards.
+     IDs and onclicks preserved verbatim — import-modes / import-form /
+     import-result branches, import-heading, import-name / import-name-label /
+     import-name-group / import-content / import-content-label /
+     import-char-count / import-error / btn-import / import-loading-hint /
+     import-stats / import-hint / startImport() / resetImport() / runImport(). -->
+<div id="view-import" class="container memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 780px; margin: 0 auto;">
+        <!-- Mode selection -->
+        <div id="import-modes">
+            <div class="eyebrow">Import</div>
+            <h1 class="serif-display" style="font-size: 44px; line-height: 1.05;">
+                Give Memu <em class="serif-accent">a head start</em>.
+            </h1>
+            <p class="italic-quiet" style="font-size: 17px; max-width: 620px; line-height: 1.5; margin-bottom: 28px;">
+                Import existing conversations, notes, or documents. You can re-import anytime — duplicates are skipped.
+            </p>
 
-        <div class="import-option" onclick="startImport('whatsapp')">
-            <div class="import-icon" style="color:#25D366;">&#x1F4F1;</div>
-            <div class="flex-1">
-                <div class="feature-title">WhatsApp export</div>
-                <div class="feature-body">Export a chat from WhatsApp (tap chat name > Export chat > Without media), then paste the .txt content here.</div>
+            <div class="memu-card import-option-v3" onclick="startImport('whatsapp')" style="display:flex;align-items:center;gap:16px;padding:18px 22px;cursor:pointer;margin-bottom:12px;">
+                <div class="import-icon-v3" style="width:44px;height:44px;border-radius:12px;background:rgba(37, 211, 102, 0.12);color:#25D366;display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#x1F4F1;</div>
+                <div style="flex:1;min-width:0;">
+                    <div class="serif-display" style="font-size:20px;font-weight:500;letter-spacing:-0.01em;margin-bottom:4px;">WhatsApp export</div>
+                    <div style="font-size:13px;color:var(--text-2,var(--text-secondary));line-height:1.5;">Tap chat name in WhatsApp &rarr; Export chat &rarr; Without media. Paste the .txt content here.</div>
+                </div>
+                <span style="color:var(--brand,var(--indigo-primary));font-weight:600;flex-shrink:0;">&rsaquo;</span>
             </div>
-            <span class="text-muted">&#x203A;</span>
-        </div>
 
-        <div class="import-option" onclick="startImport('file')">
-            <div class="import-icon" style="color:#8b5cf6;">&#x1F4C4;</div>
-            <div class="flex-1">
-                <div class="feature-title">Notes or documents</div>
-                <div class="feature-body">Paste content from Obsidian notes, text files, journal entries, or any document you want Memu to learn from.</div>
+            <div class="memu-card import-option-v3" onclick="startImport('file')" style="display:flex;align-items:center;gap:16px;padding:18px 22px;cursor:pointer;margin-bottom:12px;">
+                <div class="import-icon-v3" style="width:44px;height:44px;border-radius:12px;background:var(--brand-softer,rgba(80,84,181,0.08));color:var(--brand,var(--indigo-primary));display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#x1F4C4;</div>
+                <div style="flex:1;min-width:0;">
+                    <div class="serif-display" style="font-size:20px;font-weight:500;letter-spacing:-0.01em;margin-bottom:4px;">Notes or documents</div>
+                    <div style="font-size:13px;color:var(--text-2,var(--text-secondary));line-height:1.5;">Paste Obsidian notes, text files, journal entries, or any document you want Memu to learn from.</div>
+                </div>
+                <span style="color:var(--brand,var(--indigo-primary));font-weight:600;flex-shrink:0;">&rsaquo;</span>
             </div>
-            <span class="text-muted">&#x203A;</span>
-        </div>
-    </div>
-
-    <!-- Import form -->
-    <div id="import-form" class="hidden">
-        <button class="btn btn-secondary btn-sm mb-lg" onclick="resetImport()" style="border:none;color:var(--text-muted);">&#8592; Back</button>
-        <h2 id="import-heading"></h2>
-
-        <div id="import-name-group" class="mb-md">
-            <label class="input-label" id="import-name-label"></label>
-            <input type="text" id="import-name" class="input" placeholder="">
         </div>
 
-        <div class="mb-md">
-            <label class="input-label" id="import-content-label"></label>
-            <textarea id="import-content" class="input" rows="10" placeholder=""></textarea>
-            <div id="import-char-count" class="text-muted mt-sm hidden" style="text-align:right;font-size:12px;"></div>
+        <!-- Import form -->
+        <div id="import-form" class="hidden">
+            <button class="btn-pill btn-pill-secondary" onclick="resetImport()" style="margin-bottom:24px;">&larr; Back</button>
+            <h1 class="serif-display" id="import-heading" style="font-size:34px;line-height:1.1;margin-bottom:24px;"></h1>
+
+            <div class="memu-card" style="padding:24px;">
+                <div id="import-name-group" style="margin-bottom:18px;">
+                    <label class="input-label" id="import-name-label" style="font-size:11.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px;"></label>
+                    <input type="text" id="import-name" class="input" placeholder="">
+                </div>
+
+                <div style="margin-bottom:18px;">
+                    <label class="input-label" id="import-content-label" style="font-size:11.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px;"></label>
+                    <textarea id="import-content" class="input" rows="10" placeholder="" style="font-family:var(--font-mono,monospace);font-size:13px;"></textarea>
+                    <div id="import-char-count" class="hidden" style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:6px;"></div>
+                </div>
+
+                <div id="import-error" class="banner-error hidden" style="margin-bottom:16px;"></div>
+
+                <button class="btn btn-primary w-full" id="btn-import" onclick="runImport()" style="width:100%;justify-content:center;padding:12px 18px;">Import</button>
+
+                <div id="import-loading-hint" class="italic-quiet hidden" style="text-align:center;font-size:14px;line-height:1.5;margin-top:16px;">
+                    This can take a minute for large files. Memu is reading everything and extracting what matters.
+                </div>
+            </div>
         </div>
 
-        <div id="import-error" class="banner-error hidden"></div>
-
-        <button class="btn btn-primary w-full" id="btn-import" onclick="runImport()">Import</button>
-
-        <div id="import-loading-hint" class="text-center text-muted mt-md hidden" style="font-size:14px;line-height:1.4;">
-            This can take a minute for large files. Memu is reading through everything and extracting what matters.
+        <!-- Import result -->
+        <div id="import-result" class="hidden">
+            <div class="memu-card" style="padding:32px;text-align:center;">
+                <div style="font-size:48px;margin-bottom:16px;">&#x2705;</div>
+                <h2 class="serif-display" style="font-size:28px;margin-bottom:12px;">Import complete</h2>
+                <div id="import-stats" style="margin-top:12px;font-size:14px;color:var(--text-2,var(--text-secondary));"></div>
+                <p id="import-hint" class="italic-quiet" style="margin-top:14px;font-size:14px;"></p>
+            </div>
+            <button class="btn btn-secondary w-full" onclick="resetImport()" style="width:100%;justify-content:center;margin-top:14px;">Import more</button>
         </div>
-    </div>
-
-    <!-- Import result -->
-    <div id="import-result" class="hidden">
-        <div class="result-card">
-            <div style="font-size:48px;margin-bottom:var(--space-md);">&#x2705;</div>
-            <h2>Import complete</h2>
-            <div id="import-stats" style="margin-top:var(--space-md);"></div>
-            <p id="import-hint" class="text-muted mt-md" style="font-size:14px;"></p>
-        </div>
-        <button class="btn btn-secondary w-full" onclick="resetImport()">Import more</button>
     </div>
 </div>
 

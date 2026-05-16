@@ -349,3 +349,9 @@ body {
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(161, 165, 255, 0.32);
 }
+
+/* ── Import option card hover — v3 reskin (Z2) ── */
+.import-option-v3:hover {
+  border-color: var(--brand);
+  transform: translateY(-1px);
+}

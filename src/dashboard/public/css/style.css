@@ -216,44 +216,59 @@ h3 { font-family: var(--font-reading); font-size: var(--font-size-xl); font-weig
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
+  gap: 7px;
+  padding: 10px 18px;
   font-family: var(--font-ui);
   font-weight: 600;
-  font-size: var(--font-size-body);
-  border-radius: var(--radius-lg);
-  border: none;
+  font-size: 13px;
+  border-radius: 100px;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: var(--transition);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease;
   text-decoration: none;
 }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
 
 .btn-primary {
-  background: var(--color-accent);
+  background: var(--indigo-primary);
   color: var(--text-inverse);
+  box-shadow: 0 4px 12px var(--brand-glow, rgba(80, 84, 181, 0.18));
 }
-.btn-primary: hover { background: var(--color-accent-hover); }
+.btn-primary:hover:not(:disabled) {
+  background: var(--indigo-primary-dim);
+}
 
 .btn-secondary {
   background: var(--color-surface);
   color: var(--text-primary);
-  border: 1px solid var(--color-outline-variant);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
 }
-.btn-secondary: hover { background: var(--color-surface-hover); }
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--indigo-primary);
+  color: var(--indigo-primary);
+}
 
 .btn-sm {
-  padding: var(--space-xs) var(--space-md);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 100px;
 }
 
 .btn-destructive {
   color: var(--color-error);
   border-color: var(--color-error);
+  background: transparent;
+}
+.btn-destructive:hover:not(:disabled) {
+  background: var(--color-error-container);
+  color: var(--color-error);
 }
 
-.btn: disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:hover { transform: none; }
 
 /* ==========================================================================
    Cards
@@ -2504,24 +2519,62 @@ textarea.input {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  /* v3 — scrim uses the token-defined ink wash rather than flat black,
+     and the dark-mode override deepens it. */
+  background: rgba(14, 12, 30, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
   justify-content: center;
   align-items: center;
   padding: var(--space-lg);
 }
+[data-theme="dark"] .modal-overlay {
+  background: rgba(0, 0, 0, 0.65);
+}
 
 .modal-overlay.open { display: flex; }
 
 .modal-card {
+  /* v3 reskin — uses the same surface tokens as memu-card so light and
+     dark themes inherit correctly. The shadow stack pulls --shadow-lg
+     (which is overridden per-theme), giving more lift in dark mode. */
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 24px 26px;
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
+}
+
+.modal-card h3 {
+  font-family: var(--font-reading);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.modal-card .input-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: block;
+  margin: 14px 0 6px;
+}
+.modal-card .input-label:first-child { margin-top: 0; }
+.modal-card .input {
+  background: var(--color-bg);
+  border-color: var(--border);
+}
+.modal-card .input:focus {
+  border-color: var(--indigo-primary);
+  box-shadow: 0 0 0 3px var(--brand-glow, rgba(80, 84, 181, 0.15));
 }
 
 /* ==========================================================================
@@ -2888,16 +2941,25 @@ textarea.input {
 .workspace-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 12px;
 }
 .workspace-card {
+  /* v3 reskin — same surface + radius + shadow as .memu-card so the
+     Workspaces tab reads as a sibling of Spaces / Lists. */
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-  padding: var(--space-md);
+  gap: 10px;
+  padding: 18px 22px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.15s ease;
+}
+.workspace-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--indigo-primary);
+  box-shadow: var(--shadow-md);
 }
 .workspace-card-head {
   display: flex;
@@ -2918,8 +2980,9 @@ textarea.input {
 }
 .workspace-card-name {
   font-family: var(--font-reading);
-  font-size: var(--font-size-lg);
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
 }
 .workspace-rename-btn {
