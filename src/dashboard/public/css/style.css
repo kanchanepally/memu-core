@@ -2028,6 +2028,147 @@ textarea.input {
   border-top: 1px solid var(--border);
 }
 
+/* v3 composer — rebuilt 2026-05-16. The original 760px-wide pill with
+   10px padding read as a tooltip against the dark canvas, not a
+   primary affordance. Wider column, more generous padding, larger
+   send button, foot row hosting attach + kbd hint. JS bindings
+   (chat-input, chat-send, chat-attach, chat-file) preserved verbatim. */
+.chat-input-bar-v3 {
+  display: block;
+  padding: 8px 32px 28px;
+  background: transparent;
+  border-top: none;
+}
+.chat-composer {
+  max-width: 960px;
+  margin: 0 auto;
+  background: var(--color-surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px 18px 10px;
+  box-shadow: 0 4px 16px rgba(14, 12, 30, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.2s ease;
+}
+[data-theme="dark"] .chat-composer {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.chat-composer:focus-within {
+  border-color: var(--indigo-primary);
+  box-shadow: 0 6px 24px var(--brand-glow, rgba(80, 84, 181, 0.18));
+}
+.chat-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.chat-composer .chat-input {
+  /* Override the generic .chat-input pill above — inside the composer
+     the input is borderless and inherits typographic settings from the
+     surrounding card. */
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 10px 4px;
+  min-height: 28px;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  max-height: 160px;
+  outline: none;
+  transition: none;
+}
+.chat-composer .chat-input:focus {
+  border-color: transparent;
+}
+.chat-composer .chat-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+.chat-composer .send-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--indigo-primary);
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 0 0 1px;
+  box-shadow: 0 6px 18px rgba(80, 84, 181, 0.32);
+  transition: transform 0.12s ease, box-shadow 0.2s ease, opacity 0.15s ease, background 0.15s ease;
+}
+[data-theme="dark"] .chat-composer .send-btn {
+  box-shadow: 0 6px 18px rgba(161, 165, 255, 0.32);
+}
+.chat-composer .send-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--indigo-primary-dim);
+}
+.chat-composer .send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.chat-composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+.chat-composer-foot .attach-btn {
+  /* Inline link-shaped, NOT the round pill from the generic
+     .attach-btn rule. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  width: auto;
+  height: auto;
+  padding: 6px 10px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.chat-composer-foot .attach-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--text-primary);
+}
+.chat-composer-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-composer-hint kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--color-bg);
+}
+@media (max-width: 768px) {
+  .chat-input-bar-v3 { padding: 6px 16px 18px; }
+  .chat-composer { padding: 12px 14px 8px; border-radius: 16px; }
+  .chat-composer .send-btn { width: 36px; height: 36px; border-radius: 10px; }
+  .chat-composer-hint { display: none; }
+}
+
 /* Staged attachment pill — shown above chat-input-bar when a photo/file
    has been picked but not yet sent. Lets the user type intent before
    triggering the vision pipeline. */
@@ -3382,12 +3523,39 @@ textarea.input {
   background: transparent;
   padding: 0;
   overflow: visible;
+  /* v3 — let the Venn mark in AVATAR_MARK_SVG (icon-29, three indigo
+     circles) sit on its own without the secondary-container pill the
+     base .avatar class applied. */
+  color: var(--indigo-primary);
 }
 
 .avatar-mark svg {
   width: 28px;
   height: 28px;
   display: block;
+}
+
+/* v3 — user speaker glyph for chat rows. Small indigo disc with the
+   user's first initial in white serif. Sits on the trailing edge of
+   user rows (justify-content: flex-end) so the bubble + avatar form a
+   right-aligned cluster mirroring the Memu (avatar-left) pattern. */
+.avatar-user {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  background: var(--indigo-primary);
+  color: var(--text-inverse);
+  font-family: var(--font-reading);
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0;
+  margin-bottom: var(--space-lg);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(80, 84, 181, 0.18);
 }
 
 /* ==========================================================================
