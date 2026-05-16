@@ -5464,10 +5464,18 @@ async function sendDocument(base64, fileName, mimeType, channel) {
             return;
         }
         const truncatedNote = data.truncated ? ' (truncated for processing)' : '';
-        const cardNote = data.streamCardCount > 0
-            ? ` and ${data.streamCardCount} stream card${data.streamCardCount === 1 ? '' : 's'} on your today screen`
+        // Response shape differs by workspace type: family path returns
+        // `docType` + `streamCardCount`; research path returns `category`
+        // (no stream cards extracted from sources). Tolerate both without
+        // throwing on the missing field.
+        const kindLabelRaw = data.docType || data.category || 'document';
+        const kindLabel = String(kindLabelRaw).replace(/_/g, ' ');
+        const cardCount = typeof data.streamCardCount === 'number' ? data.streamCardCount : 0;
+        const cardNote = cardCount > 0
+            ? ` and ${cardCount} stream card${cardCount === 1 ? '' : 's'} on your today screen`
             : '';
-        const reply = `Got it. Saved as a Space — **${data.spaceTitle}** (${data.docType.replace(/_/g, ' ')}, ${data.charCount.toLocaleString()} chars${truncatedNote})${cardNote}.`;
+        const charsLabel = typeof data.charCount === 'number' ? data.charCount.toLocaleString() : '0';
+        const reply = `Got it. Saved as a Space — **${data.spaceTitle}** (${kindLabel}, ${charsLabel} chars${truncatedNote})${cardNote}.`;
         if (channel === 'chat') {
             document.getElementById('typing')?.remove();
             addChatMessage(reply, false);
@@ -5733,6 +5741,12 @@ function renderSelectedDay() {
 // straight to the Spaces tab instead. The ?space= param is consumed in
 // loadSpaces() once the catalogue has loaded.
 (function applyDeepLink() {
+    // Workspace pill must initialise on every boot — without it the
+    // sidebar pill stays at "Loading…" and the category chip strip
+    // can't pick the right per-workspace-type set. Done BEFORE any
+    // deep-link branching so #spaces / ?space=… still wires the pill.
+    initWorkspaceSwitcher();
+
     let wantSpaces = false;
     try {
         const hash = (window.location.hash || '').replace(/^#/, '');
@@ -5753,11 +5767,6 @@ function renderSelectedDay() {
     // Fire-and-forget; no UI dependency. (loadSynthesis() retired —
     // briefings live in chat now.)
     loadBrief();
-
-    // Populate the sidebar workspace pill so the active scope is
-    // visible from any tab on first paint. Fire-and-forget — failures
-    // leave the pill showing "Loading…" which is benign.
-    initWorkspaceSwitcher();
 })();
 </script>
 </body>
