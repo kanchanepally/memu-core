@@ -1071,13 +1071,42 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== LEDGER TAB ==================== -->
-<div id="view-ledger" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
-    <div class="ledger-intro">
-        <div class="ledger-intro-icon">&#x1F441;</div>
-        <h3>The Privacy Ledger</h3>
-        <p class="text-muted" style="font-size:14px;line-height:1.4;margin-top:var(--space-sm);">Every time Memu sends a query to Claude, real names and places are replaced with anonymous labels. This page shows you exactly what Claude received and what was translated back.</p>
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/ledger.html.
+     The stat-row + filter pills described in the template are
+     presentation-only scaffolding that loadLedger() does not currently
+     populate, so we leave a TODO and keep the masthead + ledger-entries
+     renderer target untouched in semantics.
+     Preserved ids: view-ledger (outer wrapper), ledger-entries
+     (renderer target — loadLedger() rewrites its innerHTML). -->
+<div id="view-ledger" class="container memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 980px; margin: 0 auto;">
+        <div class="ledger-intro">
+            <div class="eyebrow">Privacy Ledger</div>
+            <h1 class="serif-display" style="font-size: 44px; line-height: 1.05;">
+                What <em class="serif-accent">AI saw</em>.
+            </h1>
+            <p class="text-muted italic-quiet" style="font-size: 16px; margin-top: 8px; margin-bottom: 28px; line-height: 1.55;">
+                Every query, anonymised. Receipts you can audit yourself.
+            </p>
+        </div>
+
+        <!-- TODO(v3): wire up the four-up summary tiles (queries this week,
+             tokens, providers, retention) — needs a new /api/ledger/stats
+             endpoint or aggregation client-side from /api/ledger. Holds
+             a blank tile row in the layout so the entries don't slam
+             into the masthead. -->
+        <div class="ledger-stats-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px;">
+            <!-- Stat tiles to be populated by loadLedger() when summary data lands. -->
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;">
+            <div class="eyebrow" style="margin-bottom: 0;">Recent activity</div>
+            <!-- TODO(v3): filter + export controls — wire to loadLedger()
+                 once provider filter + CSV export endpoints exist. -->
+        </div>
+
+        <div id="ledger-entries" style="display: flex; flex-direction: column; gap: 12px;"></div>
     </div>
-    <div id="ledger-entries"></div>
 </div>
 
 <!-- ==================== IMPORT TAB ==================== -->
