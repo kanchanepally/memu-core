@@ -87,12 +87,40 @@ export async function renderPdfInto(source, container, opts = {}) {
       <button type="button" class="pdf-chrome-btn pdf-chrome-next" title="Next page" aria-label="Next page">&#x25B6;</button>
     </div>
     <div class="pdf-chrome-tools">
+      <button type="button" class="pdf-chrome-btn pdf-chrome-zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+      <span class="pdf-chrome-zoom-label mono" aria-live="polite">100%</span>
+      <button type="button" class="pdf-chrome-btn pdf-chrome-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
       <button type="button" class="pdf-chrome-btn pdf-chrome-search" title="Find in document (coming soon)" aria-label="Find">
         <span aria-hidden="true">&#x1F50D;</span>
       </button>
     </div>
   `;
   container.appendChild(chrome);
+
+  // Zoom controls — drive a CSS-variable-based scale on the viewer
+  // container so we don't re-render pdf.js pages. Quick + visually
+  // smooth; trade-off is that very large zoom can pixelate the canvas
+  // bitmap (pdf.js renders at fixed DPI). Acceptable until a full
+  // re-render-at-scale flow is needed.
+  let pdfZoom = 1.0;
+  const zoomLabel = chrome.querySelector('.pdf-chrome-zoom-label');
+  const applyZoom = () => {
+    container.style.setProperty('--pdf-zoom', String(pdfZoom));
+    container.querySelectorAll('.pdf-page').forEach(p => {
+      p.style.transform = `scale(${pdfZoom})`;
+      p.style.transformOrigin = 'top center';
+      p.style.marginBottom = `calc(var(--space-md, 16px) * ${pdfZoom})`;
+    });
+    if (zoomLabel) zoomLabel.textContent = `${Math.round(pdfZoom * 100)}%`;
+  };
+  chrome.querySelector('.pdf-chrome-zoom-in').addEventListener('click', () => {
+    pdfZoom = Math.min(2.0, pdfZoom + 0.1);
+    applyZoom();
+  });
+  chrome.querySelector('.pdf-chrome-zoom-out').addEventListener('click', () => {
+    pdfZoom = Math.max(0.5, pdfZoom - 0.1);
+    applyZoom();
+  });
 
   // Loading affordance while pdf.js fetches + parses the document.
   const loading = document.createElement('div');

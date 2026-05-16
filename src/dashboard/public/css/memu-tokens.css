@@ -150,4 +150,9 @@
   --space-xl: 32px;
   --space-2xl: 48px;
   --space-3xl: 64px;
+
+  /* canvas.css aliases — Spaces graph view needs these to theme-switch */
+  --bg-canvas: var(--bg);
+  --bg-elevated: var(--surface);
+  --text-tertiary: var(--text-3);
 }
