@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LogoMark } from '../../components/Logo';
+import { Logo as MemuLogo } from '../../components/Marks';
 import { colors, spacing, radius, typography } from '../../lib/tokens';
 
 export default function WelcomeScreen() {
@@ -11,7 +11,7 @@ export default function WelcomeScreen() {
     <View style={styles.container}>
       <View style={styles.hero}>
         <View style={styles.iconCircle}>
-          <LogoMark size={56} />
+          <MemuLogo size={56} color={colors.primary} color2={colors.primaryContainer} showRing={false} />
         </View>
         <Text style={styles.title}>Memu</Text>
         <Text style={styles.subtitle}>Intelligence without surveillance</Text>
