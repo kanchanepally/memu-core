@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-16-v3-1"></script>
+    <script src="/js/theme-init.js?v=2026-05-16-v3-polish"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-16-v3-1">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-16-v3-polish">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-16-r2-r3-dispatch-fix">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-16-v3-polish">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-1">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-polish">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->

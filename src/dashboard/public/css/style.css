@@ -166,7 +166,15 @@
   --radius-pill: 9999px;
 
   /* ---- Typography: Source Sans 3 UI, Lora reading (matches mobile) ---- */ /* ---- Typography: Source Sans 3 UI, Lora reading (matches mobile) ---- */ --font-ui: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-reading: 'Lora', Georgia, serif;
+  /* v3 typography: --font-reading is now an alias of --font-serif
+     (Newsreader, from memu-tokens.css). All 18 usages of
+     var(--font-reading) below — h1/h2/h3, sidebar wordmark, chat
+     headings, Space body, etc. — now resolve to Newsreader, matching
+     the v3 design language. The legacy Lora @font-face declarations
+     stay (kept as a Georgia/serif system fallback in --font-serif
+     until those fonts roll over) but Newsreader is loaded via the
+     Google Fonts @import at the top of memu-tokens.css. */
+  --font-reading: var(--font-serif, 'Newsreader', 'Source Serif 4', Georgia, serif);
 
     --font-size-xs: 11px;
   --font-size-sm: 13px;
