@@ -412,11 +412,7 @@ export default function TodayScreen() {
         statusPulse={!error}
       />
       <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
-        {/* v3 brand row */}
-        <View style={styles.brandRow}>
-          <Logo size={22} color={t.brand} color2={t.brandMuted} />
-          <Text style={styles.brandWord}>memu</Text>
-        </View>
+        {/* v3 brand row lives inside headerZone below (alongside date + greeting). */}
 
         {/* Onboarding resume banner — shows when the conversational seed
             flow isn't complete. Stays at the top so it nudges without
@@ -451,8 +447,8 @@ export default function TodayScreen() {
             <View style={styles.brandRow}>
               <MemuLogo
                 size={22}
-                color={colors.primary}
-                color2={colors.primaryContainer}
+                color={t.brand}
+                color2={t.brandMuted}
                 showRing={false}
               />
               <Text style={styles.brandWordmark}>memu</Text>
@@ -814,19 +810,6 @@ export default function TodayScreen() {
 
 function makeStyles(t: Tokens) {
   return StyleSheet.create({
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: 4,
-  },
-  brandWord: {
-    fontFamily: t.serifItalic,
-    fontSize: 18,
-    color: t.text,
-  },
   centered: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
     backgroundColor: t.bg,
@@ -858,7 +841,7 @@ function makeStyles(t: Tokens) {
   brandWordmark: {
     fontFamily: 'Newsreader_400Regular_Italic',
     fontSize: 18,
-    color: colors.onSurface,
+    color: t.text,
     letterSpacing: -0.3,
   },
   headerDate: {

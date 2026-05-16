@@ -807,15 +807,15 @@ export default function SettingsScreen() {
               </View>
             ) : (
               <View style={{ gap: spacing.sm }}>
-                {pushTokens.map((t) => (
-                  <View key={t.suffix} style={styles.byokCurrent}>
+                {pushTokens.map((pt) => (
+                  <View key={pt.suffix} style={styles.byokCurrent}>
                     <Ionicons name="checkmark-circle-outline" size={18} color={t.brand} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.byokHint, { letterSpacing: 0 }]}>
-                        {t.platform || 'device'} · …{t.suffix}
+                        {pt.platform || 'device'} · …{pt.suffix}
                       </Text>
                       <Text style={styles.testHint}>
-                        Last seen {new Date(t.lastSeenAt).toLocaleString()}
+                        Last seen {new Date(pt.lastSeenAt).toLocaleString()}
                       </Text>
                     </View>
                   </View>
