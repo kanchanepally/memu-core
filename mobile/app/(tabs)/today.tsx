@@ -20,8 +20,11 @@ import {
 } from '../../lib/api';
 import { useToast } from '../../components/Toast';
 import { loadAuthState } from '../../lib/auth';
-import { colors, spacing, radius, typography, shadows } from '../../lib/tokens';
+import { spacing, radius } from '../../lib/tokens';
+import { useTokens } from '../../lib/theme';
+import type { Tokens } from '../../lib/tokens';
 import { getCardTypeDisplay } from '../../lib/cardTypeDisplay';
+import { Logo, MarkWeekend, MarkMeals, MarkMissing } from '../../components/Marks';
 import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import { Logo as MemuLogo } from '../../components/Marks';
@@ -97,6 +100,8 @@ function useTodayHeader(displayName: string) {
 }
 
 export default function TodayScreen() {
+  const t = useTokens();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const router = useRouter();
   const [events, setEvents] = useState<BriefEvent[]>([]);
   const [cards, setCards] = useState<StreamCardData[]>([]);
@@ -400,13 +405,19 @@ export default function TodayScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.surface }}>
+    <View style={{ flex: 1, backgroundColor: t.bg }}>
       <ScreenHeader
         showWordmark
         statusLabel={error ? 'Offline' : 'Node Syncing'}
         statusPulse={!error}
       />
       <ScreenContainer refreshing={refreshing} onRefresh={onRefresh}>
+        {/* v3 brand row */}
+        <View style={styles.brandRow}>
+          <Logo size={22} color={t.brand} color2={t.brandMuted} />
+          <Text style={styles.brandWord}>memu</Text>
+        </View>
+
         {/* Onboarding resume banner — shows when the conversational seed
             flow isn't complete. Stays at the top so it nudges without
             dominating; the Today's-brief insight card carries the day. */}
@@ -416,7 +427,7 @@ export default function TodayScreen() {
             onPress={() => router.push(`/onboarding/${onboardingNextStep}` as any)}
           >
             <View style={styles.onboardingBannerIcon}>
-              <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
+              <Ionicons name="sparkles-outline" size={16} color={t.brand} />
             </View>
             <View style={styles.onboardingBannerText}>
               <Text style={styles.onboardingBannerTitle}>Pick up where we left off</Text>
@@ -424,7 +435,7 @@ export default function TodayScreen() {
                 {onboardingProgress.done} of {onboardingProgress.total} done — next: {onboardingNextStep}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.outline} />
+            <Ionicons name="chevron-forward" size={16} color={t.text3} />
           </Pressable>
         ) : null}
 
@@ -454,9 +465,9 @@ export default function TodayScreen() {
             onPress={cycleLens}
             accessibilityLabel={`Switch view to ${lens === 'family' ? 'individual' : 'family'}`}
           >
-            <Ionicons name="people-outline" size={13} color={colors.primary} />
+            <Ionicons name="people-outline" size={13} color={t.brand} />
             <Text style={styles.lensPillLabel}>{lens === 'family' ? 'Family' : firstName}</Text>
-            <Ionicons name="chevron-down-outline" size={10} color={colors.primary} />
+            <Ionicons name="chevron-down-outline" size={10} color={t.brand} />
           </Pressable>
         </View>
 
@@ -469,14 +480,14 @@ export default function TodayScreen() {
         {/* ─── Zone 1 — What's happening ─────────────────────────── */}
         <View style={styles.zone}>
           <View style={styles.zoneEyebrow}>
-            <Ionicons name="time-outline" size={11} color={colors.primary} />
+            <Ionicons name="time-outline" size={11} color={t.brand} />
             <Text style={styles.zoneEyebrowText}>What's happening</Text>
           </View>
 
           {/* Schedule card */}
           <View style={styles.zoneCard}>
             <View style={styles.zoneCardHead}>
-              <Ionicons name="calendar-outline" size={13} color={colors.primary} />
+              <Ionicons name="calendar-outline" size={13} color={t.brand} />
               <Text style={styles.zoneCardHeadText}>Schedule</Text>
               {/* Phase A.9.1 — show-the-work: when the lens widens to
                   Family, name exactly how many calendars were merged so
@@ -527,7 +538,7 @@ export default function TodayScreen() {
           {/* Open commitments card */}
           <View style={styles.zoneCard}>
             <View style={styles.zoneCardHead}>
-              <Ionicons name="checkbox-outline" size={13} color={colors.primary} />
+              <Ionicons name="checkbox-outline" size={13} color={t.brand} />
               <Text style={styles.zoneCardHeadText}>Open commitments</Text>
             </View>
             {commitments.length === 0 && shoppingCount === 0 ? (
@@ -546,7 +557,7 @@ export default function TodayScreen() {
                     >
                       <Text style={styles.commitmentEyebrow}>{display.label}</Text>
                       <Text style={styles.commitmentTitle} numberOfLines={1}>{card.title}</Text>
-                      <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
+                      <Ionicons name="chevron-forward-outline" size={14} color={t.text3} />
                     </Pressable>
                   );
                 })}
@@ -559,7 +570,7 @@ export default function TodayScreen() {
                     <Text style={styles.commitmentTitle} numberOfLines={1}>
                       Shopping list · {shoppingCount} item{shoppingCount === 1 ? '' : 's'}
                     </Text>
-                    <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
+                    <Ionicons name="chevron-forward-outline" size={14} color={t.text3} />
                   </Pressable>
                 ) : null}
                 {commitments.length > 4 ? (
@@ -592,24 +603,30 @@ export default function TodayScreen() {
               {noticed.slice(0, 5).map(card => {
                 const display = getCardTypeDisplay(card.card_type);
                 const isAttention = display.tone === 'attention';
+                const accent = isAttention ? t.amber : t.brand;
                 return (
                   <View
                     key={card.id}
                     style={[
                       styles.noticedCard,
-                      { borderLeftColor: isAttention ? '#C26A00' : colors.primary },
+                      { borderLeftColor: accent },
                     ]}
                   >
-                    <View style={styles.noticedEyebrow}>
+                    <View style={styles.noticedMark}>
+                      {isAttention
+                        ? <MarkMissing size={40} color={accent} />
+                        : <MarkWeekend size={40} color={accent} />}
+                    </View>
+                    <View style={[styles.noticedVerbPill, { backgroundColor: accent + '1A' }]}>
                       <Ionicons
                         name={display.icon}
                         size={11}
-                        color={isAttention ? '#C26A00' : colors.primary}
+                        color={accent}
                       />
                       <Text
                         style={[
                           styles.noticedEyebrowText,
-                          { color: isAttention ? '#C26A00' : colors.primary },
+                          { color: accent },
                         ]}
                       >
                         {display.label.toUpperCase()}
@@ -643,7 +660,7 @@ export default function TodayScreen() {
         {/* ─── Zone 3 — What I'm thinking ────────────────────────── */}
         <View style={styles.zoneThinking}>
           <View style={styles.zoneEyebrow}>
-            <Ionicons name="sparkles-outline" size={11} color={colors.primary} />
+            <Ionicons name="sparkles-outline" size={11} color={t.brand} />
             <Text style={styles.zoneEyebrowText}>What I'm thinking</Text>
           </View>
           <Text style={styles.thinkingIntro}>
@@ -658,14 +675,14 @@ export default function TodayScreen() {
                 "Consider Robin's age and our recent activities."
               )}
             >
-              <View style={styles.thinkingCardIcon}>
-                <Ionicons name="home-outline" size={16} color={colors.primary} />
+              <View style={styles.thinkingMark}>
+                <MarkWeekend size={36} color={t.brand} />
               </View>
               <View style={styles.thinkingCardBody}>
                 <Text style={styles.thinkingCardTitle}>Weekend ideas</Text>
                 <Text style={styles.thinkingCardSub}>Local events that fit our family</Text>
               </View>
-              <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
+              <Text style={styles.thinkingAsk}>Ask Memu →</Text>
             </Pressable>
             <Pressable
               style={styles.thinkingCard}
@@ -674,14 +691,14 @@ export default function TodayScreen() {
                 'household given anything you know about our preferences.'
               )}
             >
-              <View style={styles.thinkingCardIcon}>
-                <Ionicons name="restaurant-outline" size={16} color={colors.primary} />
+              <View style={styles.thinkingMark}>
+                <MarkMeals size={36} color={t.brand} />
               </View>
               <View style={styles.thinkingCardBody}>
                 <Text style={styles.thinkingCardTitle}>Meals this week</Text>
                 <Text style={styles.thinkingCardSub}>Recipes from what you've told me</Text>
               </View>
-              <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
+              <Text style={styles.thinkingAsk}>Ask Memu →</Text>
             </Pressable>
             <Pressable
               style={styles.thinkingCard}
@@ -690,14 +707,14 @@ export default function TodayScreen() {
                 "calendar, and any patterns you've noticed and tell me what I might be missing."
               )}
             >
-              <View style={styles.thinkingCardIcon}>
-                <Ionicons name="search-outline" size={16} color={colors.primary} />
+              <View style={styles.thinkingMark}>
+                <MarkMissing size={36} color={t.brand} />
               </View>
               <View style={styles.thinkingCardBody}>
                 <Text style={styles.thinkingCardTitle}>What I'm missing</Text>
                 <Text style={styles.thinkingCardSub}>Across Spaces, calendar, patterns</Text>
               </View>
-              <Ionicons name="chevron-forward-outline" size={14} color={colors.outline} />
+              <Text style={styles.thinkingAsk}>Ask Memu →</Text>
             </Pressable>
           </View>
         </View>
@@ -706,7 +723,7 @@ export default function TodayScreen() {
         <View style={styles.zoneNews}>
           <View style={styles.zoneNewsHead}>
             <View style={styles.zoneEyebrow}>
-              <Ionicons name="newspaper-outline" size={11} color={colors.primary} />
+              <Ionicons name="newspaper-outline" size={11} color={t.brand} />
               <Text style={styles.zoneEyebrowText}>News</Text>
             </View>
           </View>
@@ -737,7 +754,7 @@ export default function TodayScreen() {
               value={editTitle}
               onChangeText={setEditTitle}
               placeholder="Card title"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
             />
             <Text style={styles.modalLabel}>Details</Text>
             <TextInput
@@ -745,7 +762,7 @@ export default function TodayScreen() {
               value={editBody}
               onChangeText={setEditBody}
               placeholder="Card details"
-              placeholderTextColor={colors.outline}
+              placeholderTextColor={t.text3}
               multiline
               numberOfLines={4}
             />
@@ -795,14 +812,28 @@ export default function TodayScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: Tokens) {
+  return StyleSheet.create({
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: 4,
+  },
+  brandWord: {
+    fontFamily: t.serifItalic,
+    fontSize: 18,
+    color: t.text,
+  },
   centered: {
     flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: t.bg,
   },
   loadingText: {
-    color: colors.onSurfaceVariant, fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
+    color: t.text2, fontSize: 15,
+    fontFamily: t.uiRegular,
   },
 
   // Phase A.9 — Dashboard reshape — 5 concentric zones.
@@ -832,16 +863,16 @@ const styles = StyleSheet.create({
   },
   headerDate: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.mono,
+    color: t.text3,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   headerGreeting: {
-    fontSize: 26,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
-    letterSpacing: typography.tracking.tight,
+    fontSize: 28,
+    fontFamily: t.serifRegular,
+    color: t.text,
+    letterSpacing: -0.5,
     lineHeight: 32,
     marginTop: 2,
   },
@@ -852,28 +883,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: radius.pill,
-    backgroundColor: colors.secondaryContainer,
+    backgroundColor: t.brandSoft,
     marginBottom: 4,
   },
   lensPillLabel: {
     fontSize: 12,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
+    fontFamily: t.mono,
+    color: t.brand,
     letterSpacing: 0.02,
   },
 
   errorBanner: {
     marginHorizontal: spacing.md,
     padding: spacing.md,
-    backgroundColor: '#FFF7E6',
+    backgroundColor: t.amberBg,
     borderRadius: radius.md,
     borderLeftWidth: 3,
-    borderLeftColor: '#E6B847',
+    borderLeftColor: t.amber,
   },
   errorBannerText: {
-    fontSize: typography.sizes.sm,
-    color: '#7A5A12',
-    fontFamily: typography.families.body,
+    fontSize: 13,
+    color: t.amber,
+    fontFamily: t.uiRegular,
   },
 
   // ─── Zone scaffold ─────────────────────────────────────────────
@@ -889,24 +920,25 @@ const styles = StyleSheet.create({
   },
   zoneEyebrowText: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.primary,
+    fontFamily: t.uiBold,
+    color: t.text3,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
+    letterSpacing: 1.5,
   },
   diamondGlyph: {
     width: 8,
     height: 8,
-    backgroundColor: colors.primary,
+    backgroundColor: t.text3,
     transform: [{ rotate: '45deg' }],
     marginRight: 2,
   },
   zoneCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
     padding: spacing.md + 2,
+    borderWidth: 1,
+    borderColor: t.border,
     gap: 10,
-    ...shadows.low,
   },
   zoneCardHead: {
     flexDirection: 'row',
@@ -914,20 +946,20 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingBottom: 6,
     borderBottomWidth: 1,
-    borderBottomColor: colors.outline + '20',
+    borderBottomColor: t.border,
   },
   zoneCardHeadText: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.uiBold,
+    color: t.text2,
     textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
+    letterSpacing: 0.5,
   },
   zoneCardHeadMeta: {
     fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSurfaceVariant,
-    opacity: 0.7,
+    fontFamily: t.mono,
+    color: t.text3,
+    opacity: 0.8,
     textTransform: 'none',
     letterSpacing: 0,
     flexShrink: 1,
@@ -943,15 +975,14 @@ const styles = StyleSheet.create({
   },
   zoneEmptyText: {
     flex: 1,
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
-    fontStyle: 'italic',
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
   },
   zoneEmptyLink: {
     fontSize: 12,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
+    fontFamily: t.ui,
+    color: t.brand,
   },
 
   // Schedule rows
@@ -967,14 +998,14 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
   },
   scheduleRowClash: {
-    borderLeftColor: '#B88843',
-    backgroundColor: 'rgba(184, 136, 67, 0.06)',
+    borderLeftColor: t.amber,
+    backgroundColor: t.amberBg,
   },
   scheduleTime: {
     fontSize: 10,
-    fontFamily: typography.families.bodyBold,
-    color: colors.primary,
-    backgroundColor: colors.secondaryContainer,
+    fontFamily: t.mono,
+    color: t.brand,
+    backgroundColor: t.brandSoft,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -986,13 +1017,13 @@ const styles = StyleSheet.create({
   scheduleTitle: {
     flex: 1,
     fontSize: 14,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontFamily: t.serif,
+    color: t.text,
   },
   scheduleClashBadge: {
     fontSize: 9,
-    fontFamily: typography.families.bodyBold,
-    color: '#B88843',
+    fontFamily: t.uiBold,
+    color: t.amber,
     textTransform: 'uppercase',
     letterSpacing: 0.08,
   },
@@ -1002,8 +1033,8 @@ const styles = StyleSheet.create({
   },
   scheduleMoreText: {
     fontSize: 11,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
+    fontFamily: t.ui,
+    color: t.brand,
   },
 
   // Open-commitment rows
@@ -1018,9 +1049,9 @@ const styles = StyleSheet.create({
   },
   commitmentEyebrow: {
     fontSize: 9,
-    fontFamily: typography.families.bodyBold,
-    color: colors.primary,
-    backgroundColor: colors.secondaryContainer,
+    fontFamily: t.uiBold,
+    color: t.brand,
+    backgroundColor: t.brandSoft,
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 4,
@@ -1031,35 +1062,56 @@ const styles = StyleSheet.create({
   commitmentTitle: {
     flex: 1,
     fontSize: 13,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontFamily: t.serif,
+    color: t.text,
   },
   commitmentDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
   },
 
   // ─── Zone 2 — Noticed ──────────────────────────────────────────
   noticedEmpty: {
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.md,
     padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   noticedEmptyText: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     lineHeight: 20,
   },
   noticedCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.md,
     padding: spacing.md + 2,
+    borderWidth: 1,
+    borderColor: t.border,
     borderLeftWidth: 3,
+    gap: 6,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  noticedMark: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    opacity: 0.5,
+  },
+  noticedVerbPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
-    ...shadows.low,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 100,
+    marginBottom: 2,
   },
   noticedEyebrow: {
     flexDirection: 'row',
@@ -1069,20 +1121,22 @@ const styles = StyleSheet.create({
   },
   noticedEyebrowText: {
     fontSize: 10,
-    fontFamily: typography.families.label,
-    letterSpacing: typography.tracking.widest,
+    fontFamily: t.uiBold,
+    letterSpacing: 0.6,
   },
   noticedTitle: {
-    fontSize: 14,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
-    lineHeight: 20,
+    fontSize: 17,
+    fontFamily: t.serif,
+    color: t.text,
+    lineHeight: 22,
+    paddingRight: 36,
   },
   noticedBody: {
     fontSize: 13,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     lineHeight: 19,
+    paddingRight: 36,
   },
   noticedActions: {
     flexDirection: 'row',
@@ -1093,12 +1147,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: radius.pill,
-    backgroundColor: colors.primary,
+    backgroundColor: t.brand,
   },
   noticedBtnPrimaryText: {
     fontSize: 12,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onPrimary,
+    fontFamily: t.ui,
+    color: '#FFFFFF',
   },
   noticedBtnGhost: {
     paddingHorizontal: 14,
@@ -1108,8 +1162,8 @@ const styles = StyleSheet.create({
   },
   noticedBtnGhostText: {
     fontSize: 12,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.ui,
+    color: t.text2,
   },
 
   // ─── Zone 3 — Thinking ─────────────────────────────────────────
@@ -1117,13 +1171,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.lg,
     marginBottom: spacing.xl,
-    backgroundColor: 'rgba(80, 84, 181, 0.04)',
+    backgroundColor: t.brandSofter,
     gap: 12,
   },
   thinkingIntro: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.serifItalic,
+    color: t.text2,
     lineHeight: 20,
     marginTop: -2,
   },
@@ -1132,32 +1186,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: 'rgba(80, 84, 181, 0.10)',
+    borderColor: t.border,
   },
-  thinkingCardIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.secondaryContainer,
+  thinkingMark: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   thinkingCardBody: { flex: 1 },
   thinkingCardTitle: {
-    fontSize: 14,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.serif,
+    color: t.text,
   },
   thinkingCardSub: {
     fontSize: 12,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     marginTop: 2,
     lineHeight: 16,
+  },
+  thinkingAsk: {
+    fontSize: 11,
+    fontFamily: t.uiBold,
+    color: t.brand,
   },
 
   // ─── Zone 4 — News (demoted) ───────────────────────────────────
@@ -1166,7 +1223,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingTop: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: colors.outline + '20',
+    borderTopColor: t.border,
     gap: 10,
   },
   zoneNewsHead: {
@@ -1184,210 +1241,102 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     marginTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: colors.outline + '20',
+    borderTopColor: t.border,
   },
   provenanceDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#4ade80',
+    backgroundColor: t.green,
   },
   provenanceText: {
     flex: 1,
     fontSize: 11,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontFamily: t.uiRegular,
+    color: t.text3,
   },
   provenanceStrong: {
-    fontFamily: typography.families.bodyBold,
-    color: colors.onSurface,
+    fontFamily: t.uiBold,
+    color: t.text,
   },
   provenanceLink: {
     fontSize: 11,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
+    fontFamily: t.ui,
+    color: t.brand,
   },
 
   onboardingBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: t.border,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
-    ...shadows.low,
   },
   onboardingBannerIcon: {
     width: 32,
     height: 32,
     borderRadius: radius.sm,
-    backgroundColor: colors.primaryContainer,
+    backgroundColor: t.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   onboardingBannerText: { flex: 1 },
   onboardingBannerTitle: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurface,
+    fontSize: 13,
+    fontFamily: t.ui,
+    color: t.text,
   },
   onboardingBannerSub: {
-    fontSize: typography.sizes.xs,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontFamily: t.uiRegular,
+    color: t.text2,
     marginTop: 2,
     textTransform: 'capitalize',
   },
 
-  section: {
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontFamily: typography.families.label,
-    color: colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: typography.tracking.widest,
-    marginBottom: spacing.md,
-  },
-
-  tonalCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    ...shadows.low,
-  },
-  tonalCardText: {
-    flex: 1,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
-  },
-
-  eventStack: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    ...shadows.low,
-  },
-  eventRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-  },
-  eventTimeChip: {
-    backgroundColor: colors.secondaryContainer,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 4,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  eventTimeText: {
-    fontSize: 11,
-    fontFamily: typography.families.label,
-    color: colors.onSecondaryContainer,
-    textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
-  },
-  eventTitle: {
-    flex: 1,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
-  },
-  eventMore: {
-    paddingTop: spacing.sm,
-    paddingLeft: spacing.sm,
-  },
-  eventMoreText: {
-    fontSize: 11,
-    color: colors.tertiary,
-    fontFamily: typography.families.label,
-    textTransform: 'uppercase',
-    letterSpacing: typography.tracking.wide,
-  },
-
-  listSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.lg,
-    ...shadows.low,
-  },
-  listSummaryText: {
-    flex: 1,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
-  },
-
-  privacyFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
-  },
-  privacyText: {
-    fontSize: 11,
-    fontFamily: typography.families.body,
-    color: colors.onSurfaceVariant,
-  },
-  privacyLink: {
-    fontSize: 11,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.primary,
-  },
-
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(12,14,16,0.5)',
+    backgroundColor: t.scrim,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: colors.surfaceContainerLowest,
+    backgroundColor: t.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     padding: spacing.xl,
     paddingBottom: spacing['2xl'],
-    ...shadows.high,
+    borderWidth: 1,
+    borderColor: t.border,
   },
   modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontFamily: typography.families.headline,
-    color: colors.onSurface,
+    fontSize: 22,
+    fontFamily: t.serif,
+    color: t.text,
     marginBottom: spacing.lg,
-    letterSpacing: typography.tracking.tight,
+    letterSpacing: -0.5,
   },
   modalLabel: {
-    fontSize: typography.sizes.sm,
-    fontFamily: typography.families.bodyMedium,
-    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    fontFamily: t.ui,
+    color: t.text2,
     marginBottom: spacing.xs,
     marginTop: spacing.sm,
   },
   modalInput: {
-    backgroundColor: colors.surfaceContainerLow,
+    backgroundColor: t.surfaceAlt,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: t.border,
     padding: spacing.md,
-    fontSize: typography.sizes.body,
-    fontFamily: typography.families.body,
-    color: colors.onSurface,
+    fontSize: 15,
+    fontFamily: t.uiRegular,
+    color: t.text,
   },
   modalInputMultiline: {
     minHeight: 120,
@@ -1399,5 +1348,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.lg,
   },
-});
+  });
+}
 
