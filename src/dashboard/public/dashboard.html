@@ -4,14 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memu</title>
+    <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
+         prevent a light/dark flash on reload. Must be synchronous + in
+         <head> BEFORE any stylesheet is parsed. -->
+    <script src="/js/theme-init.js?v=2026-05-16-v3-1"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- v3 redesign: design tokens FIRST. The compatibility block at
+         the bottom of memu-tokens.css aliases the existing Indigo
+         Sanctuary var names (--indigo-primary, --on-surface, etc.) to
+         the new tokens so style.css keeps working through transition. -->
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-16-v3-1">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
     <link rel="stylesheet" href="/css/style.css?v=2026-05-16-r2-r3-dispatch-fix">
+    <!-- v3 redesign: component classes layered on top of style.css.
+         Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
+         No selector overlap with style.css — purely additive. -->
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-1">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -251,65 +264,67 @@ async function api(path, opts = {}) {
      State persists in sessionStorage. -->
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
 <div class="app-shell">
-<aside class="sidebar" id="sidebar">
+<!-- v3 redesign: sidebar refreshed against pwa-redesign/screens/sidebar.html.
+     PRESERVED: every JS-wired id and onclick — sidebar id, sidebar-workspace-pill
+     (filled by initWorkspaceSwitcher), tab-chat/tab-spaces/tab-lists/tab-calendar/
+     tab-today buttons + their switchTab() handlers, sidebar-chat-children +
+     sidebar-conversations + sidebar-conversations-empty + sidebar-new-chat-btn,
+     sidebar-account-pill + tab-settings + sidebar-account-avatar + sidebar-account-name.
+     ADDED: #theme-toggle (theme-toggle.js auto-wires it on load). -->
+<aside class="sidebar memu-glow-bg" id="sidebar">
     <a class="sidebar-logo" href="/dashboard.html">
-        <svg class="sidebar-logo-mark icon"><use href="#icon-1"></use></svg>
-        <span class="sidebar-logo-text">Memu</span>
+        <img class="sidebar-logo-mark" src="/marks/logo-venn.svg" alt="" width="26" height="26">
+        <span class="sidebar-logo-text serif-display" style="font-style:italic;font-weight:500;">memu</span>
     </a>
     <!-- Workspace switcher pill — shows the active workspace below the
          brand mark, opens the Workspaces tab on click. Visible from every
          tab so the active scope is always legible. Filled lazily by
-         initWorkspaceSwitcher() once GET /api/workspaces returns. -->
+         initWorkspaceSwitcher() once GET /api/workspaces returns. Label
+         (#sidebar-workspace-name) stays JS-driven so we don't hardcode
+         "Hareesh's Pod" — the reference template's copy is a placeholder. -->
     <button class="sidebar-workspace-pill" id="sidebar-workspace-pill"
             onclick="switchTab('workspaces')" aria-label="Switch workspace">
-        <span class="sidebar-workspace-pill-eyebrow">Workspace</span>
-        <span class="sidebar-workspace-pill-name" id="sidebar-workspace-name">Loading…</span>
+        <span class="sidebar-workspace-pill-eyebrow eyebrow" style="margin-bottom:0;">Workspace</span>
+        <span class="sidebar-workspace-pill-name serif-display" id="sidebar-workspace-name" style="font-style:italic;font-weight:500;">Loading…</span>
     </button>
     <!-- Top region: primary + secondary nav. Fixed natural height. Conversations
          do NOT live here any more — they had been pushing Settings off-screen
          once 20+ threads accumulated. They now live in the bottom region. -->
     <!-- Phase A.7 — primary nav culled to 5 surfaces for parity with the
          mobile SideDrawer. Ledger + Import moved into Settings (they're
-         audit / power-user surfaces, not daily flow). Icons swapped to
-         Lucide-calibrated paths at stroke-width 1.5 — thinner, cleaner
-         terminals at the 18px display size than the prior 1.8 weight. -->
+         audit / power-user surfaces, not daily flow). v3: icons routed
+         through the shared marks/icons.svg sprite (stroke-width 1.7). -->
     <nav class="sidebar-nav">
         <button class="sidebar-nav-item active" id="tab-chat" onclick="switchTab('chat')">
-            <svg class="icon"><use href="#icon-2"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-chat"></use></svg>
             <span>Chat</span>
         </button>
         <button class="sidebar-nav-item" id="tab-spaces" onclick="switchTab('spaces')">
-            <svg class="icon"><use href="#icon-3"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-spaces"></use></svg>
             <span>Spaces</span>
         </button>
         <button class="sidebar-nav-item" id="tab-lists" onclick="switchTab('lists')">
-            <svg class="icon"><use href="#icon-4"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-lists"></use></svg>
             <span>Lists</span>
         </button>
         <button class="sidebar-nav-item" id="tab-calendar" onclick="switchTab('calendar')">
-            <svg class="icon"><use href="#icon-5"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-cal"></use></svg>
             <span>Calendar</span>
         </button>
-        <!-- Phase A.4 — 'Dashboard' (was 'Today'). Sits below the daily-action
-             surfaces — chat landing now surfaces briefings and action nudges
-             inline; Dashboard is the structured at-a-glance view. The
-             underlying tab id stays 'today' to avoid breaking switchTab()
-             callers and the loadDashboard / loadBrief wiring. -->
+        <!-- Phase A.4 — 'Dashboard' (was 'Today'). Underlying tab id stays 'today'
+             to avoid breaking switchTab() and loadBrief wiring. -->
         <button class="sidebar-nav-item" id="tab-today" onclick="switchTab('today')">
-            <svg class="icon"><use href="#icon-6"></use></svg>
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-dash"></use></svg>
             <span>Dashboard</span>
         </button>
     </nav>
 
-    <!-- Phase A.8 — conversations region promoted directly under primary
-         nav (no divider, no Settings inline). Takes the remaining vertical
-         space; scrolls independently. Conversation history is the highest-
-         density surface in the rail — it earns the room. -->
+    <!-- Phase A.8 — conversations region promoted directly under primary nav. -->
     <div class="sidebar-conversations-region" id="sidebar-chat-children">
         <div class="sidebar-conversations-head">
-            <span class="sidebar-conversations-label">Conversations</span>
+            <span class="sidebar-conversations-label eyebrow" style="margin-bottom:0;">Conversations</span>
             <button class="sidebar-new-chat-btn" onclick="startNewConversation()" title="Start new chat">
-                <svg class="icon" width="14" height="14"><use href="#icon-7"></use></svg>
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-plus"></use></svg>
                 <span>New</span>
             </button>
         </div>
@@ -318,19 +333,20 @@ async function api(path, opts = {}) {
         </div>
     </div>
 
-    <!-- Phase A.8 — account pill at bottom-left, Claude/Linear/Granola
-         pattern. Avatar (initial in indigo tint) + display name + small
-         settings-gear hint on the right. Whole pill is the tap target →
-         Settings tab. Settings as a nav row is retired; everything that
-         lived there is reachable via this pill. -->
-    <button class="sidebar-account-pill" id="tab-settings" onclick="switchTab('settings')" aria-label="Open settings">
-        <span class="sidebar-account-avatar" id="sidebar-account-avatar">?</span>
-        <span class="sidebar-account-meta">
-            <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
-            <span class="sidebar-account-hint">Settings</span>
-        </span>
-        <svg class="sidebar-account-gear icon" width="14" height="14"><use href="#icon-8"></use></svg>
-    </button>
+    <!-- Phase A.8 — account pill at bottom-left. Whole pill is the tap target →
+         Settings tab. v3: theme toggle lives alongside it; theme-toggle.js
+         auto-wires #theme-toggle on load. -->
+    <div class="sidebar-account-row" style="display:flex;align-items:center;gap:8px;padding:0 14px 14px;">
+        <button class="sidebar-account-pill" id="tab-settings" onclick="switchTab('settings')" aria-label="Open settings" style="flex:1;">
+            <span class="sidebar-account-avatar" id="sidebar-account-avatar">?</span>
+            <span class="sidebar-account-meta">
+                <span class="sidebar-account-name" id="sidebar-account-name">Loading…</span>
+                <span class="sidebar-account-hint">Settings</span>
+            </span>
+            <svg class="sidebar-account-gear icon" width="14" height="14"><use href="/marks/icons.svg#icon-chev-r"></use></svg>
+        </button>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme"></button>
+    </div>
 </aside>
 <main class="app-main">
 
@@ -378,48 +394,50 @@ async function api(path, opts = {}) {
      Privacy provenance footer pinned at the end.
 
      Tab id stays 'today' to avoid breaking switchTab() callers. -->
-<div id="view-today" class="today-canvas hidden">
+<!-- v3 redesign: Today/Dashboard re-skin against pwa-redesign/screens/dashboard.html.
+     Five zones preserved — header / what's happening / what I noticed /
+     what I'm thinking / news. Every JS-bound id is verbatim: date-text,
+     greeting, today-lens-pill, today-lens-label, banner-error,
+     schedule-lens-meta, calendar-section, open-commitments,
+     noticed-container, zone-thinking-glow, three askMemuStarter buttons,
+     news-refreshed-at, news-refresh-btn, news-feed, news-more-btn,
+     news-more-label, today-provenance. The outer wrapper keeps
+     id="view-today" + class="today-canvas hidden" so switchTab() and
+     style.css continue to work. -->
+<div id="view-today" class="today-canvas memu-glow-bg hidden" style="padding: 40px 48px 80px; max-width: 1080px; margin: 0 auto;">
 
     <!-- ─── Zone 0 — Context header ─────────────────────────────────── -->
-    <header class="today-header">
+    <header class="today-header" style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 44px; gap: 16px;">
         <div class="today-header-meta">
-            <span class="today-header-date" id="date-text"></span>
-            <h1 class="today-header-greeting" id="greeting"></h1>
+            <div class="mono today-header-date" id="date-text" style="font-size: 13px; color: var(--text-3); letter-spacing: 0.04em; margin-bottom: 10px;"></div>
+            <h1 class="today-header-greeting serif-display" id="greeting" style="font-size: 52px; line-height: 1.0;"></h1>
         </div>
-        <button class="today-lens-pill" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
-            <svg class="icon" width="13" height="13"><use href="#icon-11"></use></svg>
-            <span id="today-lens-label">Me</span>
-            <svg class="icon" width="10" height="10"><use href="#icon-12"></use></svg>
+        <button class="today-lens-pill btn-pill btn-pill-secondary" id="today-lens-pill" onclick="cycleTodayLens()" type="button">
+            <span class="pulse-dot"></span>
+            <span>Lens: <span id="today-lens-label">Me</span></span>
+            <svg class="icon" width="10" height="10"><use href="/marks/icons.svg#icon-chev"></use></svg>
         </button>
     </header>
 
     <div id="banner-error" class="banner-error hidden"></div>
 
     <!-- ─── Zone 1 — What's happening ───────────────────────────────── -->
-    <!-- Two-column grid on desktop: schedule (55%) + open commitments (45%).
-         Stacks on mobile via the responsive breakpoint. Each card lives in
-         its own surface; the eye groups them as the "today" zone. -->
-    <section class="zone zone-now">
-        <div class="zone-eyebrow">
-            <svg class="icon" width="11" height="11"><use href="#icon-13"></use></svg>
-            <span>What's happening</span>
-        </div>
-        <div class="zone-now-grid">
-            <article class="zone-card zone-now-schedule">
-                <header class="zone-card-head">
-                    <svg class="icon" width="14" height="14"><use href="#icon-5"></use></svg>
-                    <span>Schedule</span>
-                    <!-- Phase A.9.1 — show-the-work: when the lens widens to
-                         Family, name exactly how many calendars were merged
-                         so the user can read what the pill actually did. -->
-                    <span class="zone-card-head-meta" id="schedule-lens-meta"></span>
+    <section class="zone zone-now" style="margin-bottom: 48px;">
+        <div class="zone-eyebrow eyebrow">What's happening</div>
+        <div class="zone-now-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px;">
+            <article class="zone-card zone-now-schedule memu-card">
+                <header class="zone-card-head" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft);">
+                    <svg class="icon" width="14" height="14" style="color: var(--text-2);"><use href="/marks/icons.svg#icon-cal"></use></svg>
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--text);">Schedule</span>
+                    <!-- Phase A.9.1 — when lens=family, render N calendars merged. -->
+                    <span class="zone-card-head-meta mono" id="schedule-lens-meta" style="font-size: 11px; color: var(--text-3); margin-left: auto;"></span>
                 </header>
                 <div id="calendar-section" class="zone-now-list"></div>
             </article>
-            <article class="zone-card zone-now-open">
-                <header class="zone-card-head">
-                    <svg class="icon" width="14" height="14"><use href="#icon-14"></use></svg>
-                    <span>Open commitments</span>
+            <article class="zone-card zone-now-open memu-card">
+                <header class="zone-card-head" style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft);">
+                    <svg class="icon" width="14" height="14" style="color: var(--text-2);"><use href="/marks/icons.svg#icon-check"></use></svg>
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--text);">Open commitments</span>
                 </header>
                 <div id="open-commitments" class="zone-now-list"></div>
             </article>
@@ -427,90 +445,71 @@ async function api(path, opts = {}) {
     </section>
 
     <!-- ─── Zone 2 — What I noticed ─────────────────────────────────── -->
-    <!-- Reflection findings, contradictions, stale facts, patterns, lapses.
-         Sits on a tonally-recessed surface so it reads as "Memu's thinking"
-         rather than "things to do". The eyebrow diamond ◈ marks every
-         observation card as Memu-sourced. -->
-    <section class="zone zone-noticed">
-        <div class="zone-eyebrow">
-            <svg class="icon" width="11" height="11"><use href="#icon-15"></use></svg>
-            <span>What I noticed</span>
-        </div>
-        <div id="noticed-container" class="zone-noticed-stack"></div>
+    <section class="zone zone-noticed" style="margin-bottom: 48px;">
+        <div class="zone-eyebrow eyebrow">What I noticed</div>
+        <div id="noticed-container" class="zone-noticed-stack" style="display: flex; flex-direction: column; gap: 12px;"></div>
     </section>
 
     <!-- ─── Zone 3 — What I'm thinking ──────────────────────────────── -->
-    <!-- MVP empty state. Three starter prompts that route to chat with a
-         seeded message — these are the discovery surfaces that will land
-         in Phase A.10 (curated local events / recipes / activity matching).
-         The soft radial glow distinguishes this zone as the "where Memu
-         earns its keep" surface. -->
-    <section class="zone zone-thinking">
+    <!-- Three starter prompts route to chat with a seeded message. The
+         soft radial glow distinguishes this zone as the "where Memu earns
+         its keep" surface. Card illustrations come from /marks/. -->
+    <section class="zone zone-thinking" style="margin-bottom: 48px; position: relative;">
         <div class="zone-thinking-glow" aria-hidden="true"></div>
-        <div class="zone-eyebrow">
-            <svg class="icon" width="11" height="11"><use href="#icon-16"></use></svg>
-            <span>What I'm thinking</span>
-        </div>
-        <div class="zone-thinking-intro">
+        <div class="zone-eyebrow eyebrow">What I'm thinking</div>
+        <div class="zone-thinking-intro italic-quiet" style="font-size: 17px; line-height: 1.5; max-width: 620px; margin-bottom: 18px;">
             Memu is starting to learn what matters to you. Try one of these to surface
             what's worth your attention this week.
         </div>
-        <div class="zone-thinking-grid">
-            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth doing this weekend with the family? Consider Robin's age and our recent activities.')">
-                <div class="thinking-card-icon">
-                    <svg class="icon" width="16" height="16"><use href="#icon-17"></use></svg>
-                </div>
-                <div class="thinking-card-title">Weekend ideas</div>
-                <div class="thinking-card-sub">Local events that fit our family</div>
+        <div class="zone-thinking-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+            <button class="thinking-card memu-card memu-card-illustrated" type="button" onclick="askMemuStarter('What's worth doing this weekend with the family? Consider Robin's age and our recent activities.')" style="padding: 24px; min-height: 170px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px;">
+                <div class="card-mark thinking-card-icon"><img src="/marks/mark-weekend.svg" alt="" width="56" height="56" style="color: var(--brand);"></div>
+                <div class="thinking-card-title serif-display" style="font-size: 22px; font-weight: 500; margin-top: 40px; max-width: 200px; line-height: 1.2;">Weekend ideas</div>
+                <div class="thinking-card-sub" style="font-size: 13px; color: var(--text-3); line-height: 1.5; max-width: 220px;">Local events that fit our family</div>
+                <div style="margin-top: auto; font-size: 12px; color: var(--brand); font-weight: 600;">Ask Memu →</div>
             </button>
-            <button class="thinking-card" type="button" onclick="askMemuStarter('What should we eat this week? Suggest 3 recipes that work for our household given anything you know about our preferences.')">
-                <div class="thinking-card-icon">
-                    <svg class="icon" width="16" height="16"><use href="#icon-18"></use></svg>
-                </div>
-                <div class="thinking-card-title">Meals this week</div>
-                <div class="thinking-card-sub">Recipes from what you've told me</div>
+            <button class="thinking-card memu-card memu-card-illustrated" type="button" onclick="askMemuStarter('What should we eat this week? Suggest 3 recipes that work for our household given anything you know about our preferences.')" style="padding: 24px; min-height: 170px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px;">
+                <div class="card-mark thinking-card-icon"><img src="/marks/mark-meals.svg" alt="" width="56" height="56" style="color: var(--brand);"></div>
+                <div class="thinking-card-title serif-display" style="font-size: 22px; font-weight: 500; margin-top: 40px; max-width: 200px; line-height: 1.2;">Meals this week</div>
+                <div class="thinking-card-sub" style="font-size: 13px; color: var(--text-3); line-height: 1.5; max-width: 220px;">Recipes from what you've told me</div>
+                <div style="margin-top: auto; font-size: 12px; color: var(--brand); font-weight: 600;">Ask Memu →</div>
             </button>
-            <button class="thinking-card" type="button" onclick="askMemuStarter('What's worth my attention this week? Look across my Spaces, calendar, and any patterns you''ve noticed and tell me what I might be missing.')">
-                <div class="thinking-card-icon">
-                    <svg class="icon" width="16" height="16"><use href="#icon-10"></use></svg>
-                </div>
-                <div class="thinking-card-title">What I'm missing</div>
-                <div class="thinking-card-sub">Across Spaces, calendar, patterns</div>
+            <button class="thinking-card memu-card memu-card-illustrated" type="button" onclick="askMemuStarter('What's worth my attention this week? Look across my Spaces, calendar, and any patterns you''ve noticed and tell me what I might be missing.')" style="padding: 24px; min-height: 170px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 10px;">
+                <div class="card-mark thinking-card-icon"><img src="/marks/mark-missing.svg" alt="" width="56" height="56" style="color: var(--brand);"></div>
+                <div class="thinking-card-title serif-display" style="font-size: 22px; font-weight: 500; margin-top: 40px; max-width: 200px; line-height: 1.2;">What I'm missing</div>
+                <div class="thinking-card-sub" style="font-size: 13px; color: var(--text-3); line-height: 1.5; max-width: 220px;">Across Spaces, calendar, patterns</div>
+                <div style="margin-top: auto; font-size: 12px; color: var(--brand); font-weight: 600;">Ask Memu →</div>
             </button>
         </div>
     </section>
 
     <!-- ─── Zone 4 — News (demoted) ─────────────────────────────────── -->
-    <section class="zone zone-news">
-        <div class="zone-news-head">
-            <div class="zone-eyebrow">
-                <svg class="icon" width="11" height="11"><use href="#icon-19"></use></svg>
+    <section class="zone zone-news" style="margin-bottom: 32px;">
+        <div class="zone-news-head" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;">
+            <div class="zone-eyebrow eyebrow" style="margin-bottom: 0;">
                 <span>News</span>
-                <span class="zone-news-refreshed" id="news-refreshed-at"></span>
+                <span class="zone-news-refreshed mono" id="news-refreshed-at" style="font-size: 11px; color: var(--text-3); margin-left: 8px; letter-spacing: 0; text-transform: none; font-weight: 500;"></span>
             </div>
-            <button class="zone-news-refresh" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button">
-                <svg class="icon" width="14" height="14"><use href="#icon-20"></use></svg>
+            <button class="zone-news-refresh btn-pill btn-pill-secondary" id="news-refresh-btn" onclick="refreshNewsFeed()" aria-label="Refresh news" type="button" style="padding: 4px 10px;">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-arrow"></use></svg>
             </button>
         </div>
         <div id="news-feed" class="news-feed">
-            <div class="news-loading">Pulling today's headlines…</div>
+            <div class="news-loading italic-quiet">Pulling today's headlines…</div>
         </div>
-        <button class="news-more-btn hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button">
+        <button class="news-more-btn btn-pill btn-pill-secondary hidden" id="news-more-btn" onclick="toggleNewsFeedExpanded()" type="button" style="margin-top: 12px;">
             <span id="news-more-label">More news</span>
-            <svg class="icon" width="12" height="12"><use href="#icon-12"></use></svg>
+            <svg class="icon" width="12" height="12"><use href="/marks/icons.svg#icon-chev"></use></svg>
         </button>
     </section>
 
     <!-- ─── Privacy provenance footer ───────────────────────────────── -->
-    <!-- Replaces the older single-line footer with show-the-work content:
-         which models / data sources touched this view. A live dot signals
-         the privacy promise is mechanical, not marketing. -->
-    <footer class="today-provenance">
-        <span class="today-provenance-dot" aria-hidden="true"></span>
+    <footer class="today-provenance" style="display: flex; align-items: center; gap: 10px; padding: 16px 4px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border-soft);">
+        <span class="today-provenance-dot" aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); flex-shrink: 0;"></span>
         <span class="today-provenance-text">
-            Anonymised via Digital Twin · External models touched: <strong>0</strong> · Data left your household: <strong>0</strong>
+            Anonymised via Digital Twin · External models touched: <strong class="mono" style="color: var(--text-2); font-weight: 600;">0</strong> · Data left your household: <strong class="mono" style="color: var(--text-2); font-weight: 600;">0</strong>
         </span>
-        <a class="today-provenance-link" href="#" onclick="switchTab('ledger');return false;">See the ledger →</a>
+        <a class="today-provenance-link" href="#" onclick="switchTab('ledger');return false;" style="margin-left: auto; color: var(--brand); font-weight: 600;">See the ledger →</a>
     </footer>
 </div>
 
@@ -522,34 +521,41 @@ async function api(path, opts = {}) {
 <div id="quick-composer" class="quick-composer hidden" hidden></div>
 
 <!-- ==================== CALENDAR TAB ==================== -->
-<div id="view-calendar" class="container-wide hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/calendar.html.
+     Preserved ids: view-calendar (outer wrapper), calendar-date-meta,
+     calendar-connect (empty-state wrapper), calendar-active (week view),
+     calendar-day-strip (renderer target), calendar-selected-relative,
+     calendar-selected-full, calendar-selected-meta, calendar-events
+     (event rows renderer target), handleCalendarConnect(). -->
+<div id="view-calendar" class="container-wide memu-glow-bg hidden" style="padding: 40px 48px 80px; max-width: 1080px; margin: 0 auto;">
     <header class="morning-briefing-header">
-        <div class="briefing-eyebrow">The shape of your week</div>
-        <div class="briefing-title">Time, gently held.</div>
-        <div class="briefing-subtitle" id="calendar-date-meta">Loading...</div>
+        <div class="briefing-eyebrow eyebrow">Calendar</div>
+        <h1 class="briefing-title serif-display" style="font-size: 44px; line-height: 1.05;">
+            Time, <em class="serif-accent">gently held</em>.
+        </h1>
+        <div class="briefing-subtitle italic-quiet" style="font-size: 16px; margin-top: 8px;" id="calendar-date-meta">Loading…</div>
     </header>
 
-    <div id="calendar-connect" class="connect-wrap hidden">
-        <div class="connect-card">
-            <div class="connect-glow"></div>
-            <div class="connect-icon-chip">
-                <svg class="icon" width="24" height="24"><use href="#icon-21"></use></svg>
+    <div id="calendar-connect" class="connect-wrap hidden" style="margin-top: 32px;">
+        <div class="connect-card memu-card" style="padding: 48px; text-align: center; max-width: 480px; margin: 0 auto;">
+            <div class="connect-icon-chip" style="width: 56px; height: 56px; border-radius: 16px; background: var(--brand-soft); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+                <svg class="icon" width="24" height="24" style="color: var(--brand);"><use href="/marks/icons.svg#icon-cal"></use></svg>
             </div>
-            <h2 class="connect-title">Connect Google Calendar</h2>
-            <p class="connect-subtitle">Memu will show your schedule here—and spot the quiet conflicts before they bite.</p>
-            <button class="btn btn-primary" onclick="handleCalendarConnect()">Connect calendar</button>
-            <p class="privacy-note">Your events stay on your server. Memu never shares them.</p>
+            <h2 class="connect-title serif-display" style="font-size: 28px; margin-bottom: 12px;">Connect Google Calendar</h2>
+            <p class="connect-subtitle" style="color: var(--text-2); margin-bottom: 24px; font-size: 14px; line-height: 1.55;">Memu will show your schedule here — and spot the quiet conflicts before they bite.</p>
+            <button class="btn btn-primary btn-pill btn-pill-primary" onclick="handleCalendarConnect()">Connect calendar</button>
+            <p class="privacy-note" style="font-size: 12px; color: var(--text-3); margin-top: 16px;">Your events stay on your server. Memu never shares them.</p>
         </div>
     </div>
 
-    <div id="calendar-active" class="hidden">
-        <div id="calendar-day-strip" class="calendar-day-strip"></div>
-        <div class="day-header">
-            <div id="calendar-selected-relative" class="day-header-eyebrow"></div>
-            <div id="calendar-selected-full" class="day-header-title"></div>
-            <div id="calendar-selected-meta" class="day-header-meta"></div>
+    <div id="calendar-active" class="hidden" style="margin-top: 24px;">
+        <div id="calendar-day-strip" class="calendar-day-strip" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 24px;"></div>
+        <div class="day-header" style="margin-bottom: 16px;">
+            <div id="calendar-selected-relative" class="day-header-eyebrow eyebrow"></div>
+            <h2 id="calendar-selected-full" class="day-header-title serif-display" style="font-size: 28px;"></h2>
+            <div id="calendar-selected-meta" class="day-header-meta italic-quiet" style="font-size: 14px;"></div>
         </div>
-        <div id="calendar-events" class="calendar-events-list"></div>
+        <div id="calendar-events" class="calendar-events-list" style="display: grid; grid-template-columns: 60px 1fr; gap: 16px;"></div>
     </div>
 </div>
 
@@ -558,74 +564,129 @@ async function api(path, opts = {}) {
      the Chat nav item), so the chat tab itself is just the chat container
      full-width inside app-main. Hamburger toggles the sidebar; canvas
      expands to fill. Two columns max — never three. -->
-<div id="view-chat" class="container-wide chat-canvas">
-    <div class="chat-container">
-        <div class="chat-messages" id="chat-messages">
-            <div class="chat-blank-state" id="chat-blank-state">
+<!-- v3 redesign: chat re-skin against pwa-redesign/screens/chat.html.
+     PRESERVED ids/onclicks: view-chat (outer wrapper), chat-messages,
+     chat-blank-state, chat-staged, chat-staged-thumb, chat-staged-name,
+     chat-staged-remove + clearStagedAttachment(), chat-input-bar,
+     chat-attach, chat-file, chat-input, chat-send + sendMessage(),
+     handleFilePick(event, 'chat'). The chat header is intentionally
+     skipped — the existing topbar (with topbar-title set by switchTab)
+     already provides the title row. The conversation-eyebrow + serif
+     thread title from the template would duplicate the topbar, so we
+     keep just the message thread + staged-attachment + input bar. -->
+<div id="view-chat" class="container-wide chat-canvas memu-glow-bg" style="display:flex;flex-direction:column;height:100%;">
+    <div class="chat-container" style="display:flex;flex-direction:column;height:100%;flex:1;min-height:0;">
+        <div class="chat-messages" id="chat-messages" style="flex: 1; overflow-y: auto; padding: 32px 0;">
+            <div class="chat-blank-state" id="chat-blank-state" style="max-width: 720px; margin: 0 auto; padding: 24px 32px; font-family: var(--font-serif); font-size: 17px; line-height: 1.65; color: var(--text-2); font-style: italic;">
                 Hey &mdash; I'm Memu, your private AI. Tell me what's on your mind and I'll start learning.
                 Everything you share stays on your device. When I talk to the AI, your names and personal
                 details are replaced with anonymous labels first. You can check exactly what was sent any
                 time in the Privacy Ledger.
             </div>
         </div>
+
+        <!-- Privacy bar — show-the-work between thread and composer. -->
+        <div class="chat-privacy-bar" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px; font-size: 11.5px; color: var(--text-3); border-top: 1px solid var(--border-soft);">
+            <svg class="icon" width="12" height="12"><use href="/marks/icons.svg#icon-eye"></use></svg>
+            <span>Queries anonymised via Digital Twin</span>
+            <span style="color: var(--border-soft);">·</span>
+            <a href="#" onclick="switchTab('ledger');return false;" style="color: var(--brand); font-weight: 600;">See what AI saw</a>
+        </div>
+
         <!-- Staged attachment pill — shown above the input bar when an image
              has been picked but not yet sent. User types a caption / question
              into the existing chat-input, then sendMessage() routes to vision. -->
-        <div class="staged-attachment" id="chat-staged" hidden>
-            <img id="chat-staged-thumb" alt="Attachment preview">
-            <div class="staged-meta">
-                <div class="staged-name" id="chat-staged-name"></div>
-                <div class="staged-hint">Type what you'd like Memu to do with it, then send.</div>
+        <div class="staged-attachment memu-card" id="chat-staged" hidden style="display:flex;align-items:center;gap:12px;margin: 0 32px 8px;padding:10px 12px;">
+            <img id="chat-staged-thumb" alt="Attachment preview" style="width:44px;height:44px;border-radius:8px;object-fit:cover;border:1px solid var(--border-soft);">
+            <div class="staged-meta" style="flex:1;min-width:0;">
+                <div class="staged-name" id="chat-staged-name" style="font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+                <div class="staged-hint italic-quiet" style="font-size:12px;">Type what you'd like Memu to do with it, then send.</div>
             </div>
-            <button type="button" class="staged-remove" id="chat-staged-remove" onclick="clearStagedAttachment()" aria-label="Remove attachment">×</button>
+            <button type="button" class="staged-remove" id="chat-staged-remove" onclick="clearStagedAttachment()" aria-label="Remove attachment" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:var(--surface);cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center;">×</button>
         </div>
-        <div class="chat-input-bar">
-            <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo, PDF, or document">
-                <svg class="icon" width="20" height="20"><use href="#icon-22"></use></svg>
-            </button>
-            <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
-            <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off">
-            <button class="send-btn" id="chat-send" onclick="sendMessage()" disabled>
-                &#x27A4;
-            </button>
+
+        <!-- Input bar — composer pill with Send + Attach. -->
+        <div class="chat-input-bar" style="padding: 8px 32px 24px;">
+            <div style="max-width: 760px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 10px 12px; box-shadow: var(--shadow-input);">
+                <div style="display: flex; align-items: flex-end; gap: 10px;">
+                    <input type="text" class="chat-input" id="chat-input" placeholder="Ask Memu anything..." maxlength="2000" autocomplete="off" style="flex: 1; border: none; outline: none; font-size: 15px; line-height: 1.55; color: var(--text); background: transparent; font-family: var(--font-ui); padding: 6px 4px;">
+                    <button class="send-btn" id="chat-send" onclick="sendMessage()" disabled style="width: 32px; height: 32px; border-radius: 9px; background: var(--brand); color: var(--text-inverse); display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 12px var(--brand-glow);">
+                        <svg class="icon" width="15" height="15"><use href="/marks/icons.svg#icon-send"></use></svg>
+                    </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px; padding: 2px 4px;">
+                    <button class="attach-btn" id="chat-attach" onclick="document.getElementById('chat-file').click()" title="Attach photo, PDF, or document" style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 6px; background: transparent; border: none; cursor: pointer; font-size: 11.5px; color: var(--text-3); font-weight: 500;">
+                        <svg class="icon" width="13" height="13"><use href="/marks/icons.svg#icon-attach"></use></svg> Attach
+                    </button>
+                    <input type="file" id="chat-file" accept="image/*,application/pdf,.pdf,text/plain,.txt,.md" style="display:none" onchange="handleFilePick(event,'chat')">
+                    <span class="mono" style="margin-left: auto; font-size: 11px; color: var(--text-3);">Press <kbd style="padding: 1px 5px; border: 1px solid var(--border); border-radius: 3px; font-size: 10px; font-weight: 600;">↵</kbd> to send</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- ==================== SPACES TAB ==================== -->
-<div id="view-spaces" class="container-wide hidden" style="padding-top:var(--space-md);padding-bottom:100px;">
+<!-- v3 redesign: list-view re-skinned against pwa-redesign/screens/spaces.html.
+     The detail-view + edit-view + share/connect/create modals below
+     are left intact — they're not covered by the template and altering
+     them risks breaking the share-to-edit / inline-edit / Connect
+     wiring. Preserved ids: view-spaces, spaces-list-view,
+     spaces-canvas-link (link → /canvas.html), spaces-chips (renderer
+     target), continue-reading + continue-reading-title +
+     continue-reading-meta + resumeContinueReading(), spaces-empty,
+     spaces-feature (renderer target), spaces-grid (renderer target).
+     The detail-view / edit-view / modals below preserve every existing
+     id and onclick verbatim. -->
+<div id="view-spaces" class="container-wide memu-glow-bg hidden" style="padding: 40px 48px 80px;">
     <!-- List view: chips + grid + feature card -->
     <div id="spaces-list-view">
-        <header class="spaces-masthead">
-            <div class="spaces-masthead-row">
-                <div>
-                    <div class="briefing-eyebrow">Spaces</div>
-                    <div class="briefing-title">What Memu knows</div>
-                    <div class="briefing-subtitle">Compiled understanding, one page per topic.</div>
+        <div style="max-width: 1080px; margin: 0 auto;">
+            <header class="spaces-masthead">
+                <div class="spaces-masthead-row" style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 8px;">
+                    <div>
+                        <div class="briefing-eyebrow eyebrow">Spaces</div>
+                        <h1 class="briefing-title serif-display" style="font-size: 48px; line-height: 1.05;">
+                            What Memu <em class="serif-accent">knows</em>
+                        </h1>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-shrink: 0;">
+                        <a class="spaces-canvas-link btn-pill btn-pill-secondary" href="/canvas.html" title="Open the Spaces Canvas">
+                            <svg class="icon" width="13" height="13"><use href="/marks/icons.svg#icon-link"></use></svg>
+                            <span>Canvas view</span>
+                        </a>
+                        <button class="btn-pill btn-pill-primary" onclick="openSpaceCreate()" title="New Space">
+                            <svg class="icon" width="13" height="13"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                            <span>New Space</span>
+                        </button>
+                    </div>
                 </div>
-                <a class="spaces-canvas-link" href="/canvas.html" title="Open the Spaces Canvas">
-                    <svg class="icon" width="16" height="16"><use href="#icon-23"></use></svg>
-                    <span>Canvas view</span>
-                </a>
-            </div>
-        </header>
+                <p class="briefing-subtitle italic-quiet" style="font-size: 17px; max-width: 620px; line-height: 1.5; margin-bottom: 20px;">
+                    Compiled understanding — one page per topic. Every Space is a living context Memu reasons across.
+                </p>
+            </header>
 
-        <div id="spaces-chips" class="spaces-chips"></div>
+            <!-- Category chips — populated per workspace type by JS. -->
+            <div id="spaces-chips" class="spaces-chips" style="display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border-soft); margin-bottom: 24px;"></div>
 
-        <!-- Phase Z Story Z.6b — Continue-reading affordance. Surfaces
-             the user's most-recently-opened Space (excluding the one
-             currently open). Hidden when there's no recently-read
-             history; renderContinueReading() owns the visibility. -->
-        <button id="continue-reading" class="continue-reading hidden" onclick="resumeContinueReading()">
-            <span class="continue-reading-eyebrow">Continue reading</span>
-            <span class="continue-reading-title" id="continue-reading-title">…</span>
-            <span class="continue-reading-meta" id="continue-reading-meta">…</span>
-        </button>
+            <!-- Phase Z Story Z.6b — Continue-reading affordance. -->
+            <button id="continue-reading" class="continue-reading memu-card hidden" onclick="resumeContinueReading()" style="display: flex; align-items: center; gap: 16px; padding: 14px 18px; margin-bottom: 28px; cursor: pointer; text-align: left; width: 100%;">
+                <div style="font-size: 22px;">📄</div>
+                <div style="flex: 1; min-width: 0;">
+                    <span class="continue-reading-eyebrow eyebrow" style="display: block; margin-bottom: 3px;">Continue reading</span>
+                    <span class="continue-reading-title serif-display" id="continue-reading-title" style="font-size: 16px; font-style: italic; font-weight: 500; display: block;">…</span>
+                </div>
+                <span class="continue-reading-meta mono" id="continue-reading-meta" style="font-size: 12px; color: var(--text-3); flex-shrink: 0;">…</span>
+            </button>
 
-        <div id="spaces-empty" class="empty-state hidden">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
+            <div id="spaces-empty" class="empty-state hidden italic-quiet" style="font-size: 17px; padding: 56px 24px; text-align: center; color: var(--text-2);">No Spaces yet. Tap + to create one, or chat with Memu and they'll build themselves.</div>
 
-        <div id="spaces-feature" class="spaces-feature"></div>
-        <div id="spaces-grid" class="spaces-grid"></div>
+            <!-- Feature card target — populated by JS (first item, larger). -->
+            <div id="spaces-feature" class="spaces-feature"></div>
+
+            <!-- Remaining-spaces grid target. -->
+            <div id="spaces-grid" class="spaces-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;"></div>
+        </div>
     </div>
 
     <!-- Detail view: full-canvas Space page. Replaces the old modal.
@@ -965,30 +1026,43 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== LISTS TAB ==================== -->
-<div id="view-lists" class="container lists-canvas hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
-    <header class="spaces-masthead">
-        <div class="briefing-eyebrow">Lists</div>
-        <div class="briefing-title">What's on your plate</div>
-        <div class="briefing-subtitle">Tasks and shopping, committed.</div>
-    </header>
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/lists.html.
+     Preserved ids: view-lists (outer wrapper), lists-seg-tasks +
+     lists-seg-shopping (active class is toggled by switchListKind),
+     lists-count-task + lists-count-shopping, lists-add-input,
+     lists-add-btn, addListItemSubmit(), lists-items (renderer
+     target), lists-empty. -->
+<div id="view-lists" class="container lists-canvas memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 820px; margin: 0 auto;">
+        <header class="spaces-masthead">
+            <div class="briefing-eyebrow eyebrow">Lists</div>
+            <h1 class="briefing-title serif-display" style="font-size: 48px; line-height: 1.05;">Get it <em class="serif-accent">done</em>.</h1>
+            <p class="briefing-subtitle italic-quiet" style="font-size: 17px; max-width: 540px; line-height: 1.5; margin-bottom: 28px;">
+                Quick capture for tasks and shopping. Tag with categories, set due dates, or let Memu parse your natural language.
+            </p>
+        </header>
 
-    <div class="lists-segment" role="tablist">
-        <button class="lists-segment-btn active" id="lists-seg-tasks" onclick="switchListKind('task')" role="tab">
-            <span>Tasks</span><span class="lists-count-badge" id="lists-count-task">0</span>
-        </button>
-        <button class="lists-segment-btn" id="lists-seg-shopping" onclick="switchListKind('shopping')" role="tab">
-            <span>Shopping</span><span class="lists-count-badge" id="lists-count-shopping">0</span>
-        </button>
+        <div class="lists-segment" role="tablist" style="display: inline-flex; padding: 3px; border-radius: 100px; background: rgba(14,12,30,0.04); border: 1px solid var(--border-soft); margin-bottom: 20px;">
+            <button class="lists-segment-btn active" id="lists-seg-tasks" onclick="switchListKind('task')" role="tab" style="padding: 7px 20px; border-radius: 100px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; border: none; box-shadow: var(--shadow-card); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <span>Tasks</span><span class="lists-count-badge mono" id="lists-count-task" style="font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 100px; background: var(--brand-soft); color: var(--brand);">0</span>
+            </button>
+            <button class="lists-segment-btn" id="lists-seg-shopping" onclick="switchListKind('shopping')" role="tab" style="padding: 7px 20px; border-radius: 100px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <span>Shopping</span><span class="lists-count-badge mono" id="lists-count-shopping" style="font-size: 11px; font-weight: 600;">0</span>
+            </button>
+        </div>
+
+        <form class="lists-add-row" onsubmit="event.preventDefault();addListItemSubmit();" style="display: flex; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px 12px 18px; box-shadow: var(--shadow-card); margin-bottom: 10px;">
+            <svg class="icon" width="16" height="16" style="color: var(--text-3);"><use href="/marks/icons.svg#icon-plus"></use></svg>
+            <input type="text" id="lists-add-input" class="input" placeholder='Add a task — try "call HMRC by Friday #work"' maxlength="200" autocomplete="off" style="flex: 1; border: none; outline: none; background: transparent; font-family: var(--font-ui); font-size: 14.5px; color: var(--text);">
+            <button type="submit" class="btn btn-primary btn-sm btn-pill btn-pill-primary" id="lists-add-btn" style="padding: 7px 16px;">Add</button>
+        </form>
+        <div class="text-muted italic-quiet" style="font-size: 12px; padding: 0 4px 24px; line-height: 1.6;">
+            Click an item to edit category or due date. Use <span class="mono-chip" style="font-size: 11px;">#category</span> and natural dates like <span class="mono-chip" style="font-size: 11px;">by Friday</span>, <span class="mono-chip" style="font-size: 11px;">tomorrow</span>.
+        </div>
+
+        <div id="lists-items"></div>
+        <div id="lists-empty" class="empty-state hidden italic-quiet" style="font-size: 16px; padding: 40px 0; text-align: center;">Nothing here yet. Add one above, or just tell Memu in chat.</div>
     </div>
-
-    <form class="lists-add-row" onsubmit="event.preventDefault();addListItemSubmit();">
-        <input type="text" id="lists-add-input" class="input" placeholder="Add a task… try &quot;call HMRC by Friday #work&quot;" maxlength="200" autocomplete="off">
-        <button type="submit" class="btn btn-primary btn-sm" id="lists-add-btn">Add</button>
-    </form>
-    <div class="text-muted" style="font-size:12px;padding:0 4px 8px;">Click an item to edit category or due date. Use <code>#category</code> and "by Friday" / "tomorrow" / "in 3 days" to set them on creation.</div>
-
-    <div id="lists-items"></div>
-    <div id="lists-empty" class="empty-state hidden">Nothing here yet. Add one above, or just tell Memu in chat.</div>
 </div>
 
 <!-- Lists edit modal — opens on item click. Lets the user edit text, note,
@@ -1024,13 +1098,42 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== LEDGER TAB ==================== -->
-<div id="view-ledger" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
-    <div class="ledger-intro">
-        <div class="ledger-intro-icon">&#x1F441;</div>
-        <h3>The Privacy Ledger</h3>
-        <p class="text-muted" style="font-size:14px;line-height:1.4;margin-top:var(--space-sm);">Every time Memu sends a query to Claude, real names and places are replaced with anonymous labels. This page shows you exactly what Claude received and what was translated back.</p>
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/ledger.html.
+     The stat-row + filter pills described in the template are
+     presentation-only scaffolding that loadLedger() does not currently
+     populate, so we leave a TODO and keep the masthead + ledger-entries
+     renderer target untouched in semantics.
+     Preserved ids: view-ledger (outer wrapper), ledger-entries
+     (renderer target — loadLedger() rewrites its innerHTML). -->
+<div id="view-ledger" class="container memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 980px; margin: 0 auto;">
+        <div class="ledger-intro">
+            <div class="eyebrow">Privacy Ledger</div>
+            <h1 class="serif-display" style="font-size: 44px; line-height: 1.05;">
+                What <em class="serif-accent">AI saw</em>.
+            </h1>
+            <p class="text-muted italic-quiet" style="font-size: 16px; margin-top: 8px; margin-bottom: 28px; line-height: 1.55;">
+                Every query, anonymised. Receipts you can audit yourself.
+            </p>
+        </div>
+
+        <!-- TODO(v3): wire up the four-up summary tiles (queries this week,
+             tokens, providers, retention) — needs a new /api/ledger/stats
+             endpoint or aggregation client-side from /api/ledger. Holds
+             a blank tile row in the layout so the entries don't slam
+             into the masthead. -->
+        <div class="ledger-stats-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 32px;">
+            <!-- Stat tiles to be populated by loadLedger() when summary data lands. -->
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;">
+            <div class="eyebrow" style="margin-bottom: 0;">Recent activity</div>
+            <!-- TODO(v3): filter + export controls — wire to loadLedger()
+                 once provider filter + CSV export endpoints exist. -->
+        </div>
+
+        <div id="ledger-entries" style="display: flex; flex-direction: column; gap: 12px;"></div>
     </div>
-    <div id="ledger-entries"></div>
 </div>
 
 <!-- ==================== IMPORT TAB ==================== -->
@@ -1097,118 +1200,183 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== SETTINGS TAB ==================== -->
-<div id="view-settings" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/settings.html.
+     Preserved ids/onclicks: view-settings, settings-name, settings-server,
+     settings-calendar-row + toggleCalendarConnect(), settings-calendar-status,
+     settings-calendar-action, invite-member-row + openInviteMember(),
+     settings-household-list (renderer target). switchTab('import'),
+     switchTab('ledger'), switchTab('workspaces'), handleSignOut() all
+     intact. -->
+<div id="view-settings" class="container memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 780px; margin: 0 auto;">
+        <div class="eyebrow">Settings</div>
+        <h1 class="serif-display" style="font-size: 44px; line-height: 1.05;">
+            How <em class="serif-accent">this Memu</em> behaves.
+        </h1>
+        <p class="italic-quiet" style="font-size: 16px; margin-bottom: 36px;">
+            Your data. Your hardware. Your call.
+        </p>
 
-    <div class="section-label mt-lg">Profile</div>
-    <div class="settings-section">
-        <div class="setting-row">
-            <div class="setting-icon">&#x1F464;</div>
-            <div class="setting-content">
-                <div class="setting-title" id="settings-name"></div>
-                <div class="setting-subtitle">Your profile</div>
+        <!-- Appearance — theme toggle row. The button hooks into theme-toggle.js
+             via its class; the sidebar's #theme-toggle is the primary instance,
+             so this one uses the same class but no id (theme-toggle.js wires
+             every .theme-toggle on the page). -->
+        <div class="settings-section" data-section="appearance">
+            <div class="eyebrow">Appearance</div>
+            <div class="memu-card" style="padding: 18px 20px; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                    <div>
+                        <div style="font-size: 14.5px; font-weight: 500;">Theme</div>
+                        <div style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Light, dark, or follow system preference</div>
+                    </div>
+                    <button class="theme-toggle" aria-label="Toggle theme"></button>
+                </div>
             </div>
         </div>
+
+        <!-- Profile -->
+        <div class="settings-section" data-section="profile">
+            <div class="eyebrow">Profile</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x1F464;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" id="settings-name" style="font-size: 14.5px; font-weight: 500; color: var(--text);"></div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Your profile</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection -->
+        <div class="settings-section" data-section="connection">
+            <div class="eyebrow">Connection</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x1F5A5;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Server</div>
+                        <div class="setting-subtitle" id="settings-server" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;"></div>
+                    </div>
+                </div>
+                <div class="setting-row" id="settings-calendar-row" onclick="toggleCalendarConnect()" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-top: 1px solid var(--border-soft); cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x1F4C5;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Google Calendar</div>
+                        <div class="setting-subtitle" id="settings-calendar-status" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Check connection…</div>
+                    </div>
+                    <div id="settings-calendar-action"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Context -->
+        <div class="settings-section" data-section="context">
+            <div class="eyebrow">Context</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="switchTab('import')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x2601;&#65039;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Import Context</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">WhatsApp exports, Obsidian notes, documents</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Privacy -->
+        <div class="settings-section" data-section="privacy">
+            <div class="eyebrow">Privacy</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="switchTab('ledger')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-eye"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">What Claude Saw</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">View the Privacy Ledger</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Household -->
+        <div class="settings-section" data-section="household">
+            <div class="eyebrow">Household</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="openInviteMember()" id="invite-member-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Add household member</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Invite an adult or child to this Memu</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Invite →</span>
+                </div>
+                <div id="settings-household-list"></div>
+            </div>
+        </div>
+
+        <!-- Workspaces -->
+        <div class="settings-section" data-section="workspaces">
+            <div class="eyebrow">Workspaces</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="switchTab('workspaces')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-spaces"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Workspaces</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Personal, household, ventures — switch between them</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- About -->
+        <div class="settings-section" data-section="about">
+            <div class="eyebrow">About</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x2139;&#65039;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Memu</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">v0.1.0 — Intelligence without surveillance</div>
+                    </div>
+                </div>
+                <div class="setting-row" onclick="window.open('https://github.com/kanchanepally/memu-core')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-top: 1px solid var(--border-soft); cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-code"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Source Code</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">AGPLv3 — Open Source</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account -->
+        <div class="settings-section" data-section="account">
+            <div class="eyebrow">Account</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="handleSignOut()" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon setting-icon-destructive" style="width: 32px; height: 32px; border-radius: 8px; background: var(--red-bg); border: 1px solid rgba(168, 54, 75, 0.2); display: inline-flex; align-items: center; justify-content: center; color: var(--red); font-size: 14px;">&#x274C;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title text-error" style="font-size: 14.5px; font-weight: 500; color: var(--red);">Sign out</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Disconnect from this server</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-tagline italic-quiet" style="padding: 32px 0 16px; text-align: center; font-size: 13px;">Your family's data belongs to your family.</div>
     </div>
-
-    <div class="section-label">Connection</div>
-    <div class="settings-section">
-        <div class="setting-row">
-            <div class="setting-icon">&#x1F5A5;</div>
-            <div class="setting-content">
-                <div class="setting-title">Server</div>
-                <div class="setting-subtitle" id="settings-server"></div>
-            </div>
-        </div>
-        <div class="setting-row" id="settings-calendar-row" onclick="toggleCalendarConnect()">
-            <div class="setting-icon">&#x1F4C5;</div>
-            <div class="setting-content">
-                <div class="setting-title">Google Calendar</div>
-                <div class="setting-subtitle" id="settings-calendar-status">Check connection...</div>
-            </div>
-            <div id="settings-calendar-action"></div>
-        </div>
-    </div>
-
-    <div class="section-label">Context</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="switchTab('import')">
-            <div class="setting-icon">&#x2601;&#65039;</div>
-            <div class="setting-content">
-                <div class="setting-title">Import Context</div>
-                <div class="setting-subtitle">WhatsApp exports, Obsidian notes, documents</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">Privacy</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="switchTab('ledger')">
-            <div class="setting-icon">&#x1F441;</div>
-            <div class="setting-content">
-                <div class="setting-title">What Claude Saw</div>
-                <div class="setting-subtitle">View the Privacy Ledger</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">Household</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="openInviteMember()" id="invite-member-row">
-            <div class="setting-icon">&#x2795;</div>
-            <div class="setting-content">
-                <div class="setting-title">Add household member</div>
-                <div class="setting-subtitle">Invite an adult or child to this Memu</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-        <div id="settings-household-list"></div>
-    </div>
-
-    <div class="section-label">Workspaces</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="switchTab('workspaces')">
-            <div class="setting-icon">&#x1F5C2;</div>
-            <div class="setting-content">
-                <div class="setting-title">Workspaces</div>
-                <div class="setting-subtitle">Personal, household, ventures — switch between them</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">About</div>
-    <div class="settings-section">
-        <div class="setting-row">
-            <div class="setting-icon">&#x2139;&#65039;</div>
-            <div class="setting-content">
-                <div class="setting-title">Memu</div>
-                <div class="setting-subtitle">v0.1.0 — Intelligence without surveillance</div>
-            </div>
-        </div>
-        <div class="setting-row" onclick="window.open('https://github.com/kanchanepally/memu-core')">
-            <div class="setting-icon">&#x1F4BB;</div>
-            <div class="setting-content">
-                <div class="setting-title">Source Code</div>
-                <div class="setting-subtitle">AGPLv3 — Open Source</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">Account</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="handleSignOut()">
-            <div class="setting-icon setting-icon-destructive" style="color:var(--color-error);">&#x274C;</div>
-            <div class="setting-content">
-                <div class="setting-title text-error">Sign out</div>
-                <div class="setting-subtitle">Disconnect from this server</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="footer-tagline">Your family's data belongs to your family.</div>
 </div>
 
 </main>
@@ -5769,6 +5937,12 @@ function renderSelectedDay() {
     loadBrief();
 })();
 </script>
+<!-- v3 redesign: wires up any element with class .theme-toggle or
+     id #theme-toggle to flip data-theme on <html>. Adds the SVG
+     icon, persists to localStorage as 'memu-theme', falls back to
+     prefers-color-scheme on first load. Load LAST so element refs
+     resolve cleanly. -->
+<script src="/js/theme-toggle.js?v=2026-05-16-v3-1"></script>
 </body>
 </html>
 

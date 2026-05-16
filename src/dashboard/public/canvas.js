@@ -50,9 +50,16 @@
         parent_child:  { color: '#5054B5', style: 'solid',  width: 2.0, opacity: 0.6 },
     };
 
+    // v3: covers both the family set (person/routine/household/commitment/
+    // document) and the research set (memo/theme/participant/source/
+    // document/question/quote). The previewCat fallback for unmapped
+    // categories stays as 'Space' so this is forward-compatible if more
+    // workspace types land later.
     const CATEGORY_LABEL = {
         person: 'Person', routine: 'Routine', household: 'Household',
         commitment: 'Commitment', document: 'Document',
+        memo: 'Memo', theme: 'Theme', participant: 'Participant',
+        source: 'Source', question: 'Question', quote: 'Quote',
     };
 
     // ---- Sparse-state dismissal — session only. ----
@@ -126,7 +133,10 @@
     const linkModalSave = $('link-modal-save');
     const inlineCreate = $('canvas-inline-create');
     const inlineInput = $('canvas-inline-input');
-    const inlineCats = inlineCreate ? inlineCreate.querySelectorAll('.canvas-inline-cat') : [];
+    // v3: inline-cat chips are queried fresh inside showInlineCreate() +
+    // delegated for clicks, because the chip set re-renders when the
+    // active workspace type resolves (family vs research). A captured
+    // NodeList here would go stale on re-render.
     const fab = $('canvas-fab');
 
     // ---- Helpers ----
@@ -596,14 +606,18 @@
     });
 
     // Category-chip click → opens create modal pre-filled with parent.
-    catPalette.querySelectorAll('.canvas-cat-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            const cat = chip.getAttribute('data-category');
-            const parentUri = catPalette.dataset.parentUri;
-            const parentTitle = catPalette.dataset.parentTitle || '…';
-            hide(catPalette);
-            openCreateModal({ parentUri, parentTitle, category: cat });
-        });
+    // v3: delegated off the container so the chips can be re-rendered
+    // when the active workspace type resolves (FAMILY_SET vs RESEARCH_SET
+    // — see renderCategoryChips() in canvas.html <head>). A captured
+    // NodeList would go stale on re-render.
+    catPalette.addEventListener('click', (evt) => {
+        const chip = evt.target.closest('.canvas-cat-chip');
+        if (!chip || !catPalette.contains(chip)) return;
+        const cat = chip.getAttribute('data-category');
+        const parentUri = catPalette.dataset.parentUri;
+        const parentTitle = catPalette.dataset.parentTitle || '…';
+        hide(catPalette);
+        openCreateModal({ parentUri, parentTitle, category: cat });
     });
 
     // Click outside palette closes it
@@ -676,12 +690,18 @@
         if (!inlineCreate || !inlineInput) return;
         inlineState.modelX = modelX;
         inlineState.modelY = modelY;
-        // Reset chip state to default Commitment (last-used would be nice
-        // later, but the default is the right starting point for a
-        // first-use Memex feel).
-        inlineState.category = 'commitment';
-        inlineCats.forEach(chip => {
-            chip.dataset.active = chip.getAttribute('data-category') === 'commitment' ? 'true' : 'false';
+        // v3: re-query .canvas-inline-cat at show-time because the chip set
+        // can change when the active workspace type resolves (family vs
+        // research). The default category becomes the first chip in the
+        // active set — `commitment` for family, `memo` for research —
+        // matching how dashboard.html's getActiveCategorySet()[0] is used
+        // as the default for the manual-create modal.
+        const currentChips = inlineCreate.querySelectorAll('.canvas-inline-cat');
+        const firstChip = currentChips[0];
+        const defaultCategory = firstChip ? firstChip.getAttribute('data-category') : 'commitment';
+        inlineState.category = defaultCategory;
+        currentChips.forEach(chip => {
+            chip.dataset.active = chip.getAttribute('data-category') === defaultCategory ? 'true' : 'false';
         });
         // Position on stage. CSS uses translate(-50%,-50%) so the input
         // centres on the click point.
@@ -706,15 +726,20 @@
         inlineInput && (inlineInput.value = '');
     }
 
-    inlineCats.forEach(chip => {
-        chip.addEventListener('click', (evt) => {
+    // v3: delegated off the inline-create container so the chips can be
+    // re-rendered when the active workspace type resolves (FAMILY_SET vs
+    // RESEARCH_SET — see renderCategoryChips() in canvas.html <head>).
+    if (inlineCreate) {
+        inlineCreate.addEventListener('click', (evt) => {
+            const chip = evt.target.closest('.canvas-inline-cat');
+            if (!chip || !inlineCreate.contains(chip)) return;
             evt.stopPropagation();
-            inlineCats.forEach(c => c.dataset.active = 'false');
+            inlineCreate.querySelectorAll('.canvas-inline-cat').forEach(c => c.dataset.active = 'false');
             chip.dataset.active = 'true';
             inlineState.category = chip.getAttribute('data-category');
             inlineInput && inlineInput.focus();
         });
-    });
+    }
 
     // Click outside the inline-create closes it. We bind on stage so
     // toolbar / topbar clicks don't fire it.

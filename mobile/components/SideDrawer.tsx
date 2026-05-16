@@ -18,6 +18,14 @@ import { colors, spacing, radius, typography } from '../lib/tokens';
 import { LogoMark } from './Logo';
 import { listConversations, type ConversationSummary } from '../lib/api';
 import { loadAuthState } from '../lib/auth';
+// TODO(v3): re-skin SideDrawer to consume useTokens() so it follows the
+// dark-mode swap. The static `colors.*` aliases here all resolve to the
+// v3 light palette via tokens.ts back-compat shims, so the drawer
+// already renders consistent with the v3 visuals in light mode.
+// Dark-mode parity requires lifting every styles.* color into a
+// per-render closure that reads from useTokens() — leaving as one
+// dedicated session because the conversation list + animations make
+// the refactor non-trivial.
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(300, SCREEN_WIDTH * 0.82);

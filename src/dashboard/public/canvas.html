@@ -4,9 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spaces Canvas — Memu</title>
-
+    <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
+         prevent a light/dark flash on reload. Mirrors dashboard.html. -->
+    <script src="/js/theme-init.js?v=2026-05-16-v3-1"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- v3 design tokens FIRST (compatibility block aliases the existing
+         Indigo Sanctuary var names so style.css + canvas.css keep working). -->
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-16-v3-1">
     <link rel="stylesheet" href="/css/style.css?v=2026-04-29-lists-categories">
     <link rel="stylesheet" href="/canvas.css?v=2026-04-30-canvas-mindjet">
+    <!-- v3 component classes (.eyebrow, .serif-display, .btn-pill, etc.) -->
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-1">
     <!-- Cytoscape + fcose layout. Vanilla, no React wrapper. -->
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.min.js"></script>
@@ -28,9 +38,6 @@ if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
 // this, the server's resolveActiveWorkspace defaults to the user's
 // personal workspace and /api/spaces/graph returns its (usually empty)
 // graph regardless of which workspace the user thinks they're on.
-// Symptom: blank canvas for any user with > 1 workspace. The header
-// is omitted when nothing's selected; server falls back to
-// personal-then-first per its own resolver.
 async function api(path, opts = {}) {
     const callerHeaders = opts.headers || {};
     const explicitWorkspaceHeader =
@@ -47,18 +54,127 @@ async function api(path, opts = {}) {
     const res = await fetch(auth.serverUrl + path, { ...opts, headers });
     return res;
 }
+
+// -----------------------------------------------------------------------------
+// v3 redesign — workspace-type-driven category chips.
+//
+// Bug fixed: canvas.html previously hardcoded the family-set categories
+// (person / routine / household / commitment / document) into three
+// places — the legend, the inline-create category row, and the
+// Gesture-1 add-Space palette — so a research workspace's user saw the
+// wrong picker even though /api/spaces/graph returned the correct
+// research-flavoured nodes. The fix mirrors dashboard.html's
+// getActiveCategorySet(): resolve the active workspace's type from
+// GET /api/workspaces (server's resolveActiveWorkspace decides which
+// one is active), pick FAMILY_SET vs RESEARCH_SET, then render every
+// chip strip from that set. Each chip carries `data-category="<slug>"`
+// — the existing canvas.js handlers in this file read that attribute
+// blindly, so no JS changes downstream.
+// -----------------------------------------------------------------------------
+
+const CATEGORY_DISPLAYS = {
+    person:      { label: 'Person',      swatch: 'sw-person' },
+    routine:     { label: 'Routine',     swatch: 'sw-routine' },
+    household:   { label: 'Household',   swatch: 'sw-household' },
+    commitment:  { label: 'Commitment',  swatch: 'sw-commitment' },
+    document:    { label: 'Document',    swatch: 'sw-document' },
+    memo:        { label: 'Memo',        swatch: 'sw-document' },
+    theme:       { label: 'Theme',       swatch: 'sw-routine' },
+    participant: { label: 'Participant', swatch: 'sw-person' },
+    source:      { label: 'Source',      swatch: 'sw-document' },
+    question:    { label: 'Question',    swatch: 'sw-commitment' },
+    quote:       { label: 'Quote',       swatch: 'sw-routine' },
+};
+
+const FAMILY_SET   = ['person', 'routine', 'household', 'commitment', 'document'];
+const RESEARCH_SET = ['memo', 'theme', 'participant', 'source', 'document', 'question', 'quote'];
+
+let activeWorkspaceType = null; // resolved at boot
+
+async function resolveActiveWorkspaceType() {
+    try {
+        const res = await api('/api/workspaces');
+        if (!res.ok) return null;
+        const data = await res.json();
+        const items = data.workspaces || [];
+        const activeId = getActiveWorkspaceId();
+        if (activeId) {
+            const explicit = items.find(x => x.id === activeId);
+            if (explicit) return explicit.type || null;
+        }
+        // Mirror server resolveActiveWorkspace: personal > first.
+        const personal = items.find(x => x.type === 'personal');
+        if (personal) return personal.type;
+        return items[0] ? items[0].type : null;
+    } catch (e) {
+        console.warn('[canvas] workspace resolve failed', e);
+        return null;
+    }
+}
+
+function getActiveCategorySet() {
+    return activeWorkspaceType === 'research' ? RESEARCH_SET : FAMILY_SET;
+}
+
+function renderCategoryChips() {
+    const set = getActiveCategorySet();
+
+    // Legend rows.
+    const legend = document.getElementById('canvas-legend');
+    if (legend) {
+        legend.innerHTML = set.map(key => {
+            const d = CATEGORY_DISPLAYS[key];
+            if (!d) return '';
+            return `<div class="canvas-legend-row"><span class="canvas-legend-swatch ${d.swatch}"></span>${d.label}</div>`;
+        }).join('');
+    }
+
+    // Inline-create category strip (double-click empty canvas).
+    const inlineCats = document.querySelector('.canvas-inline-cats');
+    if (inlineCats) {
+        inlineCats.innerHTML = set.map((key, i) => {
+            const d = CATEGORY_DISPLAYS[key];
+            if (!d) return '';
+            const active = i === 0 ? ' data-active="true"' : '';
+            return `<button class="canvas-inline-cat" data-category="${key}"${active} title="${d.label}">` +
+                   `<span class="canvas-inline-cat-swatch ${d.swatch}"></span>${d.label}` +
+                   `</button>`;
+        }).join('');
+    }
+
+    // Gesture-1 add-Space palette.
+    const catPalette = document.getElementById('canvas-cat-palette');
+    if (catPalette) {
+        catPalette.innerHTML = set.map(key => {
+            const d = CATEGORY_DISPLAYS[key];
+            if (!d) return '';
+            return `<button class="canvas-cat-chip" data-category="${key}" role="menuitem">${d.label}</button>`;
+        }).join('');
+    }
+}
+
+// Render the family-set chips synchronously so the canvas chrome looks
+// right even before /api/workspaces returns. resolveActiveWorkspaceType()
+// then re-renders if we're actually on a research workspace.
+renderCategoryChips();
+resolveActiveWorkspaceType().then(type => {
+    activeWorkspaceType = type;
+    renderCategoryChips();
+});
 </script>
 
-<div class="canvas-shell">
+<div class="canvas-shell memu-glow-bg">
     <header class="canvas-topbar">
         <a class="canvas-back" href="/dashboard.html#spaces" title="Back to Spaces">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
             <span>Spaces</span>
         </a>
         <div class="canvas-title" id="canvas-title">
-            <span class="canvas-title-eyebrow">Canvas</span>
-            <h1 class="canvas-title-text">How it all connects</h1>
-            <span class="canvas-title-subtitle">Your Spaces, on one canvas.</span>
+            <span class="canvas-title-eyebrow eyebrow" style="margin-bottom:4px;">Spaces · Canvas</span>
+            <h1 class="canvas-title-text serif-display" style="font-size:24px;font-weight:500;">
+                The shape of what <em class="serif-accent">Memu knows</em>
+            </h1>
+            <span class="canvas-title-subtitle italic-quiet" style="font-size:13px;">Your Spaces, on one canvas.</span>
         </div>
         <div class="canvas-breadcrumb hidden" id="canvas-breadcrumb">
             <a href="#" class="canvas-breadcrumb-link" id="breadcrumb-root">Canvas</a>
@@ -84,6 +200,7 @@ async function api(path, opts = {}) {
             </div>
             <div class="canvas-toolbar-group canvas-toolbar-group-right">
                 <input type="search" id="canvas-search" class="canvas-search" placeholder="Search Spaces…" aria-label="Search">
+                <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme"></button>
             </div>
         </div>
     </header>
@@ -96,7 +213,7 @@ async function api(path, opts = {}) {
         <div class="canvas-empty hidden" id="canvas-empty">
             <h2>No Spaces yet</h2>
             <p>The canvas lights up once you have a few Spaces. Head back and create one — or chat with Memu and let them build themselves.</p>
-            <a class="btn btn-primary btn-sm" href="/dashboard.html#spaces">Back to Spaces</a>
+            <a class="btn btn-primary btn-sm btn-pill btn-pill-primary" href="/dashboard.html#spaces">Back to Spaces</a>
         </div>
         <div class="canvas-sparse hidden" id="canvas-sparse">
             <p>More connections will form as Memu finds patterns between your Spaces, or when you draw them yourself. Hover any node to start.</p>
@@ -138,13 +255,12 @@ async function api(path, opts = {}) {
             <p class="canvas-preview-excerpt" id="preview-excerpt"></p>
         </div>
 
-        <!-- Legend. Subtle, not modal. -->
+        <!-- Legend. Subtle, not modal. Rendered by renderCategoryChips() above
+             from the workspace-type-driven set so a research workspace gets
+             memo/theme/participant/source/document/question/quote instead of
+             the hardcoded family set. -->
         <div class="canvas-legend" id="canvas-legend">
-            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-person"></span>Person</div>
-            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-routine"></span>Routine</div>
-            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-household"></span>Household</div>
-            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-commitment"></span>Commitment</div>
-            <div class="canvas-legend-row"><span class="canvas-legend-swatch sw-document"></span>Document</div>
+            <!-- Filled by renderCategoryChips() in <head> script. -->
         </div>
 
         <!-- Toast (post-action confirmations + Undo). 5-second auto-dismiss with progress bar. -->
@@ -160,21 +276,7 @@ async function api(path, opts = {}) {
             <input type="text" class="canvas-inline-input" id="canvas-inline-input"
                    placeholder="Name this Space, press Enter…" autocomplete="off" spellcheck="false">
             <div class="canvas-inline-cats" role="group" aria-label="Category">
-                <button class="canvas-inline-cat" data-category="commitment" data-active="true" title="Commitment">
-                    <span class="canvas-inline-cat-swatch sw-commitment"></span>Commitment
-                </button>
-                <button class="canvas-inline-cat" data-category="person" title="Person">
-                    <span class="canvas-inline-cat-swatch sw-person"></span>Person
-                </button>
-                <button class="canvas-inline-cat" data-category="routine" title="Routine">
-                    <span class="canvas-inline-cat-swatch sw-routine"></span>Routine
-                </button>
-                <button class="canvas-inline-cat" data-category="household" title="Household">
-                    <span class="canvas-inline-cat-swatch sw-household"></span>Household
-                </button>
-                <button class="canvas-inline-cat" data-category="document" title="Document">
-                    <span class="canvas-inline-cat-swatch sw-document"></span>Document
-                </button>
+                <!-- Filled by renderCategoryChips() in <head> script. -->
             </div>
             <div class="canvas-inline-hint">Enter to create · Esc to cancel · click a category to switch</div>
         </div>
@@ -186,13 +288,11 @@ async function api(path, opts = {}) {
     </div>
 </div>
 
-<!-- Category-picker palette for Gesture 1's "+" — appears next to the node when invoked. -->
+<!-- Category-picker palette for Gesture 1's "+" — appears next to the node when invoked.
+     Filled by renderCategoryChips() in <head> script so a research workspace
+     gets the research category set. -->
 <div class="canvas-cat-palette hidden" id="canvas-cat-palette" role="menu">
-    <button class="canvas-cat-chip" data-category="person"   role="menuitem">Person</button>
-    <button class="canvas-cat-chip" data-category="routine"  role="menuitem">Routine</button>
-    <button class="canvas-cat-chip" data-category="household" role="menuitem">Household</button>
-    <button class="canvas-cat-chip" data-category="commitment" role="menuitem">Commitment</button>
-    <button class="canvas-cat-chip" data-category="document" role="menuitem">Document</button>
+    <!-- Filled by renderCategoryChips() in <head> script. -->
 </div>
 
 <!-- Modal: create sub-Space. Reused by Gesture 1. -->
@@ -226,5 +326,7 @@ async function api(path, opts = {}) {
 </div>
 
 <script src="/canvas.js?v=2026-04-30-canvas-mindjet"></script>
+<!-- v3 redesign: wires #theme-toggle and any .theme-toggle on the page. -->
+<script src="/js/theme-toggle.js?v=2026-05-16-v3-1"></script>
 </body>
 </html>
