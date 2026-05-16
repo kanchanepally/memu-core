@@ -26,6 +26,115 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### v3 visual redesign — pickup point (added 2026-05-16 late-night close)
+
+**Trigger phrase from Hareesh:** "let's pick up v3 redesign work" (or
+any reference to the redesign / pwa-redesign / mobile-redesign folders).
+
+**Where we are.** Branch `feat/v3-redesign` at `9ed3809` carries the
+full v3 visual redesign — design system foundation + 8 PWA per-screen
+ports + mobile theme provider + mobile chrome reskin. Not merged to
+main yet. Hareesh pulls + tests on the Z2 and EAS APK before merge.
+
+**What landed (16 commits across 3 logical phases):**
+
+Phase 1 — design system foundation (`92bfb66`):
+- `css/memu-tokens.css` (light + dark + back-compat aliases for
+  Indigo Sanctuary var names so style.css works through transition)
+- `css/memu-components.css` (.eyebrow, .serif-display, .memu-card,
+  .btn-pill, .status-pill, .mono-chip, .memu-glow-bg, .theme-toggle,
+  +5 more)
+- `js/theme-init.js` + `js/theme-toggle.js`
+- `marks/` — 16 SVGs (logomark + 14 hand-drawn marks + icons.svg
+  sprite with 28 named icons)
+- dashboard.html `<head>` and body-end wired with all three
+
+Phase 2 — PWA per-screen ports (`f8fab3b` → `e0972da`, 8 commits):
+- Sidebar (with theme toggle button)
+- Today (Dashboard)
+- Chat
+- Calendar
+- Lists
+- Privacy Ledger
+- Settings (with Appearance section + second theme toggle)
+- Spaces list view + canvas.html chrome refresh **+ chip-set bug fix
+  for research workspaces** (item 1 from the researcher pickup
+  absorbed into this commit per Hareesh's combine call)
+
+Phase 3 — mobile theme + drawer (`ef6d208` → `1319c9a`, 6 commits):
+- 5 deps installed (react-native-svg, AsyncStorage, 3 Google Font
+  packages) — package-lock committed
+- `lib/tokens.ts` replaced with v3 light/dark maps + back-compat
+  shims at the bottom for ~41 existing files that import
+  colors/typography/shadows/motion
+- `lib/theme.tsx` (ThemeProvider + useTokens() + system-aware +
+  AsyncStorage persistence)
+- `lib/fonts.ts` (useMemuFonts hook for Inter + Newsreader +
+  JetBrains Mono)
+- `components/Marks.tsx` + `MobileHeader.tsx` + `ThemeToggle.tsx`
+- `_layout.tsx` wraps the app in ThemeProvider + loads fonts
+- `SideDrawer` re-skinned in place (not replaced) — existing wiring
+  preserved, light mode renders v3, dark-mode parity refactor noted
+  as TODO at `SideDrawer.tsx:20`
+- Settings adds a ThemeToggle card above Privacy (`bee4314`)
+
+**What Hareesh tests on first pull:**
+1. PWA hard-refresh in Chrome on the Z2. Toggle theme via the icon in
+   sidebar OR in Settings → Appearance — should swap light ↔ dark
+   without a flash on reload. data-theme attribute on `<html>`.
+2. Cycle through every tab (Chat, Spaces, Today, Calendar, Lists,
+   Ledger, Settings) — verify no console errors and that all the
+   interactive features still work: chat send, conversation switch,
+   PDF upload, focus mode, Memo composer, calendar event open, list
+   item check, etc. Most of the live wiring is JS-bound by id /
+   onclick / data-* which the agents preserved.
+3. Canvas page (Spaces graph view) — confirm chip strip varies per
+   workspace type (research workspaces no longer show person/routine/
+   household/commitment/document chips).
+4. Mobile: rebuild EAS Android preview, install. Should see new font
+   stack + theme toggle in Settings. Today/Chat/Spaces/Lists/Calendar
+   render with v3 chrome (header + container colors come from
+   `useTokens()`) but the per-screen content cards are still legacy
+   shapes — the deep content port is a follow-on session.
+
+**Known incomplete — for the follow-on session(s):**
+
+1. **PWA — Spaces detail / edit / share / Connect / Manual-create
+   modals not re-skinned.** Agent A flagged: these are JS-wired with
+   cancel/submit flows; reskinning blind would risk breaking. The
+   list view (chips, feature card, grid, continue-reading) is fully
+   ported.
+2. **PWA — Workspaces (`view-workspaces`) + Import (`view-import`)
+   tabs not re-skinned.** Not in the brief's 9-view list, no template
+   in pwa-redesign/. They continue to work via compat aliases.
+3. **PWA — Ledger four-up stats + provider filter + CSV export.**
+   Two `<!-- TODO(v3) -->` markers in dashboard.html ledger section.
+   Render as empty layout placeholders. Need a `/api/ledger/stats`
+   endpoint + backend wiring for filter + export.
+4. **Mobile — per-screen content ports for Today, Chat, Spaces,
+   Lists, Calendar.** Agent B deliberately deferred the JSX swap
+   because the reference screens are 90-145 line mockups with
+   hardcoded placeholders ("FRIDAY 16 MAY · 09:14", "Hareesh", "Home
+   Garden has been dormant 3 weeks") vs live screens at 600-1400
+   lines with real data hooks. A literal swap would have lost
+   hundreds of lines of working features. The next session per-screen
+   port renders the brief data inside v3 "What I noticed" / "What I'm
+   thinking" card shapes for Today, indigo bubbles + anonymised pill
+   for Chat, asymmetric grid for Spaces, etc.
+5. **Mobile — SideDrawer dark-mode parity.** Static `styles.*` colors
+   need lifting into a per-render closure reading `useTokens()`.
+   Note at `mobile/components/SideDrawer.tsx:20`.
+
+**Test status at merge:** 786 backend tests passing (no regression
+vs main), backend tsc clean, mobile tsc clean.
+
+**Branch operations:**
+- `feat/v3-redesign` is pushed. Sub-branches deleted local + remote.
+- Worktrees cleaned up.
+- Merge to main via PR when Hareesh is happy after his test pass.
+
+---
+
 ### Researcher space — pickup point (added 2026-05-16 evening close)
 
 **Trigger phrase from Hareesh:** "let's pick up researcher space work".
