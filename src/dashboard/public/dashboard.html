@@ -4,14 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memu</title>
+    <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
+         prevent a light/dark flash on reload. Must be synchronous + in
+         <head> BEFORE any stylesheet is parsed. -->
+    <script src="/js/theme-init.js?v=2026-05-16-v3-1"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- v3 redesign: design tokens FIRST. The compatibility block at
+         the bottom of memu-tokens.css aliases the existing Indigo
+         Sanctuary var names (--indigo-primary, --on-surface, etc.) to
+         the new tokens so style.css keeps working through transition. -->
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-16-v3-1">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
     <link rel="stylesheet" href="/css/style.css?v=2026-05-16-r2-r3-dispatch-fix">
+    <!-- v3 redesign: component classes layered on top of style.css.
+         Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
+         No selector overlap with style.css — purely additive. -->
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-1">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -5769,6 +5782,12 @@ function renderSelectedDay() {
     loadBrief();
 })();
 </script>
+<!-- v3 redesign: wires up any element with class .theme-toggle or
+     id #theme-toggle to flip data-theme on <html>. Adds the SVG
+     icon, persists to localStorage as 'memu-theme', falls back to
+     prefers-color-scheme on first load. Load LAST so element refs
+     resolve cleanly. -->
+<script src="/js/theme-toggle.js?v=2026-05-16-v3-1"></script>
 </body>
 </html>
 
