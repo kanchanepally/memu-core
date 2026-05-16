@@ -2419,6 +2419,86 @@ server.get('/api/spaces/recently-read', async (request, reply) => {
   }
 });
 
+// Build Spec 2 Phase R3 — PDF active-reading insights.
+//
+// GET /api/spaces/:id/insights — every Memo / Quote / Code (theme) /
+// Question Space that carries a `source:<thisSpaceUri>...` entry in
+// its `source_references[]`. Drives the right-hand insights panel
+// in the PDF reading view (and any future Space-detail surface that
+// wants to show derived artefacts).
+//
+// "Code" is a researcher-facing label for thematic coding; under the
+// hood the category is `theme` (research-set category for thematic
+// tags). The PWA renders the UI label "CODE" but the wire shape
+// stays `category: 'theme'` so no schema/migration churn.
+//
+// Source-ref matching: a Space counts as an insight if any entry in
+// its `source_references` is exactly `source:<uri>` (free-form
+// capture) or starts with `source:<uri>#` (anchored capture —
+// `#pid:` for body text, `#page=N&rect=...` for PDF). Same
+// invariant the client uses via parseInsightSourceRef.
+server.get('/api/spaces/:id/insights', async (request, reply) => {
+  try {
+    const profileId = (request as any).profileId;
+    const { id } = request.params as { id: string };
+    // First resolve the source Space's URI + family scope. RLS keeps
+    // cross-Collective lookups invisible — this is a normal scoped
+    // query via db.query.
+    const sourceRes = await db.query<{ family_id: string; uri: string }>(
+      `SELECT family_id, uri FROM synthesis_pages WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (sourceRes.rowCount === 0) {
+      return reply.code(404).send({ error: 'Space not found' });
+    }
+    const sourceUri = sourceRes.rows[0].uri;
+    // Match either exact `source:<uri>` (free-form) or
+    // `source:<uri>#<...>` (anchored). LIKE pattern is anchored on
+    // the prefix and escapes nothing — Space URIs in this codebase
+    // don't contain SQL wildcards.
+    const exactRef = `source:${sourceUri}`;
+    const prefixRef = `source:${sourceUri}#%`;
+    const insightsRes = await db.query<{
+      id: string;
+      uri: string;
+      category: string;
+      title: string;
+      body_markdown: string;
+      source_references: string[];
+      last_updated_at: Date;
+      tags: string[];
+    }>(
+      `SELECT id, uri, category, title, body_markdown, source_references,
+              last_updated_at, tags
+         FROM synthesis_pages
+        WHERE family_id = $1
+          AND category IN ('memo', 'quote', 'theme', 'question')
+          AND EXISTS (
+            SELECT 1 FROM unnest(source_references) AS ref
+             WHERE ref = $2 OR ref LIKE $3
+          )
+        ORDER BY last_updated_at DESC`,
+      [profileId, exactRef, prefixRef],
+    );
+    return {
+      sourceUri,
+      insights: insightsRes.rows.map(r => ({
+        id: r.id,
+        uri: r.uri,
+        category: r.category,
+        title: r.title,
+        body_markdown: r.body_markdown,
+        source_references: r.source_references,
+        last_updated_at: r.last_updated_at,
+        tags: r.tags,
+      })),
+    };
+  } catch (err) {
+    server.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch insights' });
+  }
+});
+
 // Delete a Space
 server.delete('/api/spaces/:id', async (request, reply) => {
   try {
