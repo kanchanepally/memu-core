@@ -289,6 +289,12 @@
             .onboarding-bar { padding: var(--space-sm) var(--space-md); }
         }
     </style>
+    <!-- PWA installability — same manifest + theme-color + icon hints
+         as dashboard.html and index.html. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#5054B5">
+    <link rel="icon" type="image/svg+xml" href="/icons/memu-mark.svg">
+    <link rel="apple-touch-icon" href="/icons/memu-mark.svg">
 </head>
 <body>
 <!-- Auth gate — same pattern as dashboard.html. Onboarding requires an

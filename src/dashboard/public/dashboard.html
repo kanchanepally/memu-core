@@ -25,6 +25,14 @@
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
     <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-polish">
+    <!-- PWA installability — manifest + theme-color + icon hints.
+         Chrome's install heuristic requires manifest + a registered
+         service worker (see SW registration further down). After deploy
+         + hard refresh, Chrome address bar shows "Install Memu". -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#5054B5">
+    <link rel="icon" type="image/svg+xml" href="/icons/memu-mark.svg">
+    <link rel="apple-touch-icon" href="/icons/memu-mark.svg">
     <!-- R3 PDF reading workbench — insights panel, synthesis composer,
          extracted-text toggle, passage highlights. Scoped exclusively to
          .insight-*, .insights-*, .space-detail-workbench, .pdf-passage-*,
@@ -227,6 +235,17 @@ function setActiveWorkspaceId(id) {
 }
 const auth = getAuth();
 if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
+
+// PWA installability — register the service worker once on page load.
+// The SW itself is pass-through (no caching today); its purpose is to
+// satisfy Chrome's install-prompt heuristic. Errors are non-fatal — if
+// registration fails the app keeps working, just not installable.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+            .catch(err => console.warn('[SW] registration failed:', err));
+    });
+}
 
 async function api(path, opts = {}) {
     const callerHeaders = opts.headers || {};
