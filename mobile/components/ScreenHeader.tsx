@@ -1,29 +1,29 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform, StatusBar } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { View, Text, Pressable, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { colors, spacing, typography } from '../lib/tokens';
+import Svg, { Path } from 'react-native-svg';
+import { useTokens } from '../lib/theme';
 import { useDrawer } from '../lib/drawer';
 
 /**
- * Indigo Sanctuary top header.
- * Left: hamburger menu icon — tap to open the side drawer (PWA parity).
- *       Pre-2026-05-06 the trigger was the LogoMark, which read as a brand
- *       mark not as a button. Hamburger is unambiguous.
- * Centre: optional wordmark, or page title next to the hamburger.
- * Right: optional overflow / close / chat-history button.
+ * v3 top header. Hamburger left, optional title (Newsreader serif), optional
+ * right icon. Uses useTokens() so light/dark mode tracks the theme switcher
+ * in Settings.
  *
- * `statusLabel` and `statusPulse` are accepted for back-compat but no longer
- * rendered — they were obscuring the wordmark and added little signal.
- * `showLogo` is also kept for back-compat; it now controls hamburger visibility.
+ * Pre-v3 ScreenHeader used a BlurView + static Indigo Sanctuary tokens; the
+ * shape and props are preserved so every existing call site keeps working.
+ *
+ * `statusLabel` / `statusPulse` / `showWordmark` are accepted for back-compat
+ * but no longer rendered — they were obscuring the title and added little
+ * signal in the v3 layout.
  */
 interface Props {
   title?: string;
-  showLogo?: boolean;
-  showWordmark?: boolean;
-  statusLabel?: string;
-  statusPulse?: boolean;
+  showLogo?: boolean;       // back-compat — controls hamburger visibility
+  showWordmark?: boolean;   // back-compat — no longer rendered
+  statusLabel?: string;     // back-compat — no longer rendered
+  statusPulse?: boolean;    // back-compat — no longer rendered
   onRightPress?: () => void;
   rightIcon?: React.ComponentProps<typeof Ionicons>['name'];
 }
@@ -33,93 +33,76 @@ const TOP_PAD = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 44;
 export default function ScreenHeader({
   title,
   showLogo = true,
-  showWordmark = false,
   onRightPress,
   rightIcon,
 }: Props) {
   const router = useRouter();
+  const t = useTokens();
   const { show: openDrawer } = useDrawer();
 
   return (
-    <BlurView intensity={60} tint="light" style={styles.container}>
-      <View style={styles.inner}>
-        <View style={styles.left}>
-          {showLogo ? (
-            <Pressable
-              onPress={openDrawer}
-              accessibilityLabel="Open menu"
-              hitSlop={12}
-              style={({ pressed }) => [styles.hamburger, pressed && { opacity: 0.5 }]}
+    <View style={{
+      paddingTop: TOP_PAD,
+      backgroundColor: t.bg,
+    }}>
+      <View style={{
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 56,
+      }}>
+        {showLogo ? (
+          <Pressable
+            onPress={openDrawer}
+            accessibilityLabel="Open menu"
+            hitSlop={12}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 9,
+              backgroundColor: t.surface,
+              borderWidth: 1,
+              borderColor: t.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <Path d="M3 7h18M3 12h18M3 17h14" stroke={t.text} strokeWidth={1.8} strokeLinecap="round" />
+            </Svg>
+          </Pressable>
+        ) : null}
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {title ? (
+            <Text
+              numberOfLines={1}
+              style={{
+                fontFamily: t.serif,
+                fontSize: 16,
+                fontWeight: '500',
+                color: t.text,
+                letterSpacing: -0.4,
+              }}
             >
-              <Ionicons name="menu" size={24} color={colors.onSurface} />
-            </Pressable>
+              {title}
+            </Text>
           ) : null}
-          {title ? <Text style={styles.title}>{title}</Text> : null}
         </View>
 
-        {showWordmark ? (
-          <Text style={styles.wordmark}>Memu</Text>
-        ) : <View />}
-
-        <View style={styles.right}>
-          {rightIcon ? (
-            <Pressable
-              onPress={onRightPress ?? (() => router.back())}
-              accessibilityLabel="Close"
-              hitSlop={12}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <Ionicons name={rightIcon} size={22} color={colors.onSurfaceVariant} />
-            </Pressable>
-          ) : null}
-        </View>
+        {rightIcon ? (
+          <Pressable
+            onPress={onRightPress ?? (() => router.back())}
+            accessibilityLabel="Close"
+            hitSlop={12}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+          >
+            <Ionicons name={rightIcon} size={22} color={t.text2} />
+          </Pressable>
+        ) : null}
       </View>
-    </BlurView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    paddingTop: TOP_PAD,
-    backgroundColor: 'rgba(249,249,251,0.6)',
-  },
-  inner: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 56,
-  },
-  left: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1,
-  },
-  right: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  hamburger: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    color: colors.onSurface,
-    fontFamily: typography.families.bodyBold,
-  },
-  wordmark: {
-    fontSize: typography.sizes['xl'],
-    color: colors.primary,
-    fontFamily: typography.families.headline,
-    letterSpacing: typography.tracking.tight,
-  },
-});

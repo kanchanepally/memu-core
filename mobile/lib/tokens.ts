@@ -18,7 +18,7 @@ const fonts = {
 };
 
 export const lightTokens = {
-  name: 'light' as const,
+  name: 'light' as 'light' | 'dark',
   // Brand
   brand: '#5054B5',
   brandDeep: '#3A3D8F',
