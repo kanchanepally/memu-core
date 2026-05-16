@@ -3985,6 +3985,38 @@ body.focus-mode .focus-exit {
 /* Composer modal — re-uses the .modal-overlay / .modal-card shell.
    The passage preview is a real blockquote so the quoted text reads
    the way it'll read once saved. */
+/* Focus button duplicated at the top of the Space detail meta row —
+   stays accessible regardless of body length. The original button in
+   the actions row keeps its place for short Spaces where it's
+   trivially scrollable to. */
+.space-detail-focus-top {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--color-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.space-detail-focus-top:hover {
+  border-color: var(--indigo-primary);
+  color: var(--text-primary);
+}
+.space-detail-focus-top kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--color-surface-elevated, white);
+  color: var(--text-muted, var(--text-secondary));
+}
+
 .reading-composer-passage {
   background: var(--color-surface);
   border-left: 3px solid var(--indigo-primary);
