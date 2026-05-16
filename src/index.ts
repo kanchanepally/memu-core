@@ -568,17 +568,29 @@ server.post('/api/document', async (request, reply) => {
       return reply.code(413).send({ error: 'document too large (max 25MB)' });
     }
     // Build Spec 2 Phase R2 — dispatch to the research-flavoured path
-    // when the active workspace is research. Lookup is one query
-    // against `collectives` (Tier-C, no RLS). The two paths share the
+    // when the active workspace is research. The two paths share the
     // same parser + storage helpers (documentIngestion.ts) but produce
     // different Space shapes: family → Document Space with LLM-extracted
     // dates/amounts/parties; research → Source Space with the full
     // extracted text body, no LLM family-summary, anonymisation gate
     // applied before storage.
-    const wsRes = await db.queryAsBootstrap<{ type: string }>(
-      `SELECT type FROM collectives WHERE id = NULLIF(current_setting('memu.collective_id', true), '') LIMIT 1`,
-    );
-    const workspaceType = wsRes.rows[0]?.type ?? 'family';
+    //
+    // CRITICAL — read active workspace id from ALS via
+    // currentCollectiveId(), NOT via SQL `current_setting()` through
+    // queryAsBootstrap. queryAsBootstrap uses a fresh pool connection
+    // and only sets memu.bootstrap; it does NOT inherit the
+    // memu.collective_id GUC, so current_setting() returns empty and
+    // the dispatch falls back to 'family' for every request. The ALS
+    // helper reads the request-scoped binding set by requireCollective.
+    const activeCollectiveId = currentCollectiveId();
+    let workspaceType = 'family';
+    if (activeCollectiveId) {
+      const wsRes = await db.query<{ type: string }>(
+        `SELECT type FROM collectives WHERE id = $1 LIMIT 1`,
+        [activeCollectiveId],
+      );
+      workspaceType = wsRes.rows[0]?.type ?? 'family';
+    }
 
     if (workspaceType === 'research') {
       const { processResearchSourceIngestion } = await import('./intelligence/researchSourceIngestion');

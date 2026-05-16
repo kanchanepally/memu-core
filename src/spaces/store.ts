@@ -311,15 +311,29 @@ export async function upsertSpace(input: SpaceWriteInput): Promise<Space> {
   // context. Caller must be inside enterCollectiveContext (typical:
   // they're inside a Fastify request that went through requireCollective).
   const space = await db.transaction(async (client) => {
-    // One lookup of the owning workspace's type, used for two
+    // One lookup of the ACTIVE workspace's type — used for two
     // type-aware concerns: Phase Z Story Z.2 (passage-id assignment
     // for research bodies) and Phase R1 (category set validation —
     // the DB CHECK enforces only the UNION; the type-aware rule
-    // lives here). The lookup is on the collectives table (Tier-C,
-    // no RLS) — safe to read inside the tenant tx.
+    // lives here).
+    //
+    // CRITICAL — read from the session GUC, NOT from input.familyId.
+    // In the legacy single-tenant world, profileId == family_id ==
+    // home_collective_id all shared the same UUID, so a lookup keyed
+    // on familyId happened to find the right row. Post-multi-Collective
+    // (Build Spec 1) those diverge: a research-workspace write still
+    // carries familyId = caller's profileId, but the ACTIVE collective
+    // id is the research workspace's UUID. Looking up by familyId would
+    // return the HOME workspace's type for every write, regardless of
+    // which workspace the user is actually in.
+    //
+    // The session GUC has been SET LOCAL by the tx wrapper (db.transaction
+    // enters the active collective context). Reading current_setting()
+    // here returns the workspace whose write we're processing.
     const wsTypeRes = await client.query<{ type: string }>(
-      `SELECT type FROM collectives WHERE id = $1 LIMIT 1`,
-      [input.familyId],
+      `SELECT type FROM collectives
+        WHERE id = NULLIF(current_setting('memu.collective_id', true), '')
+        LIMIT 1`,
     );
     const workspaceType = wsTypeRes.rows[0]?.type ?? 'family';
 

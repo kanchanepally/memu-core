@@ -11,7 +11,7 @@
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-16-r3-active-reading">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-16-r2-r3-dispatch-fix">
 </head>
 <body>
 <!-- SVG Sprite: Normalized to match Ionicons-outline visual characteristics -->
@@ -640,6 +640,14 @@ async function api(path, opts = {}) {
                 <span id="space-detail-category" class="space-detail-category"></span>
                 <span class="space-detail-dot">·</span>
                 <span id="space-detail-updated" class="space-detail-updated"></span>
+                <!-- Phase Z hotfix — Focus duplicated at the top of the
+                     Space detail so it's reachable without scrolling
+                     past a long PDF or transcript body. The original
+                     button stays in the actions row at the bottom for
+                     short-Space ergonomics. -->
+                <button class="space-detail-focus-top" onclick="enterFocusMode()" title="Focus mode (.) — hide chrome and centre the reading column">
+                    Focus <kbd>.</kbd>
+                </button>
             </div>
             <h1 id="space-detail-title" class="space-detail-title"></h1>
             <!-- Phase Z Story Z.3 — PDF inline rendering. Only mounted
@@ -4029,6 +4037,17 @@ async function initWorkspaceSwitcher() {
         workspaceState.items = data.workspaces || [];
         await loadSelfContextForWorkspaces();
         renderWorkspacePill();
+        // R1 hotfix v2 — boot-time chip re-render. The previous fix in
+        // loadWorkspaces() only fires when the user explicitly visits
+        // the Workspaces tab, which doesn't happen on initial page load
+        // for a user landing on /dashboard.html#spaces. Without this,
+        // chips render before workspaceState.items lands → effective
+        // active workspace returns null → falls back to FAMILY_SET →
+        // observed flicker even after the earlier hotfix.
+        if (typeof renderSpaceChips === 'function'
+            && !document.getElementById('view-spaces').classList.contains('hidden')) {
+            renderSpaceChips();
+        }
     } catch (err) {
         console.warn('[initWorkspaceSwitcher]', err);
     }
