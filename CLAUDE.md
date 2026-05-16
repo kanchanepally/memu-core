@@ -524,7 +524,105 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ---
 
-## Current State (April 2026)
+## Current State (May 2026)
+
+### 2026-05-17 — v3 visual redesign + PDF reading workbench + Slice 2 installable PWA shipped; researcher writing pipeline elevated
+
+Three things landed across PRs #38 / #39 / #40 / #41 and are now live
+on Z2 (Hareesh installed the PWA as a desktop app this evening and
+confirmed all surfaces working):
+
+**1. v3 visual redesign — full** (PR #38, 17 commits across 4 parallel
+subagents merged 2026-05-17). Design system (`memu-tokens.css` +
+`memu-components.css` + theme-init/toggle JS + 16 hand-drawn marks +
+28-icon sprite), all 9 PWA views ported (sidebar, Today, Chat,
+Calendar, Lists, Ledger, Settings, Spaces, canvas), modal + tabs
+reskin, mobile theme provider + drawer + content polish.
+Newsreader (display + reading), Inter (UI), JetBrains Mono
+(numerals), brand `#5054B5` light / `#A1A5FF` dark.
+
+**2. PDF reading workbench — Build Spec 2 Phase R3** (PR #39, the
+researcher centrepiece). Three-column layout when PDF rendered
+(sidebar | PDF | insights), top-right sticky action row, PDF viewer
+chrome (filename + page nav + zoom +/- + find stub), top-anchored
+verb pills (Memo / Quote / Code / Question — Code is a tag input
+with autocomplete from existing themes), passage-aware composer
+modal (passage as italic serif quote with indigo border-left,
+`FROM <FILE> · PAGE N` source line, "YOUR NOTICING" textarea,
+"Stays in this Space" toggle), synthesis section below PDF with
+extracted-OCR-text toggle, right insights panel with
+Passage/All scope toggle, jump-to-passage with highlight overlay.
+New endpoint `GET /api/spaces/:id/insights`. Verb→category wire:
+memo / quote / theme (UI "Code") / question.
+
+**3. Z2 test feedback Pass 1 + Pass 2** (PRs #40 / #41, 12 fixes +
+PWA Slice 2 restoration). Dark-mode chrome cascade + sidebar +
+composer + sticky actions / verb pills / PDF chrome + insights ↔
+PDF overlap + calendar squash + zoom + manifest.webmanifest +
+service-worker.js + icons → Chrome offers "Install Memu", Hareesh
+installed.
+
+**Strategic reframe (the most important non-code thing today).**
+After Z2 testing, Hareesh challenged the scope: Memu is shipping
+fancy reader + per-Source notepad, which leaves the WRITING outside
+Memu — another tool in the stack rather than the tool that replaces
+it. Cal Newport's bottleneck lens applies cleanly (we accelerated
+capture, not bottleneck; didn't touch writing, the bottleneck). The
+canonical reframe is captured in `backlog/INBOX.md` top section
+"Researcher writing pipeline — pickup point" + memory
+`project_memu_writing_pipeline_reframe.md`. Three phases elevated
+from "post-beta strategic" to **CORE researcher product**:
+
+- **R5 — Workbench (cross-corpus aggregation)** — all memos / quotes /
+  codes / questions / connections across all Source + Field Spaces,
+  filterable / themable / searchable
+- **R6 — Writing Spaces (citable writing)** — new first-class Space
+  category, long-form editor, inline `@` citation insertion from
+  captured artefacts, live cross-references, trial versions,
+  multi-format export (DOCX / LaTeX / Pandoc / BibTeX)
+- **R4.2 — Agentic grounding** — local agent reasons over YOUR corpus
+  + artefacts, drafts paragraphs with citations to your work,
+  surfaces patterns + gaps, never auto-applies
+
+Plus five companion items folded in from the Z2 testing conversation:
+workspace About / Project-style harness (like Gems / Claude
+Projects), save-chat-as-Space, workspace-type-aware academic search
+default for research workspaces, live thinking ticker, Connections
+artefact (5th kind) + synthesis backlinks.
+
+**Five honest gaps named in INBOX before R4.2 ships safely:**
+no at-rest encryption (PDFs + body_markdown plaintext on disk),
+Twin guard is opt-in per skill (should be default-ON), research-mode
+Twin destroys public-figure semantics (the prereq for agentic
+grounding — agent must say "Ambedkar argues" not "Person-7 argues"),
+cross-workspace identity smearing, local LLM (Ollama) not wired
+(Tier-3 sovereign currently real only for non-LLM surfaces).
+
+**Demoted:**
+- R7 (cross-workspace compounding) — strategic but secondary
+- Founding-50 hosting backend polish (DPIA, Hetzner refinements,
+  magic-link auth UX) — better 20 researcher-product-complete users
+  than 50 fancy-reader users churning
+
+**Branch state at session close:** local + remote on `main` only.
+All Slice 2 / fix branches deleted local + remote. PWA installed and
+running as desktop app on Hareesh's Z2.
+
+**Tomorrow's trigger phrases:**
+- *"let's design the researcher experience"* → INBOX top section
+  (writing pipeline brief)
+- *"let's pick up researcher space work"* → INBOX section
+  (researcher track — canvas chips fixed, dedup + family-shape AI
+  remain as smaller items)
+- *"let's pick up v3 redesign work"* → INBOX section (now mostly
+  closed; small residuals: Ledger backend, Connections artefact,
+  synthesis backlinks, Find-in-document, conversation switch
+  history bug)
+
+**Pre-reading for the next design session:** three Cal Newport pieces
+shared 2026-05-17 morning — *Avoiding Digital Productivity Traps*,
+*Easy is Overrated*, *On Bottlenecks and Productivity*. They frame
+why R5+R6+R4.2 are the right elevation.
 
 ### 2026-05-14 evening — A.9.1 lens wiring + TD-01 NOSUPERUSER role
 
