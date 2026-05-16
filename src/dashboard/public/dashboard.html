@@ -1173,118 +1173,183 @@ async function api(path, opts = {}) {
 </div>
 
 <!-- ==================== SETTINGS TAB ==================== -->
-<div id="view-settings" class="container hidden" style="padding-top:var(--space-md);padding-bottom:80px;">
+<!-- v3 redesign: re-skinned against pwa-redesign/screens/settings.html.
+     Preserved ids/onclicks: view-settings, settings-name, settings-server,
+     settings-calendar-row + toggleCalendarConnect(), settings-calendar-status,
+     settings-calendar-action, invite-member-row + openInviteMember(),
+     settings-household-list (renderer target). switchTab('import'),
+     switchTab('ledger'), switchTab('workspaces'), handleSignOut() all
+     intact. -->
+<div id="view-settings" class="container memu-glow-bg hidden" style="padding: 40px 48px 80px;">
+    <div style="max-width: 780px; margin: 0 auto;">
+        <div class="eyebrow">Settings</div>
+        <h1 class="serif-display" style="font-size: 44px; line-height: 1.05;">
+            How <em class="serif-accent">this Memu</em> behaves.
+        </h1>
+        <p class="italic-quiet" style="font-size: 16px; margin-bottom: 36px;">
+            Your data. Your hardware. Your call.
+        </p>
 
-    <div class="section-label mt-lg">Profile</div>
-    <div class="settings-section">
-        <div class="setting-row">
-            <div class="setting-icon">&#x1F464;</div>
-            <div class="setting-content">
-                <div class="setting-title" id="settings-name"></div>
-                <div class="setting-subtitle">Your profile</div>
+        <!-- Appearance — theme toggle row. The button hooks into theme-toggle.js
+             via its class; the sidebar's #theme-toggle is the primary instance,
+             so this one uses the same class but no id (theme-toggle.js wires
+             every .theme-toggle on the page). -->
+        <div class="settings-section" data-section="appearance">
+            <div class="eyebrow">Appearance</div>
+            <div class="memu-card" style="padding: 18px 20px; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                    <div>
+                        <div style="font-size: 14.5px; font-weight: 500;">Theme</div>
+                        <div style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Light, dark, or follow system preference</div>
+                    </div>
+                    <button class="theme-toggle" aria-label="Toggle theme"></button>
+                </div>
             </div>
         </div>
+
+        <!-- Profile -->
+        <div class="settings-section" data-section="profile">
+            <div class="eyebrow">Profile</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x1F464;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" id="settings-name" style="font-size: 14.5px; font-weight: 500; color: var(--text);"></div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Your profile</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection -->
+        <div class="settings-section" data-section="connection">
+            <div class="eyebrow">Connection</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x1F5A5;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Server</div>
+                        <div class="setting-subtitle" id="settings-server" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;"></div>
+                    </div>
+                </div>
+                <div class="setting-row" id="settings-calendar-row" onclick="toggleCalendarConnect()" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-top: 1px solid var(--border-soft); cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x1F4C5;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Google Calendar</div>
+                        <div class="setting-subtitle" id="settings-calendar-status" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Check connection…</div>
+                    </div>
+                    <div id="settings-calendar-action"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Context -->
+        <div class="settings-section" data-section="context">
+            <div class="eyebrow">Context</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="switchTab('import')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x2601;&#65039;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Import Context</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">WhatsApp exports, Obsidian notes, documents</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Privacy -->
+        <div class="settings-section" data-section="privacy">
+            <div class="eyebrow">Privacy</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="switchTab('ledger')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-eye"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">What Claude Saw</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">View the Privacy Ledger</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Household -->
+        <div class="settings-section" data-section="household">
+            <div class="eyebrow">Household</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="openInviteMember()" id="invite-member-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Add household member</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Invite an adult or child to this Memu</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Invite →</span>
+                </div>
+                <div id="settings-household-list"></div>
+            </div>
+        </div>
+
+        <!-- Workspaces -->
+        <div class="settings-section" data-section="workspaces">
+            <div class="eyebrow">Workspaces</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="switchTab('workspaces')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-spaces"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Workspaces</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Personal, household, ventures — switch between them</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- About -->
+        <div class="settings-section" data-section="about">
+            <div class="eyebrow">About</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--brand);">&#x2139;&#65039;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Memu</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">v0.1.0 — Intelligence without surveillance</div>
+                    </div>
+                </div>
+                <div class="setting-row" onclick="window.open('https://github.com/kanchanepally/memu-core')" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-top: 1px solid var(--border-soft); cursor: pointer;">
+                    <div class="setting-icon" style="width: 32px; height: 32px; border-radius: 8px; background: var(--brand-softer); border: 1px solid var(--border-soft); display: inline-flex; align-items: center; justify-content: center; color: var(--brand);">
+                        <svg class="icon" width="16" height="16"><use href="/marks/icons.svg#icon-code"></use></svg>
+                    </div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title" style="font-size: 14.5px; font-weight: 500; color: var(--text);">Source Code</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">AGPLv3 — Open Source</div>
+                    </div>
+                    <span class="setting-chevron" style="font-size: 12.5px; color: var(--brand); font-weight: 600;">Open →</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account -->
+        <div class="settings-section" data-section="account">
+            <div class="eyebrow">Account</div>
+            <div class="memu-card" style="padding: 0; overflow: hidden; margin-bottom: 24px;">
+                <div class="setting-row" onclick="handleSignOut()" style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer;">
+                    <div class="setting-icon setting-icon-destructive" style="width: 32px; height: 32px; border-radius: 8px; background: var(--red-bg); border: 1px solid rgba(168, 54, 75, 0.2); display: inline-flex; align-items: center; justify-content: center; color: var(--red); font-size: 14px;">&#x274C;</div>
+                    <div class="setting-content" style="flex: 1; min-width: 0;">
+                        <div class="setting-title text-error" style="font-size: 14.5px; font-weight: 500; color: var(--red);">Sign out</div>
+                        <div class="setting-subtitle" style="font-size: 12.5px; color: var(--text-3); margin-top: 2px;">Disconnect from this server</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-tagline italic-quiet" style="padding: 32px 0 16px; text-align: center; font-size: 13px;">Your family's data belongs to your family.</div>
     </div>
-
-    <div class="section-label">Connection</div>
-    <div class="settings-section">
-        <div class="setting-row">
-            <div class="setting-icon">&#x1F5A5;</div>
-            <div class="setting-content">
-                <div class="setting-title">Server</div>
-                <div class="setting-subtitle" id="settings-server"></div>
-            </div>
-        </div>
-        <div class="setting-row" id="settings-calendar-row" onclick="toggleCalendarConnect()">
-            <div class="setting-icon">&#x1F4C5;</div>
-            <div class="setting-content">
-                <div class="setting-title">Google Calendar</div>
-                <div class="setting-subtitle" id="settings-calendar-status">Check connection...</div>
-            </div>
-            <div id="settings-calendar-action"></div>
-        </div>
-    </div>
-
-    <div class="section-label">Context</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="switchTab('import')">
-            <div class="setting-icon">&#x2601;&#65039;</div>
-            <div class="setting-content">
-                <div class="setting-title">Import Context</div>
-                <div class="setting-subtitle">WhatsApp exports, Obsidian notes, documents</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">Privacy</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="switchTab('ledger')">
-            <div class="setting-icon">&#x1F441;</div>
-            <div class="setting-content">
-                <div class="setting-title">What Claude Saw</div>
-                <div class="setting-subtitle">View the Privacy Ledger</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">Household</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="openInviteMember()" id="invite-member-row">
-            <div class="setting-icon">&#x2795;</div>
-            <div class="setting-content">
-                <div class="setting-title">Add household member</div>
-                <div class="setting-subtitle">Invite an adult or child to this Memu</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-        <div id="settings-household-list"></div>
-    </div>
-
-    <div class="section-label">Workspaces</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="switchTab('workspaces')">
-            <div class="setting-icon">&#x1F5C2;</div>
-            <div class="setting-content">
-                <div class="setting-title">Workspaces</div>
-                <div class="setting-subtitle">Personal, household, ventures — switch between them</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">About</div>
-    <div class="settings-section">
-        <div class="setting-row">
-            <div class="setting-icon">&#x2139;&#65039;</div>
-            <div class="setting-content">
-                <div class="setting-title">Memu</div>
-                <div class="setting-subtitle">v0.1.0 — Intelligence without surveillance</div>
-            </div>
-        </div>
-        <div class="setting-row" onclick="window.open('https://github.com/kanchanepally/memu-core')">
-            <div class="setting-icon">&#x1F4BB;</div>
-            <div class="setting-content">
-                <div class="setting-title">Source Code</div>
-                <div class="setting-subtitle">AGPLv3 — Open Source</div>
-            </div>
-            <span class="setting-chevron">&#x203A;</span>
-        </div>
-    </div>
-
-    <div class="section-label">Account</div>
-    <div class="settings-section">
-        <div class="setting-row" onclick="handleSignOut()">
-            <div class="setting-icon setting-icon-destructive" style="color:var(--color-error);">&#x274C;</div>
-            <div class="setting-content">
-                <div class="setting-title text-error">Sign out</div>
-                <div class="setting-subtitle">Disconnect from this server</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="footer-tagline">Your family's data belongs to your family.</div>
 </div>
 
 </main>
