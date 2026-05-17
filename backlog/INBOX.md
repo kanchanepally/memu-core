@@ -26,6 +26,60 @@ slice immediately. Still log here for the retrospective.
 
 ## Open items
 
+### Pickup for next session (added 2026-05-18 night close)
+
+**Trigger phrase from Hareesh:** *"how did the dogfood go"* /
+*"researcher walkthrough feedback"* / *"mobile PDF works"* /
+*"mobile PDF broken"*. He said he'd report back on a separate chat
+tomorrow.
+
+**State at session close.** Three PRs merged to main tonight (#42
+W1-lite, #43 W0+W2+W3+W6+multi-PDF, #44 mobile native PDF). EAS
+Android preview build kicked. End-to-end test plan published at
+`memu-platform/docs/researcher-walkthrough-2026-05-18.md`.
+
+**What Hareesh will be testing tomorrow:**
+
+1. PWA writing pipeline against the digital-sovereignty paper corpus —
+   the 7-phase walkthrough doc has structured feedback boxes per phase
+2. Multi-PDF drop (10 PDFs at once, concurrency 2)
+3. URL-to-Source ingestion (paste a blog/article URL → Source Space)
+4. Cite picker (deterministic ILIKE baseline — feedback should tell
+   us whether W4 LLM rank is genuinely needed or whether the baseline
+   is good enough to defer further)
+5. 7-format export — markdown / substack / docx / latex / pandoc /
+   bibtex / print. Drift detection + commit + audit log
+6. Mobile native PDF (when EAS APK installs) — replaces the OCR-text
+   `<Text>` fallback with real pages via react-native-pdf
+
+**Likely first asks when feedback lands:**
+- Polish on specific surfaces named in the walkthrough's
+  "report-back template"
+- Cite-picker UX tuning if ILIKE matches aren't surfacing well
+  (this is the natural lead-in to W4)
+- Set-drawer add-artefact picker (currently `prompt()` browser dialog
+  — proper modal noted as W2 polish in the test plan)
+- Title PATCH endpoint for Writing Spaces (TODO marker exists; title
+  edits local-only until reload)
+- Drag-reorder for Working Set items (arrow add/remove works)
+- Artefact-detail back-ref UI panel (artefact_uses data exists,
+  panel doesn't — this is W1.1 / task #64)
+
+**What's deferred and visible to Hareesh:** W4 (LLM cite-rank),
+W5 (ambient draft_companion / section_critic), W7 (draft_grounding
+with research-mode Twin + at-rest encryption prerequisites). All
+named explicitly in the walkthrough's "Honest gaps" section so he
+isn't blindsided.
+
+**Branch hygiene at close:** main only on local + remote. All
+feature branches deleted post-merge. Clean tree.
+
+See also: [[project_memu_session_close_2026_05_18]],
+[[project_memu_bs3_w0_w6_shipped]],
+[[project_memu_writing_pipeline_reframe]].
+
+---
+
 ### Researcher writing pipeline — pickup point (added 2026-05-17 evening close)
 
 **Trigger phrase from Hareesh:** "let's design the researcher experience"

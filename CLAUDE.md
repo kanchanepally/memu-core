@@ -526,6 +526,113 @@ Cloud AI costs money. Families shouldn't worry about bills.
 
 ## Current State (May 2026)
 
+### 2026-05-18 — BS3 writing pipeline shipped end-to-end + mobile native PDF; merged to main, EAS build kicked, dogfood tomorrow
+
+Three PRs landed on main tonight, taking Memu from "fancy reader +
+per-Source notepad" to a full researcher writing pipeline that
+hosts the writing inside Memu — closing the strategic gap named in
+the 2026-05-17 reframe (the writing was happening OUTSIDE Memu;
+Newport bottleneck unaddressed).
+
+**PR #42 — BS3 W1-lite** (already merged earlier today, recap):
+- Workbench surface (Cmd-K cross-corpus search, gated on
+  workspace.type === 'research')
+- `corpus_query` hybrid agent (pgvector pre-filter → Sonnet
+  rank, requires_twin true, deterministic index truth gate as
+  anti-hallucination)
+- Connection 5th artefact type with 7-value typed relationship
+  vocabulary (`refutes` / `supports` / `extends` / `parallels` /
+  `cites` / `derives_from` / `contrasts`)
+
+**PR #43 — BS3 W0 + W2 + W3 + W6 + multi-PDF** (`feat/researcher-writing`,
+4 commits, merged tonight):
+- **W0** — paste a URL → article extraction → Source Space
+  (`POST /api/source/url`, SSRF guard, hand-rolled HTML parser,
+  68 tests, no new deps)
+- **W2** — Working Sets (bundle artefacts + sources for a writing
+  target; 9 endpoints; reorder via two-phase renumber in txn;
+  44 tests)
+- **W3** — Writing Spaces as new first-class top-level object:
+  composer with debounced auto-save, status lifecycle (draft →
+  ready_to_publish → published), versions table for snapshots,
+  citations table with SHA-1 surrounding_hash for drift detection,
+  cite-picker (deterministic ILIKE baseline; LLM rank is W4),
+  92 tests
+- **W6** — 7-format export (markdown / substack / docx / latex /
+  pandoc / bibtex / print) with preview + commit + audit log +
+  drift-detection banner, 65 tests
+- **Multi-PDF drop zone** — concurrency capped at 2 (LLM-heavy
+  ingest), progress UI per file
+- **PWA layer** — full pipeline surfaced: URL row at Workbench top,
+  Working Sets section with slide-in drawer, Writing Spaces list +
+  new-writing modal, view-writing-space top-level surface (Newsreader
+  composer + Sources/Versions/Notes rail + cite picker with
+  client-side SHA-1 via crypto.subtle), export preview modal
+- 269 BS3-specific backend tests passing (44 + 92 + 65 + 68);
+  TS clean both surfaces
+
+**PR #44 — Mobile native PDF** (`feat/mobile-pdf-native`, 1 commit,
+merged tonight):
+- Adds `react-native-pdf ^6.7.6` + `react-native-blob-util ^0.21.2`
+  with Expo config plugin entry in app.json (Android pdfium + iOS
+  PDFKit linked at EAS prebuild)
+- `SynthesisPage.source_references` now surfaced on mobile type
+  (already returned by `/api/dashboard/spaces` — was being dropped
+  client-side); helpers `getSpaceDocumentSource` /
+  `firstAttachedDocumentIsPdf` / `countAttachedDocuments`
+- New `mobile/components/PdfViewer.tsx` wraps `<Pdf>` with native
+  page-nav chrome (Page N of M, prev/next, loading + error states
+  using v3 tokens)
+- `mobile/app/(tabs)/spaces.tsx` — when `category === 'document'`
+  AND first attached doc is `.pdf`, mount `PdfViewer` instead of
+  the body_markdown `<Text>` fallback. Non-PDF documents (.txt,
+  legacy ingests without persistOriginal) keep the plain-text
+  fallback. Edit still opens body_markdown so OCR text remains
+  reachable.
+- Backend untouched — `GET /api/spaces/:id/document` already
+  shipped PDF bytes inline with auth + path-traversal protection
+- Requires `npm install` + EAS rebuild (config plugin links at
+  prebuild time, can't ship via OTA)
+
+**Deploy state.** Hareesh merged all three PRs tonight, kicked off
+the EAS Android preview build (mobile native PDF lands when that
+APK installs), and will dogfood the PWA writing pipeline tomorrow
+against his digital-sovereignty paper corpus. End-to-end test plan
+at `memu-platform/docs/researcher-walkthrough-2026-05-18.md` —
+7 phases covering pre-flight → URL/PDF/multi-PDF ingest → active
+reading → Workbench search → Working Sets → Writing Space (compose
+/ cite / status / versions) → 7-format export → compounding via
+second piece. Honest gaps section names 10 known deferred items.
+
+**Subagent dispatch learning (worth carrying).** Of 4 subagents
+spawned for this PR, 2 returned tool errors mid-dispatch — but the
+files DID land on disk both times. The Agent dispatcher's
+result-message channel was unreliable; file outputs were correct.
+Verified by `ls` after each dispatch. Next time subagents return
+errors, check disk first before assuming work was lost. Saved as
+[[project_memu_bs3_w0_w6_shipped]].
+
+**What's NOT in main yet (tracked, deferred per BS3 phasing):**
+- **W4** — `pre_arrival_prime` + `citation_typeahead` LLM agents.
+  Replaces deterministic ILIKE cite-picker with hybrid embedding
+  → LLM rank. Current baseline is fully useable; LLM rank is the
+  polish layer. (Task #60)
+- **W5** — `draft_companion` + `section_critic` + contradiction
+  surface. Ambient writing-time agents. (Task #61)
+- **W7** — `draft_grounding` agent + research-mode Twin + at-rest
+  encryption. Gated on Twin work per BS3 §12. The agentic drafting
+  layer. (Task #63)
+- **W1.1** — `connection_suggester` agent + artefact-detail panel.
+  (Task #64)
+
+**Trigger phrases for next session:**
+- *"how did the dogfood go"* / *"researcher walkthrough feedback"*
+  → triage the report-back template Hareesh fills in
+- *"let's do W4"* → LLM cite-rank (the next slice if feedback
+  validates the baseline)
+- *"mobile PDF works"* / *"mobile PDF broken"* → check EAS build
+  status + iterate
+
 ### 2026-05-17 — v3 visual redesign + PDF reading workbench + Slice 2 installable PWA shipped; researcher writing pipeline elevated
 
 Three things landed across PRs #38 / #39 / #40 / #41 and are now live
