@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-18-bs3-dogfood-fix2"></script>
+    <script src="/js/theme-init.js?v=2026-05-18-bs3-dogfood-instrument"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-dogfood-fix2">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-dogfood-instrument">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-dogfood-fix2">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-dogfood-instrument">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-dogfood-fix2">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-dogfood-instrument">
     <!-- PWA installability — manifest + theme-color + icon hints.
          Chrome's install heuristic requires manifest + a registered
          service worker (see SW registration further down). After deploy
@@ -253,6 +253,34 @@ window.addEventListener('unhandledrejection', (event) => {
     console.error('[MEMU-ERR] unhandledrejection:', err);
     if (err && err.stack) console.error('[MEMU-ERR] stack:', err.stack);
 });
+
+// Click-capture instrumentation — dumps every click target's onclick
+// attribute string + the closest enclosing element with one. When the
+// browser parses the attribute as JS at click time, a broken attr
+// throws SyntaxError with no real stack. Logging the source string
+// here lets us see what's malformed.
+document.addEventListener('click', (event) => {
+    let el = event.target;
+    while (el && el !== document) {
+        const oc = el.getAttribute && el.getAttribute('onclick');
+        if (oc) {
+            console.log('[MEMU-CLICK] target:', el.tagName, el.className || '(no class)');
+            console.log('[MEMU-CLICK] onclick source:', oc);
+            // Try to parse the onclick as JS to confirm. Wrap in
+            // function so a syntax error throws synchronously here
+            // where we can attribute it cleanly.
+            try {
+                new Function(oc);
+                console.log('[MEMU-CLICK] onclick parses OK');
+            } catch (parseErr) {
+                console.error('[MEMU-CLICK] onclick PARSE FAILED:', parseErr.message);
+                console.error('[MEMU-CLICK] full attribute value above ↑');
+            }
+            return;
+        }
+        el = el.parentElement;
+    }
+}, true);  // capture phase so we run before the browser's own attribute eval
 
 // PWA installability — register the service worker once on page load.
 // The SW itself is pass-through (no caching today); its purpose is to
