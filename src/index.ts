@@ -1794,6 +1794,10 @@ server.register(workspaceRoutes);
 import { workbenchRoutes } from './api/workbench';
 server.register(workbenchRoutes);
 
+// BS3 W0 — URL source ingestion (paste-a-link → Source Space).
+import { urlSourceRoutes } from './api/urlSource';
+server.register(urlSourceRoutes);
+
 // Create a new Space manually. Routes through upsertSpace so the DB row
 // + on-disk markdown + git history stay in lock-step (and so the v2
 // parent_space_uri field lands cleanly via the canvas create flow).
