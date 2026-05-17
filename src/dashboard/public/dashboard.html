@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-18-bs3-dogfood-instrument"></script>
+    <script src="/js/theme-init.js?v=2026-05-18-bs3-escattr-fix"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-dogfood-instrument">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-escattr-fix">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-dogfood-instrument">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-escattr-fix">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-dogfood-instrument">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-escattr-fix">
     <!-- PWA installability — manifest + theme-color + icon hints.
          Chrome's install heuristic requires manifest + a registered
          service worker (see SW registration further down). After deploy
@@ -5070,7 +5070,7 @@ function renderWorkbenchCounts() {
         </button>`,
         ...entries.map(([cat, n]) => {
             const active = workbenchState.activeFilter === cat;
-            return `<button class="workbench-count-card ${active ? 'workbench-count-active' : ''}" onclick="setWorkbenchFilter(${esc(JSON.stringify(cat))})">
+            return `<button class="workbench-count-card ${active ? 'workbench-count-active' : ''}" onclick="setWorkbenchFilter(${escAttr(JSON.stringify(cat))})">
                 <span class="workbench-count-label">${esc(workbenchCategoryLabel(cat))}</span>
                 <span class="workbench-count-n">${n}</span>
             </button>`;
@@ -5265,7 +5265,7 @@ function renderWorkbenchPaletteResults(data) {
         const snippet = esc(r.bodyExcerpt || '');
         const score = typeof r.score === 'number' ? Math.round(r.score * 100) : 0;
         const uri = r.uri || '';
-        return `<button class="workbench-result" onclick="openWorkbenchResultByUri(${esc(JSON.stringify(uri))})">
+        return `<button class="workbench-result" onclick="openWorkbenchResultByUri(${escAttr(JSON.stringify(uri))})">
             <div class="workbench-result-head">
                 <span class="workbench-result-cat">${cat}</span>
                 <span class="workbench-result-score">${score}%</span>
@@ -5569,7 +5569,7 @@ function renderWorkbenchSets() {
         const itemCount = typeof s.itemCount === 'number' ? s.itemCount : 0;
         const id = esc(s.id);
         const updated = s.updatedAt ? `<span class="workbench-recent-ago">${formatWorkbenchAgo(s.updatedAt)}</span>` : '';
-        return `<button class="workbench-recent-item" onclick="openSetDrawer(${esc(JSON.stringify(id))})">
+        return `<button class="workbench-recent-item" onclick="openSetDrawer(${escAttr(JSON.stringify(id))})">
             <div class="workbench-recent-head">
                 <span class="workbench-recent-cat">Set · ${itemCount} item${itemCount === 1 ? '' : 's'}</span>
                 ${updated}
@@ -5669,7 +5669,7 @@ function renderSetDrawerItems() {
             <div class="set-drawer-item-body">
                 <div class="set-drawer-item-head">
                     <span class="workbench-recent-cat">${cat || 'item'}</span>
-                    <button class="set-drawer-item-remove" onclick="removeArtefactFromSet(${esc(JSON.stringify(itemId))})" title="Remove">×</button>
+                    <button class="set-drawer-item-remove" onclick="removeArtefactFromSet(${escAttr(JSON.stringify(itemId))})" title="Remove">×</button>
                 </div>
                 <div class="set-drawer-item-title serif-display">${title}</div>
                 ${note ? `<div class="set-drawer-item-note text-muted">${note}</div>` : ''}
@@ -5780,7 +5780,7 @@ function renderWorkbenchWritingSpaces() {
         // event.stopPropagation on the × prevents it bubbling to the
         // outer "open" button.
         return `<div class="workbench-recent-item-wrap">
-            <button class="workbench-recent-item" onclick="openWritingSpace(${esc(JSON.stringify(id))})">
+            <button class="workbench-recent-item" onclick="openWritingSpace(${escAttr(JSON.stringify(id))})">
                 <div class="workbench-recent-head">
                     <span class="workbench-recent-cat">${template} · ${status}</span>
                     ${updated}
@@ -5788,7 +5788,7 @@ function renderWorkbenchWritingSpaces() {
                 <div class="workbench-recent-title serif-display">${title}</div>
             </button>
             <button class="workbench-recent-delete" title="Delete this Writing Space"
-                    onclick="event.stopPropagation(); deleteWritingSpaceById(${esc(JSON.stringify(id))}, ${esc(JSON.stringify(title))})">
+                    onclick="event.stopPropagation(); deleteWritingSpaceById(${escAttr(JSON.stringify(id))}, ${escAttr(JSON.stringify(title))})">
                 ×
             </button>
         </div>`;
@@ -6245,7 +6245,7 @@ function renderCitePickerResults() {
         const inSet = c.isInWorkingSet
             ? '<span class="workbench-recent-ago" style="color:var(--brand);font-weight:600;">In set</span>'
             : '';
-        return `<button class="workbench-result" onclick="insertCitation(${esc(JSON.stringify(uri))}, ${esc(JSON.stringify(title))})">
+        return `<button class="workbench-result" onclick="insertCitation(${escAttr(JSON.stringify(uri))}, ${escAttr(JSON.stringify(title))})">
             <div class="workbench-result-head">
                 <span class="workbench-result-cat">${cat}</span>
                 ${inSet}
@@ -6446,6 +6446,27 @@ function esc(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+// Attribute-context escape. Unlike `esc()` (which uses
+// textContent→innerHTML and so only escapes &/</>), this also
+// escapes quote characters that would terminate an attribute value.
+// Use for ANY interpolation inside an HTML attribute value, especially
+// onclick="..." where the embedded JS may contain double-quoted
+// string literals (from JSON.stringify) that would otherwise close
+// the attribute prematurely. This was the root cause of the
+// "Uncaught SyntaxError: Unexpected end of input" on click in the
+// Workbench writing-spaces list 2026-05-18 — JSON.stringify wrapped
+// UUIDs in `"`, esc() left them, and the attribute terminated at the
+// first JSON quote, leaving `openWritingSpace(` truncated.
+function escAttr(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 function showToast(msg, isError) {
