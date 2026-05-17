@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-18-bs3-dogfood-fix1"></script>
+    <script src="/js/theme-init.js?v=2026-05-18-bs3-dogfood-fix2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-dogfood-fix1">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-dogfood-fix2">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-dogfood-fix1">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-dogfood-fix2">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-dogfood-fix1">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-dogfood-fix2">
     <!-- PWA installability — manifest + theme-color + icon hints.
          Chrome's install heuristic requires manifest + a registered
          service worker (see SW registration further down). After deploy
@@ -235,6 +235,24 @@ function setActiveWorkspaceId(id) {
 }
 const auth = getAuth();
 if (!auth.apiKey || !auth.serverUrl) { window.location.href = '/'; }
+
+// Dogfood instrumentation 2026-05-18 — Hareesh reports
+// "Uncaught SyntaxError: Unexpected end of input" on click in
+// Workbench but the console attribution to dashboard.html:1:21 is
+// useless for locating the actual source. Catch globally and dump
+// the resolved stack so the next click attempt tells us file:line
+// of the real throw.
+window.addEventListener('error', (event) => {
+    const err = event.error || event.message;
+    console.error('[MEMU-ERR] window.error:', err);
+    if (err && err.stack) console.error('[MEMU-ERR] stack:', err.stack);
+    console.error('[MEMU-ERR] file:line:', event.filename, event.lineno, event.colno);
+});
+window.addEventListener('unhandledrejection', (event) => {
+    const err = event.reason;
+    console.error('[MEMU-ERR] unhandledrejection:', err);
+    if (err && err.stack) console.error('[MEMU-ERR] stack:', err.stack);
+});
 
 // PWA installability — register the service worker once on page load.
 // The SW itself is pass-through (no caching today); its purpose is to
@@ -1246,11 +1264,37 @@ async function api(path, opts = {}) {
             <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-arrow"></use></svg>
             <span>Export</span>
         </button>
+        <button class="writing-space-delete-btn" onclick="deleteCurrentWritingSpace()" title="Delete this Writing Space">
+            <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-close"></use></svg>
+            <span>Delete</span>
+        </button>
     </header>
     <div class="writing-space-shell">
         <div class="writing-space-editor-col">
+            <!-- Markdown formatting toolbar — operates on the textarea via
+                 cursor-position insertion. No rich-text editor: the body
+                 stays as portable markdown that the export pipeline
+                 already understands across all 7 targets. -->
+            <div class="writing-space-format-toolbar" role="toolbar" aria-label="Formatting">
+                <button class="ws-fmt-btn" title="Heading 1" onclick="wsFormat('h1')"><span class="ws-fmt-label" style="font-weight:700;">H1</span></button>
+                <button class="ws-fmt-btn" title="Heading 2" onclick="wsFormat('h2')"><span class="ws-fmt-label" style="font-weight:700;">H2</span></button>
+                <button class="ws-fmt-btn" title="Heading 3" onclick="wsFormat('h3')"><span class="ws-fmt-label" style="font-weight:700;">H3</span></button>
+                <span class="ws-fmt-sep"></span>
+                <button class="ws-fmt-btn" title="Bold (Cmd/Ctrl-B)" onclick="wsFormat('bold')"><span class="ws-fmt-label" style="font-weight:700;">B</span></button>
+                <button class="ws-fmt-btn" title="Italic (Cmd/Ctrl-I)" onclick="wsFormat('italic')"><span class="ws-fmt-label" style="font-style:italic;">I</span></button>
+                <button class="ws-fmt-btn" title="Strikethrough" onclick="wsFormat('strike')"><span class="ws-fmt-label" style="text-decoration:line-through;">S</span></button>
+                <span class="ws-fmt-sep"></span>
+                <button class="ws-fmt-btn" title="Link (Cmd/Ctrl-K)" onclick="wsFormat('link')"><span class="ws-fmt-label">link</span></button>
+                <button class="ws-fmt-btn" title="Bulleted list" onclick="wsFormat('ul')"><span class="ws-fmt-label">• list</span></button>
+                <button class="ws-fmt-btn" title="Numbered list" onclick="wsFormat('ol')"><span class="ws-fmt-label">1. list</span></button>
+                <span class="ws-fmt-sep"></span>
+                <button class="ws-fmt-btn" title="Block quote" onclick="wsFormat('quote')"><span class="ws-fmt-label">"</span></button>
+                <button class="ws-fmt-btn" title="Inline code" onclick="wsFormat('code')"><span class="ws-fmt-label ws-fmt-mono">{ }</span></button>
+                <button class="ws-fmt-btn" title="Code block" onclick="wsFormat('codeblock')"><span class="ws-fmt-label ws-fmt-mono">```</span></button>
+                <button class="ws-fmt-btn" title="Horizontal rule" onclick="wsFormat('hr')"><span class="ws-fmt-label">—</span></button>
+            </div>
             <textarea id="writing-space-body" class="writing-space-editor"
-                      placeholder="Start writing. Use the Cite button on the right to insert a citation from your corpus."></textarea>
+                      placeholder="Start writing. Use the Cite button below or the formatting toolbar above. Cmd/Ctrl-B for bold, Cmd/Ctrl-I for italic, Cmd/Ctrl-K for link."></textarea>
             <div class="writing-space-toolbar">
                 <button class="writing-space-tool" onclick="openCitePickerForCursor()">
                     <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-link"></use></svg>
@@ -5035,7 +5079,7 @@ function renderWorkbenchRecent() {
         // JSON's `"` escaped out of the attribute (dogfood 2026-05-18 —
         // "clicking anything → Uncaught SyntaxError: Unexpected end of input").
         const id = esc(s.id || '');
-        return `<button class="workbench-recent-item" onclick="openSpaceDetail('${id}')">
+        return `<button class="workbench-recent-item" onclick="openWorkbenchResult('${id}')">
             <div class="workbench-recent-head">
                 <span class="workbench-recent-cat">${cat}</span>
                 ${ago}
@@ -5074,11 +5118,14 @@ function openWorkbenchResult(id) {
             if (s) spacesState.spaces = [...spacesState.spaces, s];
         }
     }
+    // The Space detail view lives inside view-spaces, so the user
+    // needs to be on that tab or the detail will render off-screen.
+    // Switch first, then open. This was the silent failure mode for
+    // memo/code clicks from Workbench — detail mounted in a hidden tab.
+    switchTab('spaces');
     if (typeof openSpaceDetail === 'function') {
         openSpaceDetail(id);
-        return;
     }
-    switchTab('spaces');
 }
 
 // Palette results come back from corpus_query with a URI but no
@@ -5700,13 +5747,23 @@ function renderWorkbenchWritingSpaces() {
         const status = esc(WRITING_STATUS_LABELS[w.status] || w.status || 'drafting');
         const id = esc(w.id);
         const updated = w.updatedAt ? `<span class="workbench-recent-ago">${formatWorkbenchAgo(w.updatedAt)}</span>` : '';
-        return `<button class="workbench-recent-item" onclick="openWritingSpace(${esc(JSON.stringify(id))})">
-            <div class="workbench-recent-head">
-                <span class="workbench-recent-cat">${template} · ${status}</span>
-                ${updated}
-            </div>
-            <div class="workbench-recent-title serif-display">${title}</div>
-        </button>`;
+        // Wrap in a positioned div so the × button can sit absolutely
+        // in the top-right without breaking the row click target.
+        // event.stopPropagation on the × prevents it bubbling to the
+        // outer "open" button.
+        return `<div class="workbench-recent-item-wrap">
+            <button class="workbench-recent-item" onclick="openWritingSpace(${esc(JSON.stringify(id))})">
+                <div class="workbench-recent-head">
+                    <span class="workbench-recent-cat">${template} · ${status}</span>
+                    ${updated}
+                </div>
+                <div class="workbench-recent-title serif-display">${title}</div>
+            </button>
+            <button class="workbench-recent-delete" title="Delete this Writing Space"
+                    onclick="event.stopPropagation(); deleteWritingSpaceById(${esc(JSON.stringify(id))}, ${esc(JSON.stringify(title))})">
+                ×
+            </button>
+        </div>`;
     }).join('');
 }
 
@@ -5786,6 +5843,9 @@ async function openWritingSpace(id) {
         writingSpaceDirty = false;
         setWritingSaveState('All saved');
         switchTab('writing-space');
+        // Bind keyboard shortcuts (Cmd/Ctrl-B / I / K) on first open.
+        // Idempotent — subsequent calls are no-ops.
+        if (typeof bindWritingSpaceShortcuts === 'function') bindWritingSpaceShortcuts();
     } catch (err) {
         alert('Failed to open Writing Space: ' + (err.message || err));
     }
@@ -5798,6 +5858,168 @@ function closeWritingSpace() {
     currentWritingSpace = null;
     currentWritingCitations = [];
     switchTab('workbench');
+}
+
+// Delete the open Writing Space. Cascades to versions + citations on
+// the backend (DELETE /api/writing-spaces/:id). Hard-deletes — no undo.
+async function deleteCurrentWritingSpace() {
+    if (!currentWritingSpace || !currentWritingSpace.id) return;
+    const title = currentWritingSpace.title || 'this Writing Space';
+    if (!confirm(`Delete "${title}" permanently? Versions and citations go with it. This can't be undone.`)) return;
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        // Reset state and go back to the list. Mark not-dirty so
+        // closeWritingSpace doesn't ask about unsaved changes.
+        writingSpaceDirty = false;
+        currentWritingSpace = null;
+        currentWritingCitations = [];
+        if (typeof showToast === 'function') showToast('Writing Space deleted');
+        switchTab('workbench');
+        // Refresh the Workbench list so the deleted entry disappears.
+        if (typeof loadWorkbenchWritingSpaces === 'function') loadWorkbenchWritingSpaces().catch(() => {});
+    } catch (err) {
+        alert('Failed to delete: ' + (err.message || err));
+    }
+}
+
+// Delete a Writing Space from the Workbench list without opening it
+// first. Wired into the list item's small × button (see
+// renderWorkbenchWritingSpaces). Same cascade behaviour.
+async function deleteWritingSpaceById(id, title) {
+    if (!id) return;
+    const label = title || 'this Writing Space';
+    if (!confirm(`Delete "${label}" permanently? Versions and citations go with it. This can't be undone.`)) return;
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        if (typeof showToast === 'function') showToast('Writing Space deleted');
+        if (typeof loadWorkbenchWritingSpaces === 'function') loadWorkbenchWritingSpaces().catch(() => {});
+    } catch (err) {
+        alert('Failed to delete: ' + (err.message || err));
+    }
+}
+
+// ===== Markdown formatting toolbar =====
+// Each action operates on the writing-space-body textarea via
+// cursor-position insertion. No rich-text editor — the body stays as
+// portable markdown that the 7-target export pipeline already
+// understands. Selection is preserved when wrapping; cursor lands
+// inside placeholder text for empty-selection inserts (so the user
+// can start typing immediately).
+function wsFormat(kind) {
+    const ta = document.getElementById('writing-space-body');
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const value = ta.value;
+    const before = value.slice(0, start);
+    const selection = value.slice(start, end);
+    const after = value.slice(end);
+    let inserted = '';
+    let cursorOffsetFromInsertStart = null;  // null = leave cursor at end of insert
+    switch (kind) {
+        case 'h1': case 'h2': case 'h3': {
+            const hashes = '#'.repeat(parseInt(kind.slice(1), 10));
+            const lineStart = before.lastIndexOf('\n') + 1;
+            const linePrefix = value.slice(lineStart, start);
+            // If we're at the start of a line, prefix in place; else
+            // insert a newline so the heading is on its own line.
+            const prefixSpacing = linePrefix.length === 0 ? '' : '\n\n';
+            inserted = `${prefixSpacing}${hashes} ${selection || 'Heading'}`;
+            if (!selection) cursorOffsetFromInsertStart = prefixSpacing.length + hashes.length + 1;  // before "Heading"
+            break;
+        }
+        case 'bold':
+            inserted = `**${selection || 'bold text'}**`;
+            if (!selection) cursorOffsetFromInsertStart = 2;
+            break;
+        case 'italic':
+            inserted = `*${selection || 'italic text'}*`;
+            if (!selection) cursorOffsetFromInsertStart = 1;
+            break;
+        case 'strike':
+            inserted = `~~${selection || 'strikethrough'}~~`;
+            if (!selection) cursorOffsetFromInsertStart = 2;
+            break;
+        case 'link': {
+            const text = selection || 'link text';
+            inserted = `[${text}](https://)`;
+            cursorOffsetFromInsertStart = inserted.length - 1;  // inside the URL
+            break;
+        }
+        case 'ul': case 'ol': {
+            const marker = kind === 'ul' ? '- ' : '1. ';
+            if (selection) {
+                inserted = selection.split('\n').map(line => `${marker}${line}`).join('\n');
+            } else {
+                inserted = `${marker}item`;
+                cursorOffsetFromInsertStart = marker.length;
+            }
+            break;
+        }
+        case 'quote': {
+            if (selection) {
+                inserted = selection.split('\n').map(line => `> ${line}`).join('\n');
+            } else {
+                inserted = `> quote`;
+                cursorOffsetFromInsertStart = 2;
+            }
+            break;
+        }
+        case 'code':
+            inserted = `\`${selection || 'code'}\``;
+            if (!selection) cursorOffsetFromInsertStart = 1;
+            break;
+        case 'codeblock':
+            inserted = `\`\`\`\n${selection || 'code'}\n\`\`\``;
+            if (!selection) cursorOffsetFromInsertStart = 4;
+            break;
+        case 'hr':
+            inserted = `\n\n---\n\n`;
+            break;
+        default: return;
+    }
+    ta.value = before + inserted + after;
+    if (cursorOffsetFromInsertStart !== null) {
+        const pos = start + cursorOffsetFromInsertStart;
+        const len = (kind === 'link') ? 0
+                  : (!selection && (kind.startsWith('h') || kind === 'ul' || kind === 'ol' || kind === 'quote' || kind === 'codeblock')) ? 0
+                  : (!selection) ? inserted.length - 2 * cursorOffsetFromInsertStart
+                  : 0;
+        ta.selectionStart = pos;
+        ta.selectionEnd = pos + Math.max(0, len);
+    } else {
+        const pos = start + inserted.length;
+        ta.selectionStart = ta.selectionEnd = pos;
+    }
+    ta.focus();
+    // Trigger the input event so the dirty-flag + autosave catch the change.
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// Keyboard shortcuts inside the writing-space textarea: Cmd/Ctrl-B,
+// Cmd/Ctrl-I, Cmd/Ctrl-K. Bound once at first openWritingSpace.
+let _wsKeysBound = false;
+function bindWritingSpaceShortcuts() {
+    if (_wsKeysBound) return;
+    const ta = document.getElementById('writing-space-body');
+    if (!ta) return;
+    ta.addEventListener('keydown', (e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (!mod) return;
+        const key = e.key.toLowerCase();
+        if (key === 'b') { e.preventDefault(); wsFormat('bold'); }
+        else if (key === 'i') { e.preventDefault(); wsFormat('italic'); }
+        else if (key === 'k') { e.preventDefault(); wsFormat('link'); }
+    });
+    _wsKeysBound = true;
 }
 
 function setWritingSaveState(text) {
@@ -6457,8 +6679,27 @@ function renderSpaceCard(s, isFeature) {
 // ========== SPACE DETAIL (FULL CANVAS, NOT MODAL) ==========
 
 function openSpaceDetail(id) {
+    try {
+        return _openSpaceDetailUnsafe(id);
+    } catch (err) {
+        console.error('[MEMU-ERR] openSpaceDetail threw:', err);
+        if (err && err.stack) console.error('[MEMU-ERR] stack:', err.stack);
+        if (typeof showToast === 'function') showToast('Failed to open — see DevTools console for details', true);
+    }
+}
+function _openSpaceDetailUnsafe(id) {
     const s = spacesState.spaces.find(x => x.id === id);
-    if (!s) return;
+    if (!s) {
+        console.warn('[openSpaceDetail] id not in spacesState:', id, '— attempting workbench hydration');
+        if (typeof workbenchState === 'object' && Array.isArray(workbenchState.recent)) {
+            const fromWb = workbenchState.recent.find(x => x.id === id);
+            if (fromWb) {
+                spacesState.spaces = [...spacesState.spaces, fromWb];
+                return _openSpaceDetailUnsafe(id);
+            }
+        }
+        return;
+    }
     spacesState.currentId = id;
     document.getElementById('space-detail-category').innerHTML = categoryIcon(s.category) + ' ' + categoryLabel(s.category);
     document.getElementById('space-detail-title').textContent = s.title || 'Untitled';
