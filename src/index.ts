@@ -1794,6 +1794,22 @@ server.register(workspaceRoutes);
 import { workbenchRoutes } from './api/workbench';
 server.register(workbenchRoutes);
 
+// BS3 W0 — URL source ingestion (paste-a-link → Source Space).
+import { urlSourceRoutes } from './api/urlSource';
+server.register(urlSourceRoutes);
+
+// BS3 Phase W2 — Working Sets API (CRUD + items + reorder).
+import { workingSetRoutes } from './api/workingSets';
+server.register(workingSetRoutes);
+
+// BS3 Phase W3 — Writing Spaces API (CRUD + versions + status + citations + cite-picker).
+import { writingSpaceRoutes } from './api/writingSpaces';
+server.register(writingSpaceRoutes);
+
+// BS3 Phase W6 — Writing Space export API (preview + commit, 7 targets).
+import { writingSpaceExportRoutes } from './api/writingSpaceExport';
+server.register(writingSpaceExportRoutes);
+
 // Create a new Space manually. Routes through upsertSpace so the DB row
 // + on-disk markdown + git history stay in lock-step (and so the v2
 // parent_space_uri field lands cleanly via the canvas create flow).
