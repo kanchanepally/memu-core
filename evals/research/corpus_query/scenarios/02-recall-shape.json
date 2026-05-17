@@ -1,0 +1,43 @@
+{
+  "id": "02-recall-shape",
+  "description": "Query is shaped as a recall question (\"what have I noticed about...\") — model should prefer the user's own memos and quotes over imported sources.",
+  "query": "what have I noticed about the attention economy?",
+  "candidates": [
+    {
+      "uri": "memu://fixture/source/zuboff-surveillance-capitalism",
+      "category": "source",
+      "title": "Zuboff — Surveillance Capitalism (PDF)",
+      "description": "Original source, captured 2026-03-14",
+      "bodyExcerpt": "Surveillance capitalism unilaterally claims human experience as free raw material for translation into behavioural data..."
+    },
+    {
+      "uri": "memu://fixture/memo/intention-vs-attention",
+      "category": "memo",
+      "title": "Intention vs attention — my distinction",
+      "description": "My noticing — the two economies are not symmetrical",
+      "bodyExcerpt": "I've been collapsing 'attention economy' and 'intention economy' as if they're the same axis. They're not. Attention is what they extract; intention is what they leave you with."
+    },
+    {
+      "uri": "memu://fixture/quote/doctorow-attention-2",
+      "category": "quote",
+      "title": "Doctorow on convertibility",
+      "description": "Used in the consent-as-fiction draft",
+      "bodyExcerpt": "Once attention is convertible to revenue, the relationship between provider and user inverts permanently."
+    },
+    {
+      "uri": "memu://fixture/memo/eu-ai-act-readthrough",
+      "category": "memo",
+      "title": "EU AI Act — first readthrough",
+      "description": "Notes from skimming the Act in March",
+      "bodyExcerpt": "The Act treats data as resource but consent as gating mechanism. Doesn't grapple with what happens when consent is a fiction..."
+    }
+  ],
+  "expected": {
+    "topIndices": [1],
+    "topIndicesTolerant": [1, 3],
+    "minConfidence": 0.65,
+    "maxConfidence": 1.0,
+    "shouldBeEmpty": false
+  },
+  "notes": "The query is a recall question. Index 1 (your own memo) should outrank index 0 (the source), even though Zuboff is semantically closer to 'attention economy' as a lexical match. Index 3 is a weaker but valid supporting noticing. Index 0 (the source) should NOT rank top — recall queries want your thinking, not your reading."
+}

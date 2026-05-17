@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-16-v3-polish"></script>
+    <script src="/js/theme-init.js?v=2026-05-18-bs3-w1-workbench"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-16-v3-polish">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-w1-workbench">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-16-v3-polish">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-w1-workbench">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-16-v3-polish">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-w1-workbench">
     <!-- PWA installability — manifest + theme-color + icon hints.
          Chrome's install heuristic requires manifest + a registered
          service worker (see SW registration further down). After deploy
@@ -342,6 +342,15 @@ async function api(path, opts = {}) {
         <button class="sidebar-nav-item" id="tab-spaces" onclick="switchTab('spaces')">
             <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-spaces"></use></svg>
             <span>Spaces</span>
+        </button>
+        <!-- BS3 W1 — Workbench. Hidden by default; revealed by
+             updateWorkbenchTabVisibility() when the active workspace's
+             type is 'research'. The cross-corpus recall + connection
+             surface for researcher workspaces only — keeps household /
+             personal workspaces visually unchanged. -->
+        <button class="sidebar-nav-item hidden" id="tab-workbench" onclick="switchTab('workbench')">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-workbench"></use></svg>
+            <span>Workbench</span>
         </button>
         <button class="sidebar-nav-item" id="tab-lists" onclick="switchTab('lists')">
             <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-lists"></use></svg>
@@ -1089,6 +1098,85 @@ async function api(path, opts = {}) {
     </div>
 </div>
 
+<!-- ==================== WORKBENCH TAB (BS3 Phase W1) ====================
+     The researcher-workspace surface for cross-corpus recall + typed
+     Connections. Calm landing (recent thinking + counts by category +
+     prompt to start querying). Cmd-K (or the topbar-search icon)
+     opens the query palette which fires corpus_query against the
+     workspace's embeddings + the LLM rank step.
+
+     Visibility gated by updateWorkbenchTabVisibility() — only
+     researcher-template workspaces see this tab; the markup is loaded
+     unconditionally but the `hidden` class on the view stays on for
+     non-research workspaces, and the sidebar button stays hidden too.
+
+     Insertion uses container-wide + memu-glow-bg so it matches the
+     other tab surfaces' shell visually. -->
+<div id="view-workbench" class="container-wide memu-glow-bg hidden" style="padding: 40px 48px 80px; max-width: 1080px; margin: 0 auto;">
+    <!-- Masthead — Newsreader serif copy explaining the surface.
+         Quiet, declarative; not a CTA. -->
+    <header class="workbench-masthead">
+        <span class="eyebrow">Workbench</span>
+        <h1 class="workbench-title serif-display">What you've thought</h1>
+        <p class="workbench-subtitle text-muted">
+            Search across every memo, quote, code, question, and connection in this workspace.
+            <kbd class="workbench-kbd">⌘K</kbd> to open the query palette anywhere.
+        </p>
+    </header>
+
+    <!-- Aggregate counts row — clickable filter chips that scope the
+         "Recent thinking" list below to a single artefact type. -->
+    <section class="workbench-counts" id="workbench-counts">
+        <div class="workbench-count-card workbench-count-loading">Loading your corpus…</div>
+    </section>
+
+    <!-- Recent thinking — last N artefacts in this workspace, most
+         recent first. Filtered by the active count-card chip if any. -->
+    <section class="workbench-section">
+        <header class="workbench-section-head">
+            <h2 class="workbench-section-title">Recent thinking</h2>
+            <button class="workbench-open-palette-btn" onclick="openWorkbenchPalette()">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-search"></use></svg>
+                <span>Query your corpus</span>
+                <kbd class="workbench-kbd">⌘K</kbd>
+            </button>
+        </header>
+        <div class="workbench-recent" id="workbench-recent">
+            <div class="workbench-recent-empty text-muted">Recent artefacts appear here as you read, memo, and code.</div>
+        </div>
+    </section>
+</div>
+
+<!-- Cmd-K palette — a centred modal overlay opened by ⌘K, by ⌃K, by
+     the topbar-search icon, or by the "Query your corpus" button on
+     the Workbench tab. Closed by Esc or scrim click. Lives outside
+     view-workbench so it can be opened from any tab (workspace search
+     is a global affordance in research workspaces). -->
+<div id="workbench-palette" class="workbench-palette hidden" role="dialog" aria-modal="true" aria-labelledby="workbench-palette-title">
+    <div class="workbench-palette-scrim" onclick="closeWorkbenchPalette()"></div>
+    <div class="workbench-palette-window">
+        <header class="workbench-palette-head">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-search"></use></svg>
+            <input id="workbench-palette-input"
+                   class="workbench-palette-input"
+                   type="search"
+                   autocomplete="off"
+                   autocapitalize="off"
+                   spellcheck="false"
+                   placeholder="Where did I write about…?  Which papers disagreed on…?"
+                   aria-label="Query your workspace corpus">
+            <kbd class="workbench-kbd">Esc</kbd>
+        </header>
+        <div id="workbench-palette-status" class="workbench-palette-status text-muted">
+            Type a question. Returns ranked artefacts from your workspace with one-line rationales.
+        </div>
+        <div id="workbench-palette-results" class="workbench-palette-results"></div>
+        <footer class="workbench-palette-foot text-muted">
+            <span>Searches your workspace only · never the web · provenance preserved</span>
+        </footer>
+    </div>
+</div>
+
 <!-- ==================== WORKSPACES TAB (Build Spec 1 — Story 5.3 PWA) ====================
      Mirrors mobile/app/workspaces.tsx. Lists the caller's active
      memberships, marks the current active workspace, lets the user
@@ -1671,12 +1759,13 @@ applyInitialSidebarState();
 // landing). Switching this constant alone is enough — switchTab()
 // reads it during init.
 let currentTab = 'chat';
-const tabs = ['today', 'chat', 'spaces', 'lists', 'calendar', 'ledger', 'import', 'settings', 'workspaces'];
+const tabs = ['today', 'chat', 'spaces', 'workbench', 'lists', 'calendar', 'ledger', 'import', 'settings', 'workspaces'];
 
 const TAB_TITLES = {
     today: 'Dashboard',  // Phase A.4 — renamed from "Today" (tab id stays for stable wiring)
     chat: 'Chat',
     spaces: 'Spaces',
+    workbench: 'Workbench',  // BS3 W1 — researcher cross-corpus surface
     lists: 'Lists',
     calendar: 'Calendar',
     ledger: 'Privacy Ledger',
@@ -1727,6 +1816,7 @@ function switchTab(tab) {
     if (tab === 'today') { loadBrief(); loadNewsFeed(); }
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
+    if (tab === 'workbench') loadWorkbench();  // BS3 W1
     if (tab === 'lists') loadLists();
     if (tab === 'calendar') loadCalendar();
     if (tab === 'ledger') loadLedger();
@@ -4472,10 +4562,338 @@ async function initWorkspaceSwitcher() {
             && !document.getElementById('view-spaces').classList.contains('hidden')) {
             renderSpaceChips();
         }
+        // BS3 W1 — reveal the Workbench tab + topbar-search wiring
+        // once we know the active workspace's type. Researcher-only.
+        updateWorkbenchTabVisibility();
     } catch (err) {
         console.warn('[initWorkspaceSwitcher]', err);
     }
 }
+
+// ========== BS3 W1 — WORKBENCH ==========
+//
+// The researcher-workspace surface for cross-corpus recall + typed
+// Connections. Composed of:
+//   - The Workbench tab landing (counts + recent thinking)
+//   - The Cmd-K query palette (global — works from any tab in a
+//     research workspace)
+//   - corpus_query agent dispatch via POST /api/workbench/query
+//
+// Visibility is gated by workspace.type === 'research'. In a
+// household / personal workspace the tab is invisible, the keyboard
+// shortcut is a no-op, and the topbar-search icon does nothing.
+
+// Show / hide the Workbench tab + wire the topbar-search icon based
+// on the active workspace's type. Called on init and on every
+// workspace switch.
+function updateWorkbenchTabVisibility() {
+    const active = (typeof effectiveActiveWorkspace === 'function') ? effectiveActiveWorkspace() : null;
+    const isResearch = active && active.type === 'research';
+    const tabBtn = document.getElementById('tab-workbench');
+    if (tabBtn) tabBtn.classList.toggle('hidden', !isResearch);
+    // Wire the topbar-search icon to open the palette — only in
+    // research workspaces. In every other workspace the icon stays
+    // visible (existing v3 chrome) but does nothing on click (stub).
+    const topSearch = document.getElementById('topbar-search');
+    if (topSearch) {
+        topSearch.onclick = isResearch ? openWorkbenchPalette : null;
+        topSearch.style.opacity = isResearch ? '' : '0.4';
+        topSearch.style.cursor = isResearch ? 'pointer' : 'default';
+        topSearch.title = isResearch ? 'Search your workspace (⌘K)' : 'Search';
+    }
+}
+
+// Workbench landing — counts + recent. Called by switchTab('workbench')
+// and re-callable on workspace switch.
+let workbenchState = { recent: [], byCategory: {}, activeFilter: null };
+
+async function loadWorkbench() {
+    const recentEl = document.getElementById('workbench-recent');
+    const countsEl = document.getElementById('workbench-counts');
+    if (!recentEl || !countsEl) return;
+    recentEl.innerHTML = '<div class="workbench-recent-empty text-muted">Loading your corpus…</div>';
+    countsEl.innerHTML = '<div class="workbench-count-card workbench-count-loading">…</div>';
+    try {
+        const res = await api('/api/dashboard/spaces');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const spaces = Array.isArray(data.spaces) ? data.spaces : [];
+        // Tally counts per category. Sort by recency for the list.
+        const byCat = {};
+        for (const s of spaces) {
+            const c = s.category || 'other';
+            if (!byCat[c]) byCat[c] = 0;
+            byCat[c] += 1;
+        }
+        workbenchState.byCategory = byCat;
+        workbenchState.recent = spaces
+            .slice()
+            .sort((a, b) => {
+                const ta = a.last_updated_at || a.lastUpdated || 0;
+                const tb = b.last_updated_at || b.lastUpdated || 0;
+                return new Date(tb) - new Date(ta);
+            })
+            .slice(0, 30);
+        renderWorkbenchCounts();
+        renderWorkbenchRecent();
+    } catch (err) {
+        console.error('[loadWorkbench]', err);
+        recentEl.innerHTML = `<div class="workbench-recent-empty text-muted">Couldn't load corpus — ${esc(err && err.message ? err.message : 'unknown error')}.</div>`;
+        countsEl.innerHTML = '';
+    }
+}
+
+// Researcher-friendly labels for the category enum. Falls back to the
+// raw category string for anything not listed.
+const WORKBENCH_CATEGORY_LABELS = {
+    memo: 'Memos',
+    quote: 'Quotes',
+    theme: 'Codes',          // "Code" is the verb in the UI; "Theme" is the noun
+    question: 'Questions',
+    participant: 'Participants',
+    source: 'Sources',
+    document: 'Documents',
+    // Family-set categories — still shown if a researcher workspace
+    // happens to contain them (shouldn't usually).
+    person: 'People',
+    routine: 'Routines',
+    household: 'Households',
+    commitment: 'Commitments',
+};
+
+function workbenchCategoryLabel(cat) {
+    return WORKBENCH_CATEGORY_LABELS[cat] || (cat ? cat[0].toUpperCase() + cat.slice(1) : 'Other');
+}
+
+function renderWorkbenchCounts() {
+    const el = document.getElementById('workbench-counts');
+    if (!el) return;
+    const entries = Object.entries(workbenchState.byCategory).sort(([, a], [, b]) => b - a);
+    if (entries.length === 0) {
+        el.innerHTML = '<div class="workbench-count-card workbench-count-empty">No artefacts yet — import a source or write a memo to begin.</div>';
+        return;
+    }
+    const allActive = workbenchState.activeFilter === null;
+    const allTotal = entries.reduce((a, [, n]) => a + n, 0);
+    const cards = [
+        `<button class="workbench-count-card ${allActive ? 'workbench-count-active' : ''}" onclick="setWorkbenchFilter(null)">
+            <span class="workbench-count-label">All thinking</span>
+            <span class="workbench-count-n">${allTotal}</span>
+        </button>`,
+        ...entries.map(([cat, n]) => {
+            const active = workbenchState.activeFilter === cat;
+            return `<button class="workbench-count-card ${active ? 'workbench-count-active' : ''}" onclick="setWorkbenchFilter(${JSON.stringify(cat)})">
+                <span class="workbench-count-label">${esc(workbenchCategoryLabel(cat))}</span>
+                <span class="workbench-count-n">${n}</span>
+            </button>`;
+        }),
+    ];
+    el.innerHTML = cards.join('');
+}
+
+function setWorkbenchFilter(cat) {
+    workbenchState.activeFilter = cat;
+    renderWorkbenchCounts();
+    renderWorkbenchRecent();
+}
+
+function renderWorkbenchRecent() {
+    const el = document.getElementById('workbench-recent');
+    if (!el) return;
+    const filter = workbenchState.activeFilter;
+    const items = workbenchState.recent.filter(s => !filter || s.category === filter);
+    if (items.length === 0) {
+        const what = filter ? `No ${workbenchCategoryLabel(filter).toLowerCase()} yet.` : 'No artefacts yet.';
+        el.innerHTML = `<div class="workbench-recent-empty text-muted">${what}</div>`;
+        return;
+    }
+    el.innerHTML = items.map(s => {
+        const title = esc(s.title || 'Untitled');
+        const cat = esc(workbenchCategoryLabel(s.category));
+        const desc = esc(s.description || '');
+        const updated = s.last_updated_at || s.lastUpdated;
+        const ago = updated ? `<span class="workbench-recent-ago">${formatWorkbenchAgo(updated)}</span>` : '';
+        const uri = esc(s.uri || '');
+        return `<button class="workbench-recent-item" onclick="openWorkbenchResult(${JSON.stringify(uri)})">
+            <div class="workbench-recent-head">
+                <span class="workbench-recent-cat">${cat}</span>
+                ${ago}
+            </div>
+            <div class="workbench-recent-title serif-display">${title}</div>
+            ${desc ? `<div class="workbench-recent-desc text-muted">${desc}</div>` : ''}
+        </button>`;
+    }).join('');
+}
+
+function formatWorkbenchAgo(iso) {
+    try {
+        const t = new Date(iso).getTime();
+        const diff = Date.now() - t;
+        if (diff < 0) return '';
+        const m = Math.round(diff / 60000);
+        if (m < 60) return `${m}m ago`;
+        const h = Math.round(m / 60);
+        if (h < 24) return `${h}h ago`;
+        const d = Math.round(h / 24);
+        if (d < 14) return `${d}d ago`;
+        return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    } catch { return ''; }
+}
+
+// Open a Workbench result — routes through the existing Space-detail
+// flow on the Spaces tab so we don't fork the rendering of an artefact.
+function openWorkbenchResult(uri) {
+    if (!uri) return;
+    if (typeof openSpaceDetailByUri === 'function') {
+        openSpaceDetailByUri(uri);
+        return;
+    }
+    // Fallback — switch to Spaces tab + leave a hint for the user.
+    switchTab('spaces');
+}
+
+// ----- Cmd-K palette -----
+
+function openWorkbenchPalette() {
+    // No-op outside research workspaces. Gated here as well as in the
+    // global keyboard listener so the in-tab "Query your corpus"
+    // button can't bypass the gate.
+    const active = (typeof effectiveActiveWorkspace === 'function') ? effectiveActiveWorkspace() : null;
+    if (!active || active.type !== 'research') return;
+    const palette = document.getElementById('workbench-palette');
+    const input = document.getElementById('workbench-palette-input');
+    if (!palette || !input) return;
+    palette.classList.remove('hidden');
+    // Focus on next frame so the visible-transition starts cleanly
+    // and the cursor lands inside the input.
+    requestAnimationFrame(() => { input.focus(); input.select(); });
+    // Reset state.
+    document.getElementById('workbench-palette-results').innerHTML = '';
+    document.getElementById('workbench-palette-status').textContent =
+        'Type a question. Returns ranked artefacts from your workspace with one-line rationales.';
+}
+
+function closeWorkbenchPalette() {
+    const palette = document.getElementById('workbench-palette');
+    if (!palette) return;
+    palette.classList.add('hidden');
+    const input = document.getElementById('workbench-palette-input');
+    if (input) input.value = '';
+}
+
+// Submit the palette query → POST /api/workbench/query → render
+// results. Bound to Enter inside the input.
+let workbenchQueryInFlight = false;
+async function submitWorkbenchQuery(query) {
+    if (workbenchQueryInFlight) return;
+    workbenchQueryInFlight = true;
+    const statusEl = document.getElementById('workbench-palette-status');
+    const resultsEl = document.getElementById('workbench-palette-results');
+    statusEl.textContent = 'Searching your corpus…';
+    resultsEl.innerHTML = '';
+    try {
+        const res = await api('/api/workbench/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+        });
+        if (!res.ok) {
+            const body = await res.text();
+            throw new Error(`HTTP ${res.status} — ${body.slice(0, 120)}`);
+        }
+        const data = await res.json();
+        renderWorkbenchPaletteResults(data);
+    } catch (err) {
+        console.error('[workbench-query]', err);
+        statusEl.textContent = `Query failed — ${err && err.message ? err.message : 'unknown error'}.`;
+    } finally {
+        workbenchQueryInFlight = false;
+    }
+}
+
+function renderWorkbenchPaletteResults(data) {
+    const statusEl = document.getElementById('workbench-palette-status');
+    const resultsEl = document.getElementById('workbench-palette-results');
+    const results = Array.isArray(data.results) ? data.results : [];
+    const confidence = typeof data.confidence === 'number' ? data.confidence : 0;
+    const candidates = typeof data.candidateCount === 'number' ? data.candidateCount : 0;
+    const ms = typeof data.latencyMs === 'number' ? data.latencyMs : 0;
+    if (results.length === 0) {
+        const notes = data.notes && typeof data.notes === 'string' ? data.notes : 'No strong match in your corpus.';
+        statusEl.innerHTML = `<strong>${esc(notes)}</strong>`;
+        resultsEl.innerHTML = '';
+        return;
+    }
+    const confPct = Math.round(confidence * 100);
+    statusEl.innerHTML = `<span>${results.length} result${results.length === 1 ? '' : 's'} · confidence ${confPct}% · ${candidates} candidates · ${ms}ms</span>`;
+    resultsEl.innerHTML = results.map((r, i) => {
+        const title = esc(r.title || 'Untitled');
+        const cat = esc(workbenchCategoryLabel(r.category));
+        const why = esc(r.why || '');
+        const snippet = esc(r.bodyExcerpt || '');
+        const score = typeof r.score === 'number' ? Math.round(r.score * 100) : 0;
+        const uri = esc(r.uri || '');
+        return `<button class="workbench-result" onclick="closeWorkbenchPalette(); openWorkbenchResult(${JSON.stringify(uri)});">
+            <div class="workbench-result-head">
+                <span class="workbench-result-cat">${cat}</span>
+                <span class="workbench-result-score">${score}%</span>
+            </div>
+            <div class="workbench-result-title serif-display">${title}</div>
+            <div class="workbench-result-why">${why}</div>
+            ${snippet ? `<div class="workbench-result-snippet text-muted">${snippet}</div>` : ''}
+        </button>`;
+    }).join('');
+}
+
+// ----- Keyboard wiring -----
+//
+// Cmd-K (or Ctrl-K) opens the palette from any tab in a researcher
+// workspace. Esc closes it. Enter inside the input submits the query.
+// All listeners are attached once at boot; reactivity to workspace
+// switches lives in updateWorkbenchTabVisibility() (which simply
+// rebinds the topbar-search icon's onclick).
+
+document.addEventListener('keydown', (e) => {
+    const key = (e.key || '').toLowerCase();
+    // Cmd-K / Ctrl-K → toggle palette
+    if (key === 'k' && (e.metaKey || e.ctrlKey)) {
+        const palette = document.getElementById('workbench-palette');
+        if (!palette) return;
+        if (palette.classList.contains('hidden')) {
+            // Gate on workspace type (same as openWorkbenchPalette).
+            const active = (typeof effectiveActiveWorkspace === 'function') ? effectiveActiveWorkspace() : null;
+            if (active && active.type === 'research') {
+                e.preventDefault();
+                openWorkbenchPalette();
+            }
+        } else {
+            e.preventDefault();
+            closeWorkbenchPalette();
+        }
+        return;
+    }
+    // Esc → close palette (only when it's open)
+    if (e.key === 'Escape') {
+        const palette = document.getElementById('workbench-palette');
+        if (palette && !palette.classList.contains('hidden')) {
+            e.preventDefault();
+            closeWorkbenchPalette();
+        }
+    }
+});
+
+// Enter in the palette input → submit the query.
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('workbench-palette-input');
+    if (!input) return;
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const q = input.value.trim();
+            if (q.length > 0) submitWorkbenchQuery(q);
+        }
+    });
+});
 
 // ========== UTILITIES ==========
 

@@ -1,0 +1,36 @@
+{
+  "id": "03-empty-honest",
+  "description": "Query asks about something genuinely not in the corpus. Model should return empty ranking with notes explaining the gap, NOT stretch to surface weak matches.",
+  "query": "what did I write about cryptocurrency regulation?",
+  "candidates": [
+    {
+      "uri": "memu://fixture/memo/graded-inequality",
+      "category": "memo",
+      "title": "Graded inequality — Ambedkar's framing",
+      "description": "My working definition",
+      "bodyExcerpt": "Using graded inequality to name the structural pattern where consent appears available but the cost-of-saying-no is steep."
+    },
+    {
+      "uri": "memu://fixture/source/berners-lee-solid",
+      "category": "source",
+      "title": "Berners-Lee — Solid spec",
+      "description": "Decentralised data protocol",
+      "bodyExcerpt": "Personal Online Datastores let users retain ownership of their data while enabling rich applications..."
+    },
+    {
+      "uri": "memu://fixture/memo/eu-ai-act-readthrough",
+      "category": "memo",
+      "title": "EU AI Act — first readthrough",
+      "description": "Skimmed notes from March",
+      "bodyExcerpt": "The Act treats data as resource but consent as gating mechanism. Doesn't touch crypto-anything."
+    }
+  ],
+  "expected": {
+    "topIndices": [],
+    "topIndicesTolerant": [],
+    "minConfidence": 0.0,
+    "maxConfidence": 0.3,
+    "shouldBeEmpty": true
+  },
+  "notes": "Index 2 LEXICALLY mentions 'crypto' (in the negation 'doesn't touch crypto-anything') but it's not actually about crypto regulation. A weak model will surface it; a strong model recognises the negation and returns empty with honest notes. This scenario gates the 'don't stretch' rule from the SKILL.md."
+}

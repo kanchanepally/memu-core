@@ -1,0 +1,50 @@
+{
+  "id": "01-direct-match",
+  "description": "Query directly names a term defined in one of the captured memos. Top result should be that memo with high confidence.",
+  "query": "where did I write about graded inequality?",
+  "candidates": [
+    {
+      "uri": "memu://fixture/memo/graded-inequality",
+      "category": "memo",
+      "title": "Graded inequality — Ambedkar's framing",
+      "description": "My working definition contrasted with Ambedkar's usage",
+      "bodyExcerpt": "I'm using 'graded inequality' to name the structural pattern where consent appears available but the gradient of cost-of-saying-no is steep. Ambedkar uses the same phrase for the caste-graded hierarchy where each layer has someone below it to look down on..."
+    },
+    {
+      "uri": "memu://fixture/quote/doctorow-attention",
+      "category": "quote",
+      "title": "Doctorow on attention extraction",
+      "description": "Cited in the consent-as-fiction essay",
+      "bodyExcerpt": "Attention is the foundation of all human relations. Convert it into a fungible asset and you've broken the substrate of consent itself."
+    },
+    {
+      "uri": "memu://fixture/memo/cookie-banners",
+      "category": "memo",
+      "title": "Cookie-banner fatigue",
+      "description": "Memo on the GDPR-era ritual",
+      "bodyExcerpt": "We click 'I agree' a hundred times a week. The fiction is that this constitutes consent."
+    },
+    {
+      "uri": "memu://fixture/source/berners-lee-solid",
+      "category": "source",
+      "title": "Berners-Lee — Solid spec",
+      "description": "The decentralised-data protocol paper",
+      "bodyExcerpt": "Personal Online Datastores (Pods) let users retain ownership of their data while still enabling rich applications..."
+    },
+    {
+      "uri": "memu://fixture/theme/consent-as-fiction",
+      "category": "theme",
+      "title": "consent-as-fiction",
+      "description": "Working theme — every passage coded under this header treats consent as ritual rather than choice",
+      "bodyExcerpt": "Cluster of passages where consent operates as ceremony rather than as agency. The bar is so low that 'agreement' bears no signal."
+    }
+  ],
+  "expected": {
+    "topIndices": [0],
+    "topIndicesTolerant": [0, 4],
+    "minConfidence": 0.8,
+    "maxConfidence": 1.0,
+    "shouldBeEmpty": false
+  },
+  "notes": "Direct lexical AND semantic match. Index 0 should rank first; index 4 (the theme) is a reasonable supporting result."
+}
