@@ -42,8 +42,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-web-browser",
-      "react-native-pdf"
+      "expo-web-browser"
     ],
     "extra": {
       "router": {},
