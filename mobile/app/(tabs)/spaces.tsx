@@ -8,7 +8,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import QRCode from 'react-native-qrcode-svg';
-import { getSpaces, updateSpace, createSpace, type SynthesisPage } from '../../lib/api';
+import {
+  getSpaces, updateSpace, createSpace, firstAttachedDocumentIsPdf,
+  type SynthesisPage,
+} from '../../lib/api';
 import { loadAuthState } from '../../lib/auth';
 import { useToast } from '../../components/Toast';
 import { spacing, radius } from '../../lib/tokens';
@@ -19,6 +22,7 @@ import ScreenHeader from '../../components/ScreenHeader';
 import ScreenContainer from '../../components/ScreenContainer';
 import Masthead from '../../components/Masthead';
 import GradientButton from '../../components/GradientButton';
+import PdfViewer from '../../components/PdfViewer';
 
 type Category = 'all' | 'person' | 'routine' | 'household' | 'commitment' | 'document';
 
@@ -478,20 +482,23 @@ export default function SpacesScreen() {
               placeholder="Markdown content…"
               placeholderTextColor={t.text3}
             />
+          ) : selectedPage.category === 'document' && firstAttachedDocumentIsPdf(selectedPage) ? (
+            // Native PDF view — react-native-pdf renders the original
+            // pages from GET /api/spaces/:id/document. OCR'd body_markdown
+            // is reachable via Edit. Requires EAS build (config plugin).
+            <View style={styles.pdfHost}>
+              <PdfViewer spaceId={selectedPage.id} idx={0} />
+            </View>
           ) : (
             <ScrollView
               style={styles.detailScroll}
               contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
             >
-              {/* PDF / document fallback (option B per pickup brief).
-                  pdf.js / react-native-pdf is a deep native integration; for now,
-                  for document-category Spaces we render the OCR'd body text as
-                  plain serif text and skip markdown parsing. This avoids the
-                  crash class where embedded HTML / pdf.js worker references in
-                  body_markdown blew up react-native-markdown-display.
-                  Tier-2 native slice would: add `react-native-pdf` + plugin,
-                  resolve `sourceReferences` for `document:<path>`, fetch via
-                  Tailscale, render natively. */}
+              {/* Plain-text fallback for document Spaces without an
+                  attached PDF (e.g. .txt sources, or ingest pre-dating
+                  the persistOriginal hookup). Skips markdown parsing
+                  to avoid the crash class where embedded HTML / pdf.js
+                  worker references blew up react-native-markdown-display. */}
               {selectedPage.category === 'document' ? (
                 <Text style={pdfFallbackStyles.body}>
                   {selectedPage.body_markdown || ''}
@@ -784,6 +791,12 @@ function makeStyles(t: Tokens) {
   },
   detailScroll: {
     flex: 1,
+  },
+  pdfHost: {
+    flex: 1,
+    marginVertical: spacing.sm,
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   detailActions: {
     flexDirection: 'row',

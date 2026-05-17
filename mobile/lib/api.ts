@@ -892,10 +892,67 @@ export interface SynthesisPage {
   slug?: string;            // deep-link target for chat artefact chips
   body_markdown: string;
   last_updated_at: string;
+  /**
+   * source_references mirrors the synthesis_pages.source_references column.
+   * Entries beginning `document:` point at a PDF / text file persisted by
+   * documentIngestion.persistOriginal() — fetchable via
+   * GET /api/spaces/:id/document?idx=N. Mobile PDF viewer keys off this.
+   */
+  source_references?: string[];
 }
 
 export async function getSpaces(): Promise<ApiResponse<{ spaces: SynthesisPage[] }>> {
   return request<{ spaces: SynthesisPage[] }>('/api/dashboard/spaces');
+}
+
+/**
+ * Build the URL + headers needed to fetch a Space's attached document
+ * (PDF / text / image). react-native-pdf accepts `{ uri, headers }` on
+ * its `source` prop; this helper produces a value ready to drop in.
+ *
+ * Returns null when no auth state is loaded (caller renders an
+ * unauthenticated state). idx selects the Nth document: reference on
+ * the Space (default 0) — matches the server endpoint contract.
+ */
+export async function getSpaceDocumentSource(
+  spaceId: string,
+  idx: number = 0,
+): Promise<{ uri: string; headers: Record<string, string> } | null> {
+  const auth = await loadAuthState();
+  if (!auth.serverUrl || !auth.apiKey) return null;
+  const base = auth.serverUrl.replace(/\/$/, '');
+  const uri = `${base}/api/spaces/${encodeURIComponent(spaceId)}/document?idx=${idx}`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.apiKey}`,
+    'ngrok-skip-browser-warning': 'true',
+  };
+  const activeWorkspaceId = await getActiveWorkspaceId();
+  if (activeWorkspaceId) headers['X-Memu-Workspace-Id'] = activeWorkspaceId;
+  return { uri, headers };
+}
+
+/**
+ * Return the count of document: source references on a Space, or 0 if
+ * none. Used by the mobile viewer to decide whether to mount the
+ * native PDF component vs. fall back to plain-text body.
+ */
+export function countAttachedDocuments(page: SynthesisPage): number {
+  if (!Array.isArray(page.source_references)) return 0;
+  return page.source_references.filter(r => typeof r === 'string' && r.startsWith('document:')).length;
+}
+
+/**
+ * Detect whether the first attached document is a PDF by extension.
+ * The /api/spaces/:id/document endpoint resolves the actual file and
+ * sets the right Content-Type, but we use the extension here as a
+ * cheap client-side gate so we don't mount a PDF viewer over a .txt.
+ */
+export function firstAttachedDocumentIsPdf(page: SynthesisPage): boolean {
+  if (!Array.isArray(page.source_references)) return false;
+  const first = page.source_references.find(r => typeof r === 'string' && r.startsWith('document:'));
+  if (!first) return false;
+  const path = first.slice('document:'.length).toLowerCase();
+  return path.endsWith('.pdf');
 }
 
 export async function createSpace(title: string, category: string, body_markdown: string) {
