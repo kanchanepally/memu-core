@@ -1218,3 +1218,37 @@ body {
     margin-top: 16px;
   }
 }
+
+/* Focus mode — toggled by switchTab when the Writing Space is open.
+   Dogfood feedback 2026-05-18: composer was cramped because the app
+   sidebar was eating ~280px and the surface was capped at 1080px.
+   Focus mode hides the sidebar and lets the composer breathe out to
+   ~1320px. Restored automatically when the user navigates away. */
+body.writing-space-focus .sidebar {
+  display: none;
+}
+body.writing-space-focus #view-writing-space {
+  max-width: 1320px;
+  padding-left: 56px;
+  padding-right: 56px;
+}
+body.writing-space-focus .writing-space-editor {
+  font-size: 19px;
+  line-height: 1.7;
+  padding: 48px 64px;
+}
+body.writing-space-focus .writing-space-shell {
+  /* Slightly bigger sources rail when we have more space to play with. */
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: calc(100vh - 180px);
+}
+@media (max-width: 900px) {
+  body.writing-space-focus #view-writing-space {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  body.writing-space-focus .writing-space-editor {
+    font-size: 17px;
+    padding: 24px 16px;
+  }
+}
