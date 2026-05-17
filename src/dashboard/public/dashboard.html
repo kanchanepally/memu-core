@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-18-bs3-w1-workbench"></script>
+    <script src="/js/theme-init.js?v=2026-05-18-bs3-w3-writing"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-w1-workbench">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-w3-writing">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-w1-workbench">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-w3-writing">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-w1-workbench">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-w3-writing">
     <!-- PWA installability — manifest + theme-color + icon hints.
          Chrome's install heuristic requires manifest + a registered
          service worker (see SW registration further down). After deploy
@@ -1124,6 +1124,25 @@ async function api(path, opts = {}) {
         </p>
     </header>
 
+    <!-- Quick capture — drop a URL → Source Space. BS3 W0.
+         Sits high on the surface because capture-then-think is the
+         primary workflow shape. Hide the input until the box is
+         clicked so the surface stays calm by default. -->
+    <section class="workbench-quick-capture">
+        <header class="workbench-section-head">
+            <h2 class="workbench-section-title">Capture</h2>
+        </header>
+        <div class="workbench-url-row">
+            <input type="url" id="workbench-url-input"
+                   class="workbench-url-input"
+                   placeholder="Paste a URL — article, blog post, paper landing page…"
+                   autocomplete="off" autocapitalize="off" spellcheck="false">
+            <button id="workbench-url-submit" class="workbench-url-submit"
+                    onclick="submitWorkbenchUrl()">Capture</button>
+        </div>
+        <div id="workbench-url-status" class="workbench-url-status text-muted"></div>
+    </section>
+
     <!-- Aggregate counts row — clickable filter chips that scope the
          "Recent thinking" list below to a single artefact type. -->
     <section class="workbench-counts" id="workbench-counts">
@@ -1145,6 +1164,253 @@ async function api(path, opts = {}) {
             <div class="workbench-recent-empty text-muted">Recent artefacts appear here as you read, memo, and code.</div>
         </div>
     </section>
+
+    <!-- Working Sets — BS3 W2. Named ordered bundles of artefacts
+         the researcher assembles before writing. Click one to
+         open the Working Set drawer for adding / reordering items
+         + starting a Writing Space from it. -->
+    <section class="workbench-section" id="workbench-sets-section">
+        <header class="workbench-section-head">
+            <h2 class="workbench-section-title">Working Sets</h2>
+            <button class="workbench-open-palette-btn" onclick="openCreateWorkingSetModal()">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                <span>New set</span>
+            </button>
+        </header>
+        <div class="workbench-sets" id="workbench-sets">
+            <div class="workbench-recent-empty text-muted">Working Sets are named bundles of artefacts you assemble before drafting.</div>
+        </div>
+    </section>
+
+    <!-- Writing Spaces — BS3 W3. New top-level object; this is the
+         list view. Click a card to open the composer. -->
+    <section class="workbench-section" id="workbench-writing-section">
+        <header class="workbench-section-head">
+            <h2 class="workbench-section-title">Writing</h2>
+            <button class="workbench-open-palette-btn" onclick="openCreateWritingSpaceModal(null)">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                <span>New Writing Space</span>
+            </button>
+        </header>
+        <div class="workbench-writing-list" id="workbench-writing-list">
+            <div class="workbench-recent-empty text-muted">Drafts and finished pieces appear here. Start one from a Working Set, or empty.</div>
+        </div>
+    </section>
+</div>
+
+<!-- ==================== WRITING SPACE COMPOSER (BS3 W3) ====================
+     New top-level surface (not in the sidebar nav — opened by clicking
+     a card in the Workbench writing list). Two-column shell: large
+     markdown editor on the left, right rail with Sources (citations),
+     Versions, and Notes tabs. Top bar carries title (inline-edit),
+     template badge, status pill, Versions/Export affordances. -->
+<div id="view-writing-space" class="container-wide memu-glow-bg hidden" style="padding: 24px 32px 80px;">
+    <header class="writing-space-topbar">
+        <button class="writing-space-back" onclick="closeWritingSpace()" title="Back to Workbench">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-chev-r" style="transform:rotate(180deg);"></use></svg>
+            <span>Workbench</span>
+        </button>
+        <input type="text" id="writing-space-title" class="writing-space-title-input serif-display"
+               placeholder="Untitled essay" />
+        <span id="writing-space-template-badge" class="writing-space-badge">essay</span>
+        <select id="writing-space-status" class="writing-space-status-select">
+            <option value="drafting">Drafting</option>
+            <option value="revising">Revising</option>
+            <option value="ready_to_publish">Ready</option>
+            <option value="published">Published</option>
+            <option value="archived">Archived</option>
+        </select>
+        <span id="writing-space-savestate" class="writing-space-savestate text-muted">All saved</span>
+        <button class="workbench-open-palette-btn" onclick="openExportModal()">
+            <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-arrow"></use></svg>
+            <span>Export</span>
+        </button>
+    </header>
+    <div class="writing-space-shell">
+        <div class="writing-space-editor-col">
+            <textarea id="writing-space-body" class="writing-space-editor"
+                      placeholder="Start writing. Use the Cite button on the right to insert a citation from your corpus."></textarea>
+            <div class="writing-space-toolbar">
+                <button class="writing-space-tool" onclick="openCitePickerForCursor()">
+                    <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-link"></use></svg>
+                    <span>Cite</span>
+                </button>
+                <span id="writing-space-wordcount" class="writing-space-wordcount text-muted">0 words</span>
+            </div>
+        </div>
+        <aside class="writing-space-sidebar">
+            <nav class="writing-space-tabs">
+                <button class="writing-space-tab active" data-tab="sources" onclick="switchWritingTab('sources')">Sources</button>
+                <button class="writing-space-tab" data-tab="versions" onclick="switchWritingTab('versions')">Versions</button>
+                <button class="writing-space-tab" data-tab="notes" onclick="switchWritingTab('notes')">Notes</button>
+            </nav>
+            <div class="writing-space-panel" id="writing-space-panel-sources">
+                <div id="writing-space-citations" class="writing-space-citations-list">
+                    <div class="text-muted" style="padding:16px;">No citations yet — click <strong>Cite</strong> below the editor to add one.</div>
+                </div>
+            </div>
+            <div class="writing-space-panel hidden" id="writing-space-panel-versions">
+                <div id="writing-space-versions-list" class="writing-space-versions-list">
+                    <div class="text-muted" style="padding:16px;">Saved versions appear here.</div>
+                </div>
+            </div>
+            <div class="writing-space-panel hidden" id="writing-space-panel-notes">
+                <div class="text-muted" style="padding:16px;">Notes panel is reserved for upcoming agent surfacing (W4 / W5).</div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- ==================== CITE PICKER MODAL ====================
+     Inline picker triggered by clicking "Cite" in the composer or by
+     typing [[ in the editor (handled by composer JS). Lists ranked
+     artefact candidates from /api/writing-spaces/:id/cite-picker. -->
+<div id="cite-picker-modal" class="workbench-palette hidden" role="dialog" aria-modal="true" aria-labelledby="cite-picker-title">
+    <div class="workbench-palette-scrim" onclick="closeCitePicker()"></div>
+    <div class="workbench-palette-window">
+        <header class="workbench-palette-head">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-link"></use></svg>
+            <input id="cite-picker-input"
+                   class="workbench-palette-input"
+                   type="search"
+                   autocomplete="off"
+                   placeholder="Filter artefacts to cite — or just pick from the list"
+                   aria-label="Filter artefacts">
+            <kbd class="workbench-kbd">Esc</kbd>
+        </header>
+        <div id="cite-picker-status" class="workbench-palette-status text-muted">Pick an artefact from your workspace to insert as a citation.</div>
+        <div id="cite-picker-results" class="workbench-palette-results"></div>
+    </div>
+</div>
+
+<!-- ==================== EXPORT PREVIEW MODAL ====================
+     Renders the selected target via /api/writing-spaces/:id/export
+     (GET = preview). Shows the bytes, lets the user download or
+     copy-to-clipboard, then a commit button writes the audit log via
+     POST. Driftedl citations surface as a warning banner if any. -->
+<div id="export-modal" class="workbench-palette hidden" role="dialog" aria-modal="true">
+    <div class="workbench-palette-scrim" onclick="closeExportModal()"></div>
+    <div class="workbench-palette-window export-modal-window">
+        <header class="workbench-palette-head">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-arrow"></use></svg>
+            <select id="export-target" class="export-target-select" onchange="onExportTargetChange()">
+                <option value="markdown">Markdown (.md)</option>
+                <option value="substack">Substack HTML</option>
+                <option value="docx">Word (.doc HTML)</option>
+                <option value="latex">LaTeX (.tex)</option>
+                <option value="pandoc">Pandoc markdown</option>
+                <option value="bibtex">BibTeX (.bib citations)</option>
+                <option value="print">Print HTML</option>
+            </select>
+            <span id="export-status" class="text-muted" style="font-size:12px;flex:1;">Pick a format to preview.</span>
+            <kbd class="workbench-kbd">Esc</kbd>
+        </header>
+        <div id="export-drift-banner" class="export-drift-banner hidden"></div>
+        <div id="export-preview" class="export-preview-pane"></div>
+        <footer class="export-modal-foot">
+            <button class="workbench-open-palette-btn" onclick="copyExportToClipboard()">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-attach"></use></svg>
+                <span>Copy to clipboard</span>
+            </button>
+            <button class="workbench-open-palette-btn" onclick="downloadExport()">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-arrow"></use></svg>
+                <span>Download</span>
+            </button>
+            <button class="workbench-open-palette-btn" onclick="commitExport()" style="margin-left:auto;border-color:var(--brand);color:var(--brand);">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-check"></use></svg>
+                <span>Commit to audit log</span>
+            </button>
+        </footer>
+    </div>
+</div>
+
+<!-- ==================== CREATE WORKING SET MODAL ==================== -->
+<div id="create-set-modal" class="workbench-palette hidden" role="dialog" aria-modal="true">
+    <div class="workbench-palette-scrim" onclick="closeCreateWorkingSetModal()"></div>
+    <div class="workbench-palette-window" style="max-width:520px;">
+        <header class="workbench-palette-head">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-plus"></use></svg>
+            <span style="flex:1;font-family:var(--font-ui);font-size:15px;">New Working Set</span>
+            <kbd class="workbench-kbd">Esc</kbd>
+        </header>
+        <div style="padding: 20px 22px;">
+            <label class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;">Name</label>
+            <input id="create-set-name" type="text" placeholder="Materials for the consent essay"
+                   style="display:block;width:100%;padding:10px 14px;margin-top:6px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:var(--font-ui);font-size:14px;">
+            <label class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;">Description (optional)</label>
+            <textarea id="create-set-desc" rows="2" placeholder="One sentence on what this set is for"
+                      style="display:block;width:100%;padding:10px 14px;margin-top:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:var(--font-ui);font-size:13px;resize:vertical;"></textarea>
+            <div id="create-set-error" class="hidden" style="color:var(--red);font-size:12px;margin-top:10px;"></div>
+        </div>
+        <footer class="export-modal-foot">
+            <button class="workbench-open-palette-btn" onclick="closeCreateWorkingSetModal()">Cancel</button>
+            <button class="workbench-open-palette-btn" onclick="submitCreateWorkingSet()" style="margin-left:auto;border-color:var(--brand);color:var(--brand);">Create</button>
+        </footer>
+    </div>
+</div>
+
+<!-- ==================== CREATE WRITING SPACE MODAL ==================== -->
+<div id="create-writing-modal" class="workbench-palette hidden" role="dialog" aria-modal="true">
+    <div class="workbench-palette-scrim" onclick="closeCreateWritingSpaceModal()"></div>
+    <div class="workbench-palette-window" style="max-width:560px;">
+        <header class="workbench-palette-head">
+            <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-memo"></use></svg>
+            <span style="flex:1;font-family:var(--font-ui);font-size:15px;">New Writing Space</span>
+            <kbd class="workbench-kbd">Esc</kbd>
+        </header>
+        <div style="padding: 20px 22px;">
+            <label class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;">Title</label>
+            <input id="create-writing-title" type="text" placeholder="Why consent-as-fiction has won"
+                   style="display:block;width:100%;padding:10px 14px;margin-top:6px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:var(--font-serif);font-size:18px;font-weight:500;">
+            <label class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;">Template</label>
+            <select id="create-writing-template"
+                    style="display:block;width:100%;padding:10px 14px;margin-top:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-family:var(--font-ui);font-size:14px;">
+                <option value="essay">Essay</option>
+                <option value="substack">Substack article</option>
+                <option value="paper">Paper</option>
+                <option value="memoir">Memoir / personal</option>
+                <option value="note">Short note</option>
+                <option value="thread">Thread</option>
+            </select>
+            <div id="create-writing-fromset" style="margin-top:14px;padding:10px 14px;border:1px dashed var(--border);border-radius:8px;font-size:13px;color:var(--text-2);">
+                Will be created blank — no Working Set linked.
+            </div>
+            <div id="create-writing-error" class="hidden" style="color:var(--red);font-size:12px;margin-top:10px;"></div>
+        </div>
+        <footer class="export-modal-foot">
+            <button class="workbench-open-palette-btn" onclick="closeCreateWritingSpaceModal()">Cancel</button>
+            <button class="workbench-open-palette-btn" onclick="submitCreateWritingSpace()" style="margin-left:auto;border-color:var(--brand);color:var(--brand);">Start writing</button>
+        </footer>
+    </div>
+</div>
+
+<!-- ==================== WORKING SET DRAWER ====================
+     Slides in from the right when a Working Set card is clicked.
+     Lists items with reorder + add-artefact + start-Writing-Space. -->
+<div id="set-drawer" class="set-drawer hidden">
+    <div class="set-drawer-scrim" onclick="closeSetDrawer()"></div>
+    <aside class="set-drawer-panel">
+        <header class="set-drawer-head">
+            <h2 id="set-drawer-name" class="serif-display" style="margin:0;font-size:22px;">Working Set</h2>
+            <button class="writing-space-back" onclick="closeSetDrawer()" title="Close" style="margin-left:auto;">
+                <svg class="icon" width="18" height="18"><use href="/marks/icons.svg#icon-close"></use></svg>
+            </button>
+        </header>
+        <p id="set-drawer-desc" class="text-muted" style="margin: 4px 32px 16px;"></p>
+        <div class="set-drawer-actions">
+            <button class="workbench-open-palette-btn" onclick="openAddArtefactToSet()">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-plus"></use></svg>
+                <span>Add artefact</span>
+            </button>
+            <button class="workbench-open-palette-btn" onclick="startWritingSpaceFromSet()" style="border-color:var(--brand);color:var(--brand);">
+                <svg class="icon" width="14" height="14"><use href="/marks/icons.svg#icon-memo"></use></svg>
+                <span>Start Writing Space</span>
+            </button>
+        </div>
+        <div id="set-drawer-items" class="set-drawer-items">
+            <div class="text-muted" style="padding:24px;text-align:center;">No artefacts yet.</div>
+        </div>
+    </aside>
 </div>
 
 <!-- Cmd-K palette — a centred modal overlay opened by ⌘K, by ⌃K, by
@@ -1759,13 +2025,14 @@ applyInitialSidebarState();
 // landing). Switching this constant alone is enough — switchTab()
 // reads it during init.
 let currentTab = 'chat';
-const tabs = ['today', 'chat', 'spaces', 'workbench', 'lists', 'calendar', 'ledger', 'import', 'settings', 'workspaces'];
+const tabs = ['today', 'chat', 'spaces', 'workbench', 'writing-space', 'lists', 'calendar', 'ledger', 'import', 'settings', 'workspaces'];
 
 const TAB_TITLES = {
     today: 'Dashboard',  // Phase A.4 — renamed from "Today" (tab id stays for stable wiring)
     chat: 'Chat',
     spaces: 'Spaces',
     workbench: 'Workbench',  // BS3 W1 — researcher cross-corpus surface
+    'writing-space': 'Writing',  // BS3 W3 — opens via openWritingSpace(id), no sidebar entry
     lists: 'Lists',
     calendar: 'Calendar',
     ledger: 'Privacy Ledger',
@@ -1817,6 +2084,8 @@ function switchTab(tab) {
     if (tab === 'chat' && !chatLoaded) loadChatHistory();
     if (tab === 'spaces') loadSpaces();
     if (tab === 'workbench') loadWorkbench();  // BS3 W1
+    // BS3 W3 — writing-space surface populates via openWritingSpace(id);
+    // switchTab('writing-space') is called only from there.
     if (tab === 'lists') loadLists();
     if (tab === 'calendar') loadCalendar();
     if (tab === 'ledger') loadLedger();
@@ -4641,6 +4910,10 @@ async function loadWorkbench() {
         recentEl.innerHTML = `<div class="workbench-recent-empty text-muted">Couldn't load corpus — ${esc(err && err.message ? err.message : 'unknown error')}.</div>`;
         countsEl.innerHTML = '';
     }
+    // BS3 W2 + W3 — load the Working Sets + Writing Spaces lists too.
+    // Independent failures so a flaky one doesn't blank the surface.
+    loadWorkbenchSets().catch(err => console.error('[loadWorkbenchSets]', err));
+    loadWorkbenchWritingSpaces().catch(err => console.error('[loadWorkbenchWritingSpaces]', err));
 }
 
 // Researcher-friendly labels for the category enum. Falls back to the
@@ -4893,6 +5166,782 @@ document.addEventListener('DOMContentLoaded', () => {
             if (q.length > 0) submitWorkbenchQuery(q);
         }
     });
+});
+
+// ========== BS3 W0 — URL CAPTURE ==========
+
+let workbenchUrlInFlight = false;
+async function submitWorkbenchUrl() {
+    if (workbenchUrlInFlight) return;
+    const input = document.getElementById('workbench-url-input');
+    const statusEl = document.getElementById('workbench-url-status');
+    const submitBtn = document.getElementById('workbench-url-submit');
+    if (!input || !statusEl) return;
+    const url = input.value.trim();
+    if (!url) {
+        statusEl.textContent = 'Paste a URL first.';
+        return;
+    }
+    workbenchUrlInFlight = true;
+    submitBtn.disabled = true;
+    statusEl.textContent = 'Fetching and extracting…';
+    try {
+        const res = await api('/api/source/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            statusEl.textContent = `Couldn't capture — ${data.reason || data.error || res.status}`;
+            return;
+        }
+        statusEl.innerHTML = `Saved as <strong>${esc(data.spaceTitle || 'new source')}</strong> (${data.charCount || 0} chars). Will surface in your Workbench shortly.`;
+        input.value = '';
+        // Refresh the workbench surfaces.
+        loadWorkbench();
+    } catch (err) {
+        console.error('[submitWorkbenchUrl]', err);
+        statusEl.textContent = `Couldn't capture — ${err && err.message ? err.message : 'network error'}`;
+    } finally {
+        workbenchUrlInFlight = false;
+        submitBtn.disabled = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const urlInput = document.getElementById('workbench-url-input');
+    if (urlInput) urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submitWorkbenchUrl(); }
+    });
+});
+
+// ========== BS3 W2 — WORKING SETS ==========
+
+let workbenchSets = [];
+
+async function loadWorkbenchSets() {
+    const el = document.getElementById('workbench-sets');
+    if (!el) return;
+    try {
+        const res = await api('/api/working-sets');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        workbenchSets = Array.isArray(data.workingSets) ? data.workingSets
+            : (Array.isArray(data.items) ? data.items : []);
+        renderWorkbenchSets();
+    } catch (err) {
+        console.error('[loadWorkbenchSets]', err);
+        el.innerHTML = `<div class="workbench-recent-empty text-muted">Couldn't load Working Sets — ${esc(err.message || err)}.</div>`;
+    }
+}
+
+function renderWorkbenchSets() {
+    const el = document.getElementById('workbench-sets');
+    if (!el) return;
+    if (!workbenchSets || workbenchSets.length === 0) {
+        el.innerHTML = '<div class="workbench-recent-empty text-muted">No Working Sets yet. Create one to bundle artefacts before drafting.</div>';
+        return;
+    }
+    el.innerHTML = workbenchSets.map(s => {
+        const name = esc(s.name || 'Untitled set');
+        const desc = esc(s.description || '');
+        const itemCount = typeof s.itemCount === 'number' ? s.itemCount : 0;
+        const id = esc(s.id);
+        const updated = s.updatedAt ? `<span class="workbench-recent-ago">${formatWorkbenchAgo(s.updatedAt)}</span>` : '';
+        return `<button class="workbench-recent-item" onclick="openSetDrawer(${JSON.stringify(id)})">
+            <div class="workbench-recent-head">
+                <span class="workbench-recent-cat">Set · ${itemCount} item${itemCount === 1 ? '' : 's'}</span>
+                ${updated}
+            </div>
+            <div class="workbench-recent-title serif-display">${name}</div>
+            ${desc ? `<div class="workbench-recent-desc text-muted">${desc}</div>` : ''}
+        </button>`;
+    }).join('');
+}
+
+function openCreateWorkingSetModal() {
+    const modal = document.getElementById('create-set-modal');
+    if (!modal) return;
+    document.getElementById('create-set-name').value = '';
+    document.getElementById('create-set-desc').value = '';
+    document.getElementById('create-set-error').classList.add('hidden');
+    modal.classList.remove('hidden');
+    setTimeout(() => document.getElementById('create-set-name')?.focus(), 50);
+}
+function closeCreateWorkingSetModal() {
+    document.getElementById('create-set-modal')?.classList.add('hidden');
+}
+async function submitCreateWorkingSet() {
+    const name = document.getElementById('create-set-name').value.trim();
+    const description = document.getElementById('create-set-desc').value.trim();
+    const errEl = document.getElementById('create-set-error');
+    if (!name) {
+        errEl.textContent = 'Name required.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const res = await api('/api/working-sets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errEl.textContent = data.reason || data.error || `HTTP ${res.status}`;
+            errEl.classList.remove('hidden');
+            return;
+        }
+        closeCreateWorkingSetModal();
+        await loadWorkbenchSets();
+        // Open the new set immediately
+        openSetDrawer(data.workingSet?.id || data.id);
+    } catch (err) {
+        errEl.textContent = err.message || 'Network error.';
+        errEl.classList.remove('hidden');
+    }
+}
+
+let activeSetDrawerId = null;
+let activeSetItems = [];
+async function openSetDrawer(setId) {
+    activeSetDrawerId = setId;
+    const drawer = document.getElementById('set-drawer');
+    if (!drawer) return;
+    drawer.classList.remove('hidden');
+    document.getElementById('set-drawer-name').textContent = 'Loading…';
+    document.getElementById('set-drawer-desc').textContent = '';
+    document.getElementById('set-drawer-items').innerHTML = '<div class="text-muted" style="padding:24px;text-align:center;">Loading…</div>';
+    try {
+        const res = await api(`/api/working-sets/${encodeURIComponent(setId)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const set = data.workingSet || data;
+        document.getElementById('set-drawer-name').textContent = set.name || 'Untitled set';
+        document.getElementById('set-drawer-desc').textContent = set.description || '';
+        activeSetItems = Array.isArray(data.items) ? data.items : (Array.isArray(set.items) ? set.items : []);
+        renderSetDrawerItems();
+    } catch (err) {
+        document.getElementById('set-drawer-items').innerHTML = `<div class="text-muted" style="padding:24px;text-align:center;">Couldn't load: ${esc(err.message || err)}</div>`;
+    }
+}
+function closeSetDrawer() {
+    document.getElementById('set-drawer')?.classList.add('hidden');
+    activeSetDrawerId = null;
+    activeSetItems = [];
+}
+function renderSetDrawerItems() {
+    const el = document.getElementById('set-drawer-items');
+    if (!el) return;
+    if (activeSetItems.length === 0) {
+        el.innerHTML = '<div class="text-muted" style="padding:24px;text-align:center;">No artefacts yet. Click "Add artefact" to start.</div>';
+        return;
+    }
+    el.innerHTML = activeSetItems.map((it, i) => {
+        const title = esc(it.artefactTitle || it.title || '(deleted artefact)');
+        const cat = esc(it.artefactCategory || it.category || '');
+        const uri = esc(it.artefactSpaceUri || it.uri || '');
+        const note = esc(it.note || '');
+        const itemId = esc(it.id);
+        return `<div class="set-drawer-item">
+            <div class="set-drawer-item-num">${i + 1}</div>
+            <div class="set-drawer-item-body">
+                <div class="set-drawer-item-head">
+                    <span class="workbench-recent-cat">${cat || 'item'}</span>
+                    <button class="set-drawer-item-remove" onclick="removeArtefactFromSet(${JSON.stringify(itemId)})" title="Remove">×</button>
+                </div>
+                <div class="set-drawer-item-title serif-display">${title}</div>
+                ${note ? `<div class="set-drawer-item-note text-muted">${note}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function removeArtefactFromSet(itemId) {
+    if (!activeSetDrawerId) return;
+    if (!confirm('Remove this artefact from the Working Set?')) return;
+    try {
+        await api(`/api/working-sets/${encodeURIComponent(activeSetDrawerId)}/items/${encodeURIComponent(itemId)}`, {
+            method: 'DELETE',
+        });
+        openSetDrawer(activeSetDrawerId);
+        loadWorkbenchSets();
+    } catch (err) {
+        alert('Failed to remove: ' + (err.message || err));
+    }
+}
+
+// Add-artefact flow: re-uses the Workbench's recent-artefacts list for
+// picking. Opens a small picker inline in the drawer.
+async function openAddArtefactToSet() {
+    if (!activeSetDrawerId) return;
+    // Quick-and-honest: prompt for an artefact URI. PWA tier 2 will use
+    // the corpus_query palette to filter; for now a free-form picker
+    // from the Workbench's recent list is enough to test the flow.
+    if (!workbenchState.recent || workbenchState.recent.length === 0) {
+        alert('No artefacts in this workspace yet. Capture a source first.');
+        return;
+    }
+    const choices = workbenchState.recent.slice(0, 30).map((s, i) =>
+        `${i + 1}. (${s.category || 'item'}) ${s.title || 'Untitled'}`
+    ).join('\n');
+    const pick = prompt(`Pick an artefact to add to the set:\n\n${choices}\n\nEnter a number 1-${Math.min(30, workbenchState.recent.length)}:`);
+    if (!pick) return;
+    const idx = parseInt(pick, 10) - 1;
+    const target = workbenchState.recent[idx];
+    if (!target) { alert('Invalid choice.'); return; }
+    const note = prompt(`Optional note for this item (why is it in the set?):`, '') || '';
+    try {
+        await api(`/api/working-sets/${encodeURIComponent(activeSetDrawerId)}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ artefactSpaceUri: target.uri, note }),
+        });
+        openSetDrawer(activeSetDrawerId);
+        loadWorkbenchSets();
+    } catch (err) {
+        alert('Failed to add: ' + (err.message || err));
+    }
+}
+
+function startWritingSpaceFromSet() {
+    if (!activeSetDrawerId) return;
+    openCreateWritingSpaceModal(activeSetDrawerId);
+}
+
+// ========== BS3 W3 — WRITING SPACES ==========
+
+let workbenchWritingSpaces = [];
+let currentWritingSpace = null;
+let currentWritingCitations = [];
+let writingSpaceDirty = false;
+let writingSpaceSaveTimer = null;
+
+async function loadWorkbenchWritingSpaces() {
+    const el = document.getElementById('workbench-writing-list');
+    if (!el) return;
+    try {
+        const res = await api('/api/writing-spaces');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        workbenchWritingSpaces = Array.isArray(data.writingSpaces) ? data.writingSpaces
+            : (Array.isArray(data.items) ? data.items : []);
+        renderWorkbenchWritingSpaces();
+    } catch (err) {
+        console.error('[loadWorkbenchWritingSpaces]', err);
+        el.innerHTML = `<div class="workbench-recent-empty text-muted">Couldn't load Writing Spaces — ${esc(err.message || err)}.</div>`;
+    }
+}
+
+const WRITING_STATUS_LABELS = {
+    drafting: 'Drafting',
+    revising: 'Revising',
+    ready_to_publish: 'Ready',
+    published: 'Published',
+    archived: 'Archived',
+};
+
+function renderWorkbenchWritingSpaces() {
+    const el = document.getElementById('workbench-writing-list');
+    if (!el) return;
+    if (!workbenchWritingSpaces || workbenchWritingSpaces.length === 0) {
+        el.innerHTML = '<div class="workbench-recent-empty text-muted">No writing yet. Start one from a Working Set, or empty.</div>';
+        return;
+    }
+    el.innerHTML = workbenchWritingSpaces.map(w => {
+        const title = esc(w.title || 'Untitled');
+        const template = esc(w.template || 'essay');
+        const status = esc(WRITING_STATUS_LABELS[w.status] || w.status || 'drafting');
+        const id = esc(w.id);
+        const updated = w.updatedAt ? `<span class="workbench-recent-ago">${formatWorkbenchAgo(w.updatedAt)}</span>` : '';
+        return `<button class="workbench-recent-item" onclick="openWritingSpace(${JSON.stringify(id)})">
+            <div class="workbench-recent-head">
+                <span class="workbench-recent-cat">${template} · ${status}</span>
+                ${updated}
+            </div>
+            <div class="workbench-recent-title serif-display">${title}</div>
+        </button>`;
+    }).join('');
+}
+
+function openCreateWritingSpaceModal(fromSetId) {
+    const modal = document.getElementById('create-writing-modal');
+    if (!modal) return;
+    document.getElementById('create-writing-title').value = '';
+    document.getElementById('create-writing-template').value = 'essay';
+    document.getElementById('create-writing-error').classList.add('hidden');
+    const fromSetHint = document.getElementById('create-writing-fromset');
+    if (fromSetId) {
+        const set = workbenchSets.find(s => s.id === fromSetId);
+        fromSetHint.textContent = set
+            ? `Will be linked to set: ${set.name}`
+            : 'Will be linked to the selected Working Set.';
+        fromSetHint.dataset.setId = fromSetId;
+    } else {
+        fromSetHint.textContent = 'Will be created blank — no Working Set linked.';
+        delete fromSetHint.dataset.setId;
+    }
+    modal.classList.remove('hidden');
+    setTimeout(() => document.getElementById('create-writing-title')?.focus(), 50);
+}
+function closeCreateWritingSpaceModal() {
+    document.getElementById('create-writing-modal')?.classList.add('hidden');
+}
+async function submitCreateWritingSpace() {
+    const title = document.getElementById('create-writing-title').value.trim();
+    const template = document.getElementById('create-writing-template').value;
+    const fromSetHint = document.getElementById('create-writing-fromset');
+    const workingSetId = fromSetHint.dataset.setId || null;
+    const errEl = document.getElementById('create-writing-error');
+    if (!title) {
+        errEl.textContent = 'Title required.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    try {
+        const body = { title, template };
+        if (workingSetId) body.workingSetId = workingSetId;
+        const res = await api('/api/writing-spaces', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            errEl.textContent = data.reason || data.error || `HTTP ${res.status}`;
+            errEl.classList.remove('hidden');
+            return;
+        }
+        closeCreateWritingSpaceModal();
+        closeSetDrawer();
+        const newId = data.writingSpace?.id || data.id;
+        if (newId) openWritingSpace(newId);
+    } catch (err) {
+        errEl.textContent = err.message || 'Network error.';
+        errEl.classList.remove('hidden');
+    }
+}
+
+async function openWritingSpace(id) {
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        currentWritingSpace = data.writingSpace || data;
+        currentWritingCitations = Array.isArray(data.citations) ? data.citations
+            : (currentWritingSpace.citations || []);
+        // Populate the composer
+        document.getElementById('writing-space-title').value = currentWritingSpace.title || '';
+        document.getElementById('writing-space-template-badge').textContent = currentWritingSpace.template || 'essay';
+        document.getElementById('writing-space-status').value = currentWritingSpace.status || 'drafting';
+        document.getElementById('writing-space-body').value = currentWritingSpace.bodyMarkdown || '';
+        updateWritingWordCount();
+        renderWritingCitations();
+        writingSpaceDirty = false;
+        setWritingSaveState('All saved');
+        switchTab('writing-space');
+    } catch (err) {
+        alert('Failed to open Writing Space: ' + (err.message || err));
+    }
+}
+
+function closeWritingSpace() {
+    if (writingSpaceDirty) {
+        if (!confirm('You have unsaved changes — leave anyway?')) return;
+    }
+    currentWritingSpace = null;
+    currentWritingCitations = [];
+    switchTab('workbench');
+}
+
+function setWritingSaveState(text) {
+    const el = document.getElementById('writing-space-savestate');
+    if (el) el.textContent = text;
+}
+
+function updateWritingWordCount() {
+    const body = document.getElementById('writing-space-body').value || '';
+    const n = body.trim() ? body.trim().split(/\s+/).length : 0;
+    const el = document.getElementById('writing-space-wordcount');
+    if (el) el.textContent = `${n} word${n === 1 ? '' : 's'}`;
+}
+
+function switchWritingTab(name) {
+    document.querySelectorAll('.writing-space-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    document.querySelectorAll('.writing-space-panel').forEach(p => {
+        const panelName = p.id.replace('writing-space-panel-', '');
+        p.classList.toggle('hidden', panelName !== name);
+    });
+    if (name === 'versions') loadWritingVersions();
+}
+
+async function loadWritingVersions() {
+    if (!currentWritingSpace) return;
+    const el = document.getElementById('writing-space-versions-list');
+    el.innerHTML = '<div class="text-muted" style="padding:16px;">Loading…</div>';
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}/versions`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const versions = data.versions || [];
+        if (versions.length === 0) {
+            el.innerHTML = '<div class="text-muted" style="padding:16px;">No saved versions yet.</div>';
+            return;
+        }
+        el.innerHTML = versions.map(v => {
+            const when = v.createdAt ? formatWorkbenchAgo(v.createdAt) : '';
+            const summary = esc(v.changesSummary || '');
+            return `<div class="set-drawer-item" style="padding:12px 14px;">
+                <div class="set-drawer-item-num">v${v.versionNumber}</div>
+                <div class="set-drawer-item-body">
+                    <div class="text-muted" style="font-size:11px;">${when}</div>
+                    ${summary ? `<div style="font-size:13px;margin-top:4px;">${summary}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        el.innerHTML = `<div class="text-muted" style="padding:16px;">Couldn't load versions: ${esc(err.message || err)}</div>`;
+    }
+}
+
+function renderWritingCitations() {
+    const el = document.getElementById('writing-space-citations');
+    if (!el) return;
+    if (currentWritingCitations.length === 0) {
+        el.innerHTML = '<div class="text-muted" style="padding:16px;">No citations yet — click <strong>Cite</strong> below the editor to add one.</div>';
+        return;
+    }
+    el.innerHTML = currentWritingCitations.map((c, i) => {
+        const title = esc(c.artefactTitle || c.title || c.artefactSpaceUri || '(unknown)');
+        const cat = esc(c.artefactCategory || c.category || '');
+        return `<div class="set-drawer-item" style="padding:10px 14px;">
+            <div class="set-drawer-item-num">${i + 1}</div>
+            <div class="set-drawer-item-body">
+                <div class="workbench-recent-cat">${cat}</div>
+                <div class="set-drawer-item-title">${title}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// Save with debounce on edit
+function onWritingBodyInput() {
+    writingSpaceDirty = true;
+    updateWritingWordCount();
+    setWritingSaveState('Saving…');
+    if (writingSpaceSaveTimer) clearTimeout(writingSpaceSaveTimer);
+    writingSpaceSaveTimer = setTimeout(saveWritingSpace, 1200);
+}
+
+async function saveWritingSpace() {
+    if (!currentWritingSpace) return;
+    try {
+        const bodyMarkdown = document.getElementById('writing-space-body').value;
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bodyMarkdown }),
+        });
+        if (!res.ok) {
+            setWritingSaveState('Save failed');
+            return;
+        }
+        const data = await res.json();
+        currentWritingSpace = data.writingSpace || { ...currentWritingSpace, bodyMarkdown };
+        writingSpaceDirty = false;
+        setWritingSaveState('All saved');
+    } catch (err) {
+        setWritingSaveState('Save failed');
+    }
+}
+
+async function onWritingStatusChange() {
+    if (!currentWritingSpace) return;
+    const status = document.getElementById('writing-space-status').value;
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert('Status change rejected: ' + (data.reason || data.error || res.status));
+            document.getElementById('writing-space-status').value = currentWritingSpace.status;
+            return;
+        }
+        currentWritingSpace.status = status;
+    } catch (err) {
+        alert('Failed: ' + (err.message || err));
+    }
+}
+
+async function onWritingTitleChange() {
+    if (!currentWritingSpace) return;
+    const newTitle = document.getElementById('writing-space-title').value.trim();
+    if (!newTitle || newTitle === currentWritingSpace.title) return;
+    // No dedicated rename endpoint — re-using PUT body update doesn't
+    // touch title. For now we keep the title local until backend exposes
+    // a title PATCH; the W3 spec implies title can be updated via the
+    // create endpoint shape but the API surface here is read-only on
+    // title. TODO: add PATCH for title.
+    currentWritingSpace.title = newTitle;
+}
+
+// ========== BS3 W3 — CITE PICKER ==========
+
+let citePickerCandidates = [];
+let citePickerCursorPos = 0;
+
+function openCitePickerForCursor() {
+    if (!currentWritingSpace) return;
+    const ta = document.getElementById('writing-space-body');
+    citePickerCursorPos = ta.selectionStart || 0;
+    const modal = document.getElementById('cite-picker-modal');
+    if (!modal) return;
+    document.getElementById('cite-picker-input').value = '';
+    document.getElementById('cite-picker-status').textContent = 'Loading candidates…';
+    document.getElementById('cite-picker-results').innerHTML = '';
+    modal.classList.remove('hidden');
+    fetchCitePickerCandidates('');
+    setTimeout(() => document.getElementById('cite-picker-input')?.focus(), 50);
+}
+function closeCitePicker() {
+    document.getElementById('cite-picker-modal')?.classList.add('hidden');
+}
+
+async function fetchCitePickerCandidates(filter) {
+    if (!currentWritingSpace) return;
+    try {
+        // Build cursor context from the body around citePickerCursorPos
+        const body = document.getElementById('writing-space-body').value;
+        const start = Math.max(0, citePickerCursorPos - 200);
+        const end = Math.min(body.length, citePickerCursorPos + 50);
+        const cursorContext = (filter || '') + ' ' + body.slice(start, end);
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}/cite-picker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cursorContext, limit: 20 }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        citePickerCandidates = Array.isArray(data.candidates) ? data.candidates : [];
+        renderCitePickerResults();
+    } catch (err) {
+        document.getElementById('cite-picker-status').textContent = 'Couldn\'t load: ' + (err.message || err);
+    }
+}
+
+function renderCitePickerResults() {
+    const el = document.getElementById('cite-picker-results');
+    const statusEl = document.getElementById('cite-picker-status');
+    if (citePickerCandidates.length === 0) {
+        statusEl.textContent = 'No matching artefacts in your workspace.';
+        el.innerHTML = '';
+        return;
+    }
+    statusEl.textContent = `${citePickerCandidates.length} candidate${citePickerCandidates.length === 1 ? '' : 's'} — click one to insert.`;
+    el.innerHTML = citePickerCandidates.map(c => {
+        const title = esc(c.title || 'Untitled');
+        const cat = esc(c.category || '');
+        const snippet = esc(c.snippet || c.description || '');
+        const uri = esc(c.uri || '');
+        const inSet = c.isInWorkingSet
+            ? '<span class="workbench-recent-ago" style="color:var(--brand);font-weight:600;">In set</span>'
+            : '';
+        return `<button class="workbench-result" onclick="insertCitation(${JSON.stringify(uri)}, ${JSON.stringify(title)})">
+            <div class="workbench-result-head">
+                <span class="workbench-result-cat">${cat}</span>
+                ${inSet}
+            </div>
+            <div class="workbench-result-title serif-display">${title}</div>
+            ${snippet ? `<div class="workbench-result-snippet text-muted">${snippet}</div>` : ''}
+        </button>`;
+    }).join('');
+}
+
+async function insertCitation(artefactUri, displayTitle) {
+    if (!currentWritingSpace) return;
+    try {
+        const ta = document.getElementById('writing-space-body');
+        const pos = citePickerCursorPos;
+        const body = ta.value;
+        // We need the citation ID from the backend insert call FIRST so
+        // we can insert the right <!-- cite:UUID --> placeholder.
+        // surrounding_hash is computed against the body BEFORE insertion.
+        const surroundingHash = await computeSurroundingHashClient(body, pos);
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}/citations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                artefactSpaceUri: artefactUri,
+                positionInDraft: pos,
+                surroundingHash,
+            }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert('Failed to insert citation: ' + (data.reason || data.error));
+            return;
+        }
+        const citation = data.citation || data;
+        const placeholder = `<!-- cite:${citation.id} -->[^c${currentWritingCitations.length + 1}]`;
+        ta.value = body.slice(0, pos) + placeholder + body.slice(pos);
+        currentWritingCitations.push({ ...citation, artefactTitle: displayTitle });
+        renderWritingCitations();
+        onWritingBodyInput();  // triggers debounced save
+        closeCitePicker();
+    } catch (err) {
+        alert('Failed: ' + (err.message || err));
+    }
+}
+
+async function computeSurroundingHashClient(body, position) {
+    // SHA-1 of the 200-char window centred on position. Matches the
+    // server-side computeSurroundingHash (BS3 W3 store).
+    const half = 100;
+    const len = body.length;
+    const pos = Math.max(0, Math.min(len, Math.floor(position)));
+    const start = Math.max(0, pos - half);
+    const end = Math.min(len, pos + half);
+    const window = body.slice(start, end);
+    const buf = new TextEncoder().encode(window);
+    const digest = await crypto.subtle.digest('SHA-1', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ========== BS3 W6 — EXPORT PREVIEW ==========
+
+let exportPreviewData = null;
+
+function openExportModal() {
+    if (!currentWritingSpace) return;
+    const modal = document.getElementById('export-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    // Default to a sensible target by template
+    const defaultTarget = currentWritingSpace.template === 'substack' ? 'substack'
+        : currentWritingSpace.template === 'paper' ? 'latex'
+        : 'markdown';
+    document.getElementById('export-target').value = defaultTarget;
+    onExportTargetChange();
+}
+function closeExportModal() {
+    document.getElementById('export-modal')?.classList.add('hidden');
+    exportPreviewData = null;
+}
+
+async function onExportTargetChange() {
+    if (!currentWritingSpace) return;
+    const target = document.getElementById('export-target').value;
+    const statusEl = document.getElementById('export-status');
+    const previewEl = document.getElementById('export-preview');
+    const driftEl = document.getElementById('export-drift-banner');
+    statusEl.textContent = 'Rendering…';
+    previewEl.innerHTML = '<div class="text-muted" style="padding:24px;text-align:center;">Generating preview…</div>';
+    driftEl.classList.add('hidden');
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}/export?target=${encodeURIComponent(target)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        exportPreviewData = data;
+        const drifted = Array.isArray(data.driftedCitationIds) ? data.driftedCitationIds : [];
+        if (drifted.length > 0) {
+            driftEl.innerHTML = `⚠ ${drifted.length} citation${drifted.length === 1 ? '' : 's'} may have drifted — the surrounding text has changed since the citation was inserted. Review before publishing.`;
+            driftEl.classList.remove('hidden');
+        }
+        statusEl.innerHTML = `<span>${esc(data.mimeType)} · <strong>${esc(data.filename)}</strong></span>`;
+        // Show text content as <pre>; binary as a placeholder
+        if (data.encoding === 'utf8') {
+            previewEl.innerHTML = `<pre class="export-preview-pre">${esc(data.content)}</pre>`;
+        } else {
+            previewEl.innerHTML = `<div class="text-muted" style="padding:24px;text-align:center;">Binary content (${data.content.length} base64 chars). Download to open in the target application.</div>`;
+        }
+    } catch (err) {
+        statusEl.textContent = 'Render failed: ' + (err.message || err);
+        previewEl.innerHTML = '';
+    }
+}
+
+async function copyExportToClipboard() {
+    if (!exportPreviewData) { alert('No preview yet.'); return; }
+    try {
+        const text = exportPreviewData.encoding === 'utf8'
+            ? exportPreviewData.content
+            : atob(exportPreviewData.content);
+        await navigator.clipboard.writeText(text);
+        document.getElementById('export-status').innerHTML = '<strong>Copied to clipboard.</strong>';
+    } catch (err) {
+        alert('Copy failed: ' + (err.message || err));
+    }
+}
+
+function downloadExport() {
+    if (!exportPreviewData) { alert('No preview yet.'); return; }
+    const blob = exportPreviewData.encoding === 'utf8'
+        ? new Blob([exportPreviewData.content], { type: exportPreviewData.mimeType })
+        : new Blob([Uint8Array.from(atob(exportPreviewData.content), c => c.charCodeAt(0))], { type: exportPreviewData.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = exportPreviewData.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function commitExport() {
+    if (!currentWritingSpace) return;
+    const target = document.getElementById('export-target').value;
+    try {
+        const res = await api(`/api/writing-spaces/${encodeURIComponent(currentWritingSpace.id)}/export?target=${encodeURIComponent(target)}`, {
+            method: 'POST',
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            alert('Commit failed: ' + (data.error || res.status));
+            return;
+        }
+        document.getElementById('export-status').innerHTML =
+            `<strong>Committed.</strong> Export ID: ${esc((data.exportId || '').slice(0, 8))}… · Content hash: ${esc((data.contentHash || '').slice(0, 12))}…`;
+    } catch (err) {
+        alert('Commit failed: ' + (err.message || err));
+    }
+}
+
+// ========== Writing Space surface — wire input listeners ==========
+
+document.addEventListener('DOMContentLoaded', () => {
+    const body = document.getElementById('writing-space-body');
+    if (body) body.addEventListener('input', onWritingBodyInput);
+    const statusSel = document.getElementById('writing-space-status');
+    if (statusSel) statusSel.addEventListener('change', onWritingStatusChange);
+    const title = document.getElementById('writing-space-title');
+    if (title) title.addEventListener('change', onWritingTitleChange);
+    const citePickerInput = document.getElementById('cite-picker-input');
+    if (citePickerInput) {
+        let citeFilterTimer = null;
+        citePickerInput.addEventListener('input', () => {
+            if (citeFilterTimer) clearTimeout(citeFilterTimer);
+            citeFilterTimer = setTimeout(() => fetchCitePickerCandidates(citePickerInput.value.trim()), 250);
+        });
+    }
+});
+
+// Esc handlers for the new modals
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!document.getElementById('cite-picker-modal')?.classList.contains('hidden')) {
+        closeCitePicker();
+    } else if (!document.getElementById('export-modal')?.classList.contains('hidden')) {
+        closeExportModal();
+    } else if (!document.getElementById('create-set-modal')?.classList.contains('hidden')) {
+        closeCreateWorkingSetModal();
+    } else if (!document.getElementById('create-writing-modal')?.classList.contains('hidden')) {
+        closeCreateWritingSpaceModal();
+    } else if (!document.getElementById('set-drawer')?.classList.contains('hidden')) {
+        closeSetDrawer();
+    }
 });
 
 // ========== UTILITIES ==========
