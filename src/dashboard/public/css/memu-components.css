@@ -793,6 +793,78 @@ body {
   min-height: 16px;
 }
 
+/* File drop zone — multi-PDF capture */
+.workbench-drop-zone {
+  margin-top: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 18px 22px;
+  background: var(--surface-alt);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.workbench-drop-zone:hover,
+.workbench-drop-active {
+  border-color: var(--brand);
+  background: var(--brand-softer);
+}
+.workbench-drop-copy {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.workbench-drop-copy strong { font-weight: 600; }
+
+/* Upload progress strip */
+.workbench-upload-progress {
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-family: var(--font-ui);
+}
+.workbench-upload-progress.hidden { display: none; }
+.workbench-upload-headline {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.workbench-upload-status-error { color: var(--red); }
+.workbench-upload-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.workbench-upload-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-2);
+}
+.workbench-upload-icon {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+.workbench-upload-pending .workbench-upload-icon { color: var(--text-3); }
+.workbench-upload-active .workbench-upload-icon { color: var(--brand); }
+.workbench-upload-done .workbench-upload-icon { color: var(--green); }
+.workbench-upload-failed .workbench-upload-icon { color: var(--red); }
+.workbench-upload-failed { color: var(--red); }
+
 /* Sets and Writing-list reuse .workbench-recent grid styling. */
 .workbench-sets,
 .workbench-writing-list {

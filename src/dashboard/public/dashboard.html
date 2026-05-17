@@ -7,7 +7,7 @@
     <!-- v3 redesign: set data-theme on <html> BEFORE first paint to
          prevent a light/dark flash on reload. Must be synchronous + in
          <head> BEFORE any stylesheet is parsed. -->
-    <script src="/js/theme-init.js?v=2026-05-18-bs3-w3-writing"></script>
+    <script src="/js/theme-init.js?v=2026-05-18-bs3-multi-upload"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -15,16 +15,16 @@
          the bottom of memu-tokens.css aliases the existing Indigo
          Sanctuary var names (--indigo-primary, --on-surface, etc.) to
          the new tokens so style.css keeps working through transition. -->
-    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-w3-writing">
+    <link rel="stylesheet" href="/css/memu-tokens.css?v=2026-05-18-bs3-multi-upload">
     <!-- Cache-buster query string. Bump the version when CSS changes
          materially so browsers don't serve stale styles after a deploy.
          (PWA caches are aggressive — staged-attachment-pill regression
          on 2026-04-26 was traced to this.) -->
-    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-w3-writing">
+    <link rel="stylesheet" href="/css/style.css?v=2026-05-18-bs3-multi-upload">
     <!-- v3 redesign: component classes layered on top of style.css.
          Adds .eyebrow, .serif-display, .mono-chip, .memu-card, etc.
          No selector overlap with style.css — purely additive. -->
-    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-w3-writing">
+    <link rel="stylesheet" href="/css/memu-components.css?v=2026-05-18-bs3-multi-upload">
     <!-- PWA installability — manifest + theme-color + icon hints.
          Chrome's install heuristic requires manifest + a registered
          service worker (see SW registration further down). After deploy
@@ -1124,14 +1124,16 @@ async function api(path, opts = {}) {
         </p>
     </header>
 
-    <!-- Quick capture — drop a URL → Source Space. BS3 W0.
-         Sits high on the surface because capture-then-think is the
-         primary workflow shape. Hide the input until the box is
-         clicked so the surface stays calm by default. -->
+    <!-- Quick capture — drop a URL or drop a stack of PDFs → Source
+         Spaces. BS3 W0 (URL) + multi-PDF (frontend loop over existing
+         /api/document). Capture sits at the top of the surface because
+         it's the workflow's primary entry point. -->
     <section class="workbench-quick-capture">
         <header class="workbench-section-head">
             <h2 class="workbench-section-title">Capture</h2>
         </header>
+
+        <!-- URL row -->
         <div class="workbench-url-row">
             <input type="url" id="workbench-url-input"
                    class="workbench-url-input"
@@ -1141,6 +1143,25 @@ async function api(path, opts = {}) {
                     onclick="submitWorkbenchUrl()">Capture</button>
         </div>
         <div id="workbench-url-status" class="workbench-url-status text-muted"></div>
+
+        <!-- File drop zone — multi-PDF / text. Click to pick, OR
+             drag-and-drop onto the zone. -->
+        <div id="workbench-drop-zone" class="workbench-drop-zone"
+             onclick="document.getElementById('workbench-file-input').click()"
+             ondragover="event.preventDefault(); this.classList.add('workbench-drop-active');"
+             ondragleave="this.classList.remove('workbench-drop-active');"
+             ondrop="onWorkbenchFileDrop(event)">
+            <svg class="icon" width="22" height="22" style="color:var(--text-3);"><use href="/marks/icons.svg#icon-pdf"></use></svg>
+            <div class="workbench-drop-copy">
+                <strong>Drop PDFs or text files here</strong>
+                <span class="text-muted"> — or click to pick. Multi-select works; each becomes its own Source Space.</span>
+            </div>
+            <input type="file" id="workbench-file-input" multiple
+                   accept="application/pdf,text/plain,.pdf,.txt,.md"
+                   style="display:none;"
+                   onchange="onWorkbenchFilePick(event)">
+        </div>
+        <div id="workbench-upload-progress" class="workbench-upload-progress hidden"></div>
     </section>
 
     <!-- Aggregate counts row — clickable filter chips that scope the
@@ -5215,6 +5236,167 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') { e.preventDefault(); submitWorkbenchUrl(); }
     });
 });
+
+// ========== Multi-file upload (PDFs + text) ==========
+//
+// Frontend loop over the existing /api/document endpoint — each file
+// becomes its own Source Space. Concurrency capped at MAX_PARALLEL so
+// the user's connection doesn't get hammered and the LLM dispatch
+// queue doesn't blow out on a 20-PDF drop. Progress strip shows
+// "N of M done · K failed" with per-file status.
+
+const MAX_PARALLEL_UPLOADS = 2;  // PDFs are LLM-heavy; 2 in flight is plenty
+const MAX_FILE_BYTES = 25 * 1024 * 1024;   // matches /api/document cap
+
+function onWorkbenchFilePick(ev) {
+    const files = Array.from(ev.target.files || []);
+    if (files.length === 0) return;
+    submitWorkbenchFiles(files);
+    // Clear the input so re-picking the same file re-fires the event
+    ev.target.value = '';
+}
+
+function onWorkbenchFileDrop(ev) {
+    ev.preventDefault();
+    document.getElementById('workbench-drop-zone')?.classList.remove('workbench-drop-active');
+    const dt = ev.dataTransfer;
+    if (!dt) return;
+    const files = Array.from(dt.files || []).filter(f =>
+        f.type === 'application/pdf'
+        || f.type === 'text/plain'
+        || /\.(pdf|txt|md)$/i.test(f.name)
+    );
+    if (files.length === 0) {
+        showWorkbenchUploadStatus('Drop PDFs or text files. Other types are not supported here.', { isError: true });
+        return;
+    }
+    submitWorkbenchFiles(files);
+}
+
+async function submitWorkbenchFiles(files) {
+    // Filter out oversize before starting so the progress count is honest.
+    const tooBig = files.filter(f => f.size > MAX_FILE_BYTES);
+    const eligible = files.filter(f => f.size <= MAX_FILE_BYTES);
+    if (eligible.length === 0) {
+        showWorkbenchUploadStatus(
+            `All ${files.length} file(s) exceed the 25MB cap. Trim and retry.`,
+            { isError: true },
+        );
+        return;
+    }
+    const stats = {
+        total: eligible.length,
+        done: 0,
+        failed: 0,
+        skipped: tooBig.length,
+        per: eligible.map(f => ({ name: f.name, status: 'pending', error: null })),
+    };
+    renderWorkbenchUploadProgress(stats);
+
+    // Concurrency-capped scheduler. Each worker grabs the next index
+    // until none remain.
+    let next = 0;
+    async function worker() {
+        while (true) {
+            const i = next++;
+            if (i >= eligible.length) return;
+            stats.per[i].status = 'uploading';
+            renderWorkbenchUploadProgress(stats);
+            try {
+                const file = eligible[i];
+                const base64 = await readFileAsBase64(file);
+                const mimeType = file.type
+                    || (/\.pdf$/i.test(file.name) ? 'application/pdf' : 'text/plain');
+                const res = await api('/api/document', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: base64, fileName: file.name, mimeType }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    stats.failed += 1;
+                    stats.per[i].status = 'failed';
+                    stats.per[i].error = data.error || data.reason || `HTTP ${res.status}`;
+                } else {
+                    stats.done += 1;
+                    stats.per[i].status = 'done';
+                    stats.per[i].spaceTitle = data.spaceTitle;
+                }
+            } catch (err) {
+                stats.failed += 1;
+                stats.per[i].status = 'failed';
+                stats.per[i].error = err && err.message ? err.message : String(err);
+            }
+            renderWorkbenchUploadProgress(stats);
+        }
+    }
+
+    // Kick off MAX_PARALLEL_UPLOADS workers.
+    const workers = Array.from(
+        { length: Math.min(MAX_PARALLEL_UPLOADS, eligible.length) },
+        () => worker(),
+    );
+    await Promise.all(workers);
+
+    // All workers done — refresh the surface so new Sources appear.
+    loadWorkbench();
+
+    // Final summary message — sticky for 10s so the user can read it.
+    const summary = stats.failed === 0
+        ? `Captured ${stats.done} source${stats.done === 1 ? '' : 's'} from your batch.`
+        : `Captured ${stats.done} of ${stats.total}. ${stats.failed} failed — see details below.`;
+    showWorkbenchUploadStatus(summary, { isError: stats.failed > 0 });
+}
+
+function renderWorkbenchUploadProgress(stats) {
+    const el = document.getElementById('workbench-upload-progress');
+    if (!el) return;
+    el.classList.remove('hidden');
+    const pending = stats.total - stats.done - stats.failed;
+    const headline = `${stats.done} of ${stats.total} done${stats.failed ? ` · ${stats.failed} failed` : ''}${pending ? ` · ${pending} pending` : ''}`;
+    const rows = stats.per.map((p, i) => {
+        let icon = '○';
+        let cls = 'workbench-upload-pending';
+        if (p.status === 'uploading') { icon = '◐'; cls = 'workbench-upload-active'; }
+        if (p.status === 'done') { icon = '✓'; cls = 'workbench-upload-done'; }
+        if (p.status === 'failed') { icon = '⚠'; cls = 'workbench-upload-failed'; }
+        const detail = p.status === 'failed' ? ` — ${esc(p.error || '')}`
+            : p.status === 'done' && p.spaceTitle ? ` → ${esc(p.spaceTitle)}`
+            : '';
+        return `<li class="${cls}"><span class="workbench-upload-icon">${icon}</span> <span>${i + 1}. ${esc(p.name)}${detail}</span></li>`;
+    }).join('');
+    el.innerHTML = `
+        <div class="workbench-upload-headline">${esc(headline)}</div>
+        <ul class="workbench-upload-list">${rows}</ul>
+    `;
+}
+
+function showWorkbenchUploadStatus(message, opts) {
+    const el = document.getElementById('workbench-upload-progress');
+    if (!el) return;
+    el.classList.remove('hidden');
+    const errClass = opts && opts.isError ? 'workbench-upload-status-error' : '';
+    const head = el.querySelector('.workbench-upload-headline');
+    if (head) {
+        head.textContent = message;
+        if (errClass) head.classList.add(errClass);
+    } else {
+        el.innerHTML = `<div class="workbench-upload-headline ${errClass}">${esc(message)}</div>`;
+    }
+}
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = () => reject(new Error('failed to read file'));
+        reader.readAsDataURL(file);
+    });
+}
 
 // ========== BS3 W2 — WORKING SETS ==========
 
