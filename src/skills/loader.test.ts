@@ -20,6 +20,7 @@ const EXPECTED = [
   'import_extract',
   'soul',
   'document_ingestion',
+  'corpus_query',
 ];
 
 describe('skills loader', () => {
@@ -59,6 +60,23 @@ describe('skills loader', () => {
     const skill = getSkill('twin_translate');
     expect(skill.frontmatter.requires_twin).toBe(false);
     expect(skill.frontmatter.model).toBe('local');
+  });
+
+  it('corpus_query (BS3 W1) is requires_twin and routes to sonnet at cheap cost tier', () => {
+    const skill = getSkill('corpus_query');
+    expect(skill.frontmatter.requires_twin).toBe(true);
+    expect(skill.frontmatter.model).toBe('sonnet');
+    expect(skill.frontmatter.cost_tier).toBe('cheap');
+  });
+
+  it('corpus_query renders with candidates + query template vars', () => {
+    const rendered = renderSkill('corpus_query', {
+      candidates: '[0] (memo) Test candidate',
+      query: 'where is the test?',
+    });
+    expect(rendered).toContain('[0] (memo) Test candidate');
+    expect(rendered).toContain('where is the test?');
+    expect(rendered).not.toContain('{{');
   });
 
   it('renders template variables', () => {

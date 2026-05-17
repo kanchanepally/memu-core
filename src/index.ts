@@ -1699,7 +1699,7 @@ server.get('/api/spaces/graph', async (request, reply) => {
 // resulting row matches whether the user called with (A,B) or (B,A).
 
 function validateConnectionInput(body: unknown):
-  | { ok: true; a: string; b: string }
+  | { ok: true; a: string; b: string; relationshipType: string | null }
   | { ok: false; reason: string } {
   if (!body || typeof body !== 'object') return { ok: false, reason: 'body must be an object' };
   const b = body as Record<string, unknown>;
@@ -1711,7 +1711,15 @@ function validateConnectionInput(body: unknown):
   // Canonical-order so the row matches the schema CHECK and the
   // UNIQUE constraint collapses (A,B) and (B,A) calls.
   const [a, bb] = uriA < uriB ? [uriA, uriB] : [uriB, uriA];
-  return { ok: true, a, b: bb };
+  // BS3 W1 — optional typed-connection vocabulary. Untyped (null) is
+  // accepted for back-compat with the pre-W1 callers; new callers
+  // typically pass one of the 7 BS3 relationship types.
+  const { validateRelationshipType } = require('./api/workbench');
+  const relValidation = validateRelationshipType(b.relationshipType);
+  if (!relValidation.ok) {
+    return { ok: false, reason: relValidation.reason };
+  }
+  return { ok: true, a, b: bb, relationshipType: relValidation.value };
 }
 
 server.post('/api/spaces/connections', async (request, reply) => {
@@ -1731,14 +1739,22 @@ server.post('/api/spaces/connections', async (request, reply) => {
         reason: 'space_not_in_collective',
       });
     }
+    // BS3 W1 — set relationship_type on insert; on conflict update it
+    // alongside last_seen_at so a user upgrading an untyped manual
+    // edge to a typed one (or changing the type) lands cleanly.
     await db.query(
-      `INSERT INTO space_connections (space_uri_a, space_uri_b, source_mechanism, confidence)
-       VALUES ($1, $2, 'manual', 1.00)
+      `INSERT INTO space_connections (space_uri_a, space_uri_b, source_mechanism, confidence, relationship_type)
+       VALUES ($1, $2, 'manual', 1.00, $3)
        ON CONFLICT (collective_id, space_uri_a, space_uri_b, source_mechanism)
-       DO UPDATE SET last_seen_at = NOW(), status = 'active'`,
-      [validated.a, validated.b],
+       DO UPDATE SET last_seen_at = NOW(), status = 'active', relationship_type = EXCLUDED.relationship_type`,
+      [validated.a, validated.b, validated.relationshipType],
     );
-    return reply.code(201).send({ ok: true, spaceUriA: validated.a, spaceUriB: validated.b });
+    return reply.code(201).send({
+      ok: true,
+      spaceUriA: validated.a,
+      spaceUriB: validated.b,
+      relationshipType: validated.relationshipType,
+    });
   } catch (err) {
     server.log.error(err);
     return reply.code(500).send({ error: 'Failed to create manual connection' });
@@ -1770,6 +1786,13 @@ server.delete('/api/spaces/connections', async (request, reply) => {
 // queues plugin registration; resolved by server.listen() later.
 import { workspaceRoutes } from './api/workspaces';
 server.register(workspaceRoutes);
+
+// BS3 Phase W1 — Workbench API (corpus query + connections listing).
+// POST /api/workbench/query, GET /api/spaces/connections.
+// (POST /api/spaces/connections lives inline above — predates BS3 W1
+// and is patched in place to accept relationshipType.)
+import { workbenchRoutes } from './api/workbench';
+server.register(workbenchRoutes);
 
 // Create a new Space manually. Routes through upsertSpace so the DB row
 // + on-disk markdown + git history stay in lock-step (and so the v2
